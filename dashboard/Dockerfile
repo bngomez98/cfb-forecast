@@ -7,8 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 COPY dashboard/requirements.txt ./
-RUN python -m pip install -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip python -m pip install -r requirements.txt
 COPY dashboard ./dashboard
 
 EXPOSE 8501
-CMD ["streamlit", "run", "dashboard/app.py", "--server.address=0.0.0.0", "--server.port=8501"]
+CMD ["streamlit", "run", "dashboard/app.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.fileWatcherType=none", "--browser.gatherUsageStats=false"]

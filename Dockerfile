@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM python:3.12-slim
+FROM python:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -18,7 +18,7 @@ RUN apt-get update \
 
 COPY pyproject.toml ./
 COPY src ./src
-RUN python -m pip install .
+RUN --mount=type=cache,target=/root/.cache/pip python -m pip install .
 
 COPY data ./data
 COPY artifacts ./artifacts
