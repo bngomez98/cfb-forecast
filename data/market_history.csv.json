@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "rows": 763,
+  "games": 763,
+  "providers": [
+    "prediction_tracker_displayed_line"
+  ],
+  "first_observed_at": "2025-08-28T19:17:03+00:00",
+  "last_observed_at": "2025-12-25T14:02:26+00:00",
+  "all_rows_verified_before_kickoff": true,
+  "sign_convention": "home_spread uses sportsbook convention: negative means home favorite; source line was positive home-margin convention and was negated.",
+  "opening_benchmark_file": "market_opening_benchmark_2025.csv",
+  "opening_timestamp_limit": "Displayed opening values are retained separately because their true original quote timestamps are not present in the saved weekly snapshots."
+}

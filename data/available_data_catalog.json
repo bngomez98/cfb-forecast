@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "engine_status": {
+    "schedule": {
+      "status": "integrated",
+      "use": "kickoff, teams, venue/neutral flag, final outcomes, result-availability gating"
+    },
+    "advanced_team": {
+      "status": "integrated",
+      "fields": ["yards_per_play", "yards_per_pass", "yards_per_rush", "first_downs_created_rate"],
+      "use": "dynamic opponent-adjusted offense/defense states"
+    },
+    "betting": {
+      "status": "integration_built",
+      "source": "SportsDataverse espn_cfb_betting",
+      "fields": ["game_id", "home_team_spread", "over_under", "game_spread_available", "odds_source"],
+      "use": "historical resolved/closing benchmark and prospective repeated snapshot capture",
+      "leakage_rule": "historical closing/resolved rows are benchmark-only; only snapshots actually captured at or before a forecast cutoff may enter cutoff diagnostics"
+    },
+    "forecast_distribution": {
+      "status": "integrated_and_heldout_validated",
+      "outputs": ["joint score PMF", "margin PMF", "total PMF", "winner probability", "80% intervals", "CRPS settlement"]
+    },
+    "prospective_holdout": {
+      "status": "integrated",
+      "features": ["immutable input copy", "SHA-256 integrity receipt", "before-kickoff freeze", "later settlement without prediction mutation"]
+    }
+  },
+  "public_layers_available_for_next_model_ablations": [
+    {"dataset": "game_rosters / rosters", "potential_use": "player continuity, returning production, position-group priors"},
+    {"dataset": "injuries", "potential_use": "timestamped availability states; must preserve unknown/missing status"},
+    {"dataset": "drives", "potential_use": "possession/field-position/finishing model and drive simulator"},
+    {"dataset": "adv_situational", "potential_use": "down-distance/red-zone/passing-down matchup interactions"},
+    {"dataset": "adv_specialists / special teams", "potential_use": "kicking, punting and return components"},
+    {"dataset": "passing/rushing/receiving/player box", "potential_use": "player-role and usage priors"},
+    {"dataset": "power_index", "potential_use": "external benchmark/challenger only unless timestamp provenance is preserved"}
+  ],
+  "selection_rule": "New layers should be added one at a time and kept only when they improve future-period proper scoring and calibration after the same information cutoff."
+}

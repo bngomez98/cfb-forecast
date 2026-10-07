@@ -1,0 +1,24 @@
+# Version-control and editor files
+.git
+.gitignore
+.vscode
+.idea
+
+# Python caches and local environments
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.venv
+venv
+env
+
+# Logs and transient outputs
+*.log
+*.tmp
+
+# Documentation not needed at runtime
+*.md
+
+# Tests are excluded from the runtime image
+ tests

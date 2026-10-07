@@ -1,0 +1,16 @@
+services:
+  cfb-forecast:
+    image: ${CFB_IMAGE:-cfb-forecast:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    volumes:
+      - ${CFB_DATA_DIR:-./data}:/app/data
+      - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts
+    command: ["--help"]

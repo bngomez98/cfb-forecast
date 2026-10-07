@@ -1,0 +1,188 @@
+[
+  {
+    "path": "historical/data/schedule_2021.csv",
+    "sha256": "91616be40e7f4d611a6e714ee7284cdd7372249888287b05b790019e9397d5fd",
+    "source_url": "https://raw.githubusercontent.com/sportsdataverse/cfbfastR-data/main/schedules/csv/cfb_schedules_2021.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/schedule_2022.csv",
+    "sha256": "bfee92544d7269f764dcb5726ce5c037837cb100a8c6326e0e4c7103a2e6656d",
+    "source_url": "https://raw.githubusercontent.com/sportsdataverse/cfbfastR-data/main/schedules/csv/cfb_schedules_2022.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/schedule_2023.csv",
+    "sha256": "7ffc245da1242fc44c021dae724029074aece78544ba498937cc7703417f0dff",
+    "source_url": "https://raw.githubusercontent.com/sportsdataverse/cfbfastR-data/main/schedules/csv/cfb_schedules_2023.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/schedule_2024.csv",
+    "sha256": "3e4f3cab542657015ff73d1b527c41df58e6a17acf5fbe7d6fb518a1aabcac61",
+    "source_url": "https://raw.githubusercontent.com/sportsdataverse/cfbfastR-data/main/schedules/csv/cfb_schedules_2024.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/schedule_2025.csv",
+    "sha256": "bfecf10bc5a8ffd2e3b6a76b5f0b03b406e17c1a0e03b2000bdf7e2263712db4",
+    "source_url": "https://raw.githubusercontent.com/sportsdataverse/cfbfastR-data/main/schedules/csv/cfb_schedules_2025.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/adv_team_2021.parquet",
+    "sha256": "1a4fc273985e016146dc101b062e57f78c7ce7369a41ad730113cc21961e844a",
+    "source_url": "https://raw.githubusercontent.com/sportsdataverse/cfbfastR-cfb-data/main/cfb/adv_team/parquet/adv_team_2021.parquet",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/adv_team_2022.parquet",
+    "sha256": "a0694181fbc2f465e310b8c2533c2502784de8b1f370079a01a787f17d097172",
+    "source_url": "https://raw.githubusercontent.com/sportsdataverse/cfbfastR-cfb-data/main/cfb/adv_team/parquet/adv_team_2022.parquet",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/adv_team_2023.parquet",
+    "sha256": "1f6af9ea5205b58582dac01eb549be40d535dc2f42abbefa9b35fbf1b8700d3b",
+    "source_url": "https://raw.githubusercontent.com/sportsdataverse/cfbfastR-cfb-data/main/cfb/adv_team/parquet/adv_team_2023.parquet",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/adv_team_2024.parquet",
+    "sha256": "521416af0a1157f52dc6f9d8d79d0a3d7a601d63f62631df210fb7bc4ec4a986",
+    "source_url": "https://raw.githubusercontent.com/sportsdataverse/cfbfastR-cfb-data/main/cfb/adv_team/parquet/adv_team_2024.parquet",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/adv_team_2025.parquet",
+    "sha256": "273d63f615c89596dd288fd0590e61c02f7d60a080dc51cdb3844cc602f0dd67",
+    "source_url": "https://raw.githubusercontent.com/sportsdataverse/cfbfastR-cfb-data/main/cfb/adv_team/parquet/adv_team_2025.parquet",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/ncaapredictions_20250828_10am.csv",
+    "sha256": "6c05f0607bfc5957ede7c69a52ec0e7b27a1194bd5d8ebe83582ec617bef1bd4",
+    "source_url": "https://raw.githubusercontent.com/ssmarathontrading/ncaa_predictions/1fc384f4404cbb10d1a466e4b42c4a6a1cd6e375/data/ncaapredictions_20250828_10am.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/ncaapredictions_20250904_10am.csv",
+    "sha256": "5194a5fc4ddea1bf1684dca81988df1c74bd4b07a82fd0448c281da165f53048",
+    "source_url": "https://raw.githubusercontent.com/ssmarathontrading/ncaa_predictions/bd753ee6d23e0ec49de578d8205096b0a34d99a4/data/ncaapredictions_20250904_10am.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/ncaapredictions_20250911_10am.csv",
+    "sha256": "ee21bef67bf641bcbde95a2ea46eaf66d658b1e2de02f6bb9fe072f4bf30fb4a",
+    "source_url": "https://raw.githubusercontent.com/ssmarathontrading/ncaa_predictions/5e6750b14a44100a38374a6f9434777e5ddeb790/data/ncaapredictions_20250911_10am.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/ncaapredictions_20250918_10am.csv",
+    "sha256": "2d00bf14df65c54b70fbea98f5458a89fb4849cd7db4ac79221bb5912145a295",
+    "source_url": "https://raw.githubusercontent.com/ssmarathontrading/ncaa_predictions/1941b76dae220b4b45c339f7ad8845df454aa07b/data/ncaapredictions_20250918_10am.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/ncaapredictions_20250925_10am.csv",
+    "sha256": "dcc35b6d9708f5de6e113a766ce08d2e0325e56253c792b62ee8947a15a4fdfd",
+    "source_url": "https://raw.githubusercontent.com/ssmarathontrading/ncaa_predictions/c4906519999558e6497dbbbcf18463a384a099dc/data/ncaapredictions_20250925_10am.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/ncaapredictions_20251002_10am.csv",
+    "sha256": "ec3ba55d9b3995667da915ff35fea15f507d212849a88484f6393fbb9f20a8e2",
+    "source_url": "https://raw.githubusercontent.com/ssmarathontrading/ncaa_predictions/07859c373befa4baece52a58593ede8889aa158e/data/ncaapredictions_20251002_10am.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/ncaapredictions_20251009_10am.csv",
+    "sha256": "5bb73574cb6404bee6a0250a4542009b9a1ce3811919a600dc06893e9186054f",
+    "source_url": "https://raw.githubusercontent.com/ssmarathontrading/ncaa_predictions/42577eb14a6ce47aeb0e8bd9394c1e081f587006/data/ncaapredictions_20251009_10am.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/ncaapredictions_20251016_10am.csv",
+    "sha256": "d47abbbfca3573c56e903126637ba68701d0150cf225df220975ea274ac035ce",
+    "source_url": "https://raw.githubusercontent.com/ssmarathontrading/ncaa_predictions/01bbae2fa50ea4f5701ff06f74c97a86dfd2b52c/data/ncaapredictions_20251016_10am.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/ncaapredictions_20251023_10am.csv",
+    "sha256": "bd180f17296d62f43315c87d95deb7d75a79a54c677dcd97cd26dd0820226de4",
+    "source_url": "https://raw.githubusercontent.com/ssmarathontrading/ncaa_predictions/6df138997b480f983c25c26f602a71e6143094d0/data/ncaapredictions_20251023_10am.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/ncaapredictions_20251030_10am.csv",
+    "sha256": "2c7a133e407ab61d1b6d0c8ff88cebd477b708335a6c05e2dc5919ab478ed0d5",
+    "source_url": "https://raw.githubusercontent.com/ssmarathontrading/ncaa_predictions/d57d4432b8b5ee1b38b42a47610c0d1655552a4d/data/ncaapredictions_20251030_10am.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/ncaapredictions_20251106_10am.csv",
+    "sha256": "bdbfe9d26b1abea39f4ad5a20a004e01d5c7bd8c244ac7797d4868a38dd096fd",
+    "source_url": "https://raw.githubusercontent.com/ssmarathontrading/ncaa_predictions/296d284c3a5563fb8a6f7c196ec13fa03fc7e6d4/data/ncaapredictions_20251106_10am.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/ncaapredictions_20251113_10am.csv",
+    "sha256": "d096a37bb57b07f851e5eb3e30fbb34dc5b2d3ea0f7bb51b6f8fd64f8da0d024",
+    "source_url": "https://raw.githubusercontent.com/ssmarathontrading/ncaa_predictions/12a587250fb705a071d621f3bf3e1062d3abd49b/data/ncaapredictions_20251113_10am.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/ncaapredictions_20251120_10am.csv",
+    "sha256": "473dc324a2c65095430514d594107b1ecc3ffe7efdc2615a75a1e17cfc0eab4b",
+    "source_url": "https://raw.githubusercontent.com/ssmarathontrading/ncaa_predictions/b3f79c2684c4bbe8654c443786f864b2d550299d/data/ncaapredictions_20251120_10am.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/ncaapredictions_20251127_10am.csv",
+    "sha256": "4fe590a580221e0584380e3db0859b28789b4d59a2f0bc49995759505fa46022",
+    "source_url": "https://raw.githubusercontent.com/ssmarathontrading/ncaa_predictions/027ec5327cff96baef0b0081b02c7e7b17d981a1/data/ncaapredictions_20251127_10am.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/ncaapredictions_20251204_10am.csv",
+    "sha256": "14c08a7bf8f3c5812e1727cba35d9d3c37dd0f2cea02bfdc00bf393471fc8399",
+    "source_url": "https://raw.githubusercontent.com/ssmarathontrading/ncaa_predictions/f90fc30d88413649015f26070c7d723b3e2abf46/data/ncaapredictions_20251204_10am.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/ncaapredictions_20251211_10am.csv",
+    "sha256": "0ef6230484e25f8e38f41ce9bcffb79dbb2157685d12a1e3e832d4e0131ddd17",
+    "source_url": "https://raw.githubusercontent.com/ssmarathontrading/ncaa_predictions/ca1c72f759df7cea335bd36b58892c36d9249188/data/ncaapredictions_20251211_10am.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/ncaapredictions_20251218_10am.csv",
+    "sha256": "f343cbafc5b5533ec1086c5f64565bb37a510fbf35e08ff56d2632808275984a",
+    "source_url": "https://raw.githubusercontent.com/ssmarathontrading/ncaa_predictions/66b3793001d3bc59fa7688bf3844cd49c2f16b15/data/ncaapredictions_20251218_10am.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/ncaapredictions_20251225_10am.csv",
+    "sha256": "024060d4436852e9dc68334ecca9aebaaa8eb8cc206320e5e555109b756a126d",
+    "source_url": "https://raw.githubusercontent.com/ssmarathontrading/ncaa_predictions/8c461ea3dc11ede029012c55f26cefc066a8b147/data/ncaapredictions_20251225_10am.csv",
+    "generated_metadata": false
+  },
+  {
+    "path": "historical/data/matched_predictions.csv",
+    "sha256": "06cf8bd24e2e8358445ee4466c6e1881f4d26e6eaa479f29fe91e7edcf151a53",
+    "source_url": null,
+    "generated_metadata": true
+  },
+  {
+    "path": "historical/data/snapshot_commits.json",
+    "sha256": "04208ec1219370106a38cab45d38e843342fe4f56b10aafbae13929bbfb73f1a",
+    "source_url": null,
+    "generated_metadata": true
+  },
+  {
+    "path": "historical/data/unmatched.json",
+    "sha256": "fdca5baac3ab2a1adc1adeaf0b713761f4a0f3656690a18815196b637f90ce7c",
+    "source_url": null,
+    "generated_metadata": true
+  }
+]
