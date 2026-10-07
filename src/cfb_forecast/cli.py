@@ -65,6 +65,10 @@ def main():
     wf.add_argument("--out",default="artifacts"); wf.add_argument("--season",type=int,required=True)
     wf.add_argument("--week",type=int,default=None); wf.add_argument("--as-of",default=None)
     wf.add_argument("--market",default=None); wf.add_argument("--draws",type=int,default=50000)
+    rr=sub.add_parser("results-refresh",help="Retrieve live scores from ESPN's public scoreboard API")
+    rr.add_argument("--data",default="data"); rr.add_argument("--out",default="artifacts/results")
+    rr.add_argument("--season",type=int,required=True); rr.add_argument("--week",type=int,default=None)
+    rr.add_argument("--start",default=None); rr.add_argument("--end",default=None)
     args=parser.parse_args()
     if args.command=="fetch":
         from .data import fetch as run
@@ -136,6 +140,11 @@ def main():
         if len(added):
             print(added[["away_team","home_team","kickoff","scheduled_cutoff","actual_forecast_at","actual_lead_hours","cutoff_delay_minutes","primary_cutoff_eligible","market_status"]].to_string(index=False))
         print(pd.Series(receipt).to_string())
+    elif args.command=="results-refresh":
+        from .results import refresh_results
+        results,manifest=refresh_results(args.data,args.out,args.season,args.week,args.start,args.end)
+        print(pd.DataFrame([manifest]).to_string(index=False))
+        print(results[["game_id","status","is_final","away_team","away_points","home_team","home_points"]].tail(20).to_string(index=False))
     elif args.command=="weekly-forecast":
         from .weekly import run_weekly_forecast
         result,manifest=run_weekly_forecast(args.data,args.model,args.out,args.season,args.week,args.as_of,args.market,args.draws)
