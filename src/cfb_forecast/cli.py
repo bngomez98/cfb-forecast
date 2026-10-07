@@ -60,6 +60,11 @@ def main():
     pr.add_argument("--now",default=None); pr.add_argument("--lead-hours",type=float,default=24.0)
     pr.add_argument("--market",default="data/market_history.csv"); pr.add_argument("--market-provider",default=None); pr.add_argument("--draws",type=int,default=50000)
     pr.add_argument("--primary-lateness-minutes",type=float,default=60.0); pr.add_argument("--skip-market-capture",action="store_true")
+    wf=sub.add_parser("weekly-forecast",help="Forecast the next upcoming FBS slate")
+    wf.add_argument("--data",default="data"); wf.add_argument("--model",default="artifacts/backtest/model")
+    wf.add_argument("--out",default="artifacts"); wf.add_argument("--season",type=int,required=True)
+    wf.add_argument("--week",type=int,default=None); wf.add_argument("--as-of",default=None)
+    wf.add_argument("--market",default=None); wf.add_argument("--draws",type=int,default=50000)
     args=parser.parse_args()
     if args.command=="fetch":
         from .data import fetch as run
@@ -131,3 +136,8 @@ def main():
         if len(added):
             print(added[["away_team","home_team","kickoff","scheduled_cutoff","actual_forecast_at","actual_lead_hours","cutoff_delay_minutes","primary_cutoff_eligible","market_status"]].to_string(index=False))
         print(pd.Series(receipt).to_string())
+    elif args.command=="weekly-forecast":
+        from .weekly import run_weekly_forecast
+        result,manifest=run_weekly_forecast(args.data,args.model,args.out,args.season,args.week,args.as_of,args.market,args.draws)
+        print(pd.DataFrame([manifest]).to_string(index=False))
+        print(result[["away_team","home_team","kickoff","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))

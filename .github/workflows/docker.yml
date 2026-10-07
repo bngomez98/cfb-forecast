@@ -5,6 +5,9 @@ on:
     branches: [main]
     tags: ['v*']
   pull_request:
+  schedule:
+    - cron: '0 13 * * 1'
+  workflow_dispatch:
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository }}
@@ -46,9 +49,30 @@ jobs:
         with:
           files: ./docker-bake.hcl
           targets: cfb-forecast
+          load: true
           push: ${{ github.event_name != 'pull_request' }}
           set: |
             *.args.REGISTRY_IMAGE=${{ env.IMAGE_NAME }}
             *.args.IMAGE_TAG=${{ steps.meta.outputs.version }}
             *.args.PUSH=${{ github.event_name != 'pull_request' }}
             *.labels=${{ steps.meta.outputs.labels }}
+
+      - name: Run weekly forecast
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          FORECAST_SEASON: ${{ vars.CFB_FORECAST_SEASON || '2026' }}
+          FORECAST_DRAWS: ${{ vars.CFB_FORECAST_DRAWS || '50000' }}
+        run: |
+          docker run --rm \
+            -v "$PWD/data:/app/data" \
+            -v "$PWD/artifacts:/app/artifacts" \
+            ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }} weekly-forecast \
+            --season "$FORECAST_SEASON" \
+            --draws "$FORECAST_DRAWS"
+
+      - name: Upload weekly forecast
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-forecast
+          path: artifacts/latest-weekly/
