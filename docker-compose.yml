@@ -13,4 +13,16 @@ services:
     volumes:
       - ${CFB_DATA_DIR:-./data}:/app/data
       - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts
-    command: ["--help"]
+  cfb-dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    image: ${CFB_DASHBOARD_IMAGE:-cfb-forecast-dashboard:local}
+    ports:
+      - "${CFB_DASHBOARD_PORT:-8501}:8501"
+    volumes:
+      - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts:ro
+    depends_on:
+      cfb-forecast:
+        condition: service_completed_successfully
+    command: ["streamlit", "run", "dashboard/app.py", "--server.address=0.0.0.0", "--server.port=8501"]
