@@ -42,12 +42,13 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/bake-action@v6
         with:
-          context: .
-          file: Dockerfile
+          files: ./docker-bake.hcl
+          targets: cfb-forecast
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          set: |
+            *.args.REGISTRY_IMAGE=${{ env.IMAGE_NAME }}
+            *.args.IMAGE_TAG=${{ steps.meta.outputs.version }}
+            *.args.PUSH=${{ github.event_name != 'pull_request' }}
+            *.labels=${{ steps.meta.outputs.labels }}
