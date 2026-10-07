@@ -1,0 +1,63 @@
+name: weekly-pipeline
+
+on:
+  schedule:
+    - cron: '0 13 * * 1'
+  workflow_dispatch:
+    inputs:
+      season:
+        description: "Season"
+        required: true
+        default: "2026"
+      draws:
+        description: "Simulation draws"
+        required: true
+        default: "50000"
+
+jobs:
+  weekly-pipeline:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}:main
+      SEASON: ${{ inputs.season || vars.CFB_FORECAST_SEASON || '2026' }}
+      DRAWS: ${{ inputs.draws || vars.CFB_FORECAST_DRAWS || '50000' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pull forecast image
+        run: docker pull "$IMAGE"
+      - name: Refresh ESPN results
+        run: |
+          mkdir -p artifacts/results
+          docker run --rm \
+            -v "$PWD/data:/app/data:ro" \
+            -v "$PWD/artifacts:/app/artifacts" \
+            "$IMAGE" results-refresh --season "$SEASON" --out /app/artifacts/results
+      - name: Generate weekly forecast
+        run: |
+          docker run --rm \
+            -v "$PWD/data:/app/data" \
+            -v "$PWD/artifacts:/app/artifacts" \
+            "$IMAGE" weekly-forecast --season "$SEASON" --draws "$DRAWS"
+      - name: Run season backtest
+        run: |
+          docker run --rm \
+            -v "$PWD/data:/app/data:ro" \
+            -v "$PWD/artifacts:/app/artifacts" \
+            "$IMAGE" season-backtest --season "$SEASON" --draws "$DRAWS" --lead-hours 48
+      - name: Upload integrated artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfb-pipeline-${{ env.SEASON }}
+          path: |
+            artifacts/latest-weekly/
+            artifacts/results/
+            artifacts/backtest/season-${{ env.SEASON }}/

@@ -22,6 +22,7 @@ services:
       - "${CFB_DASHBOARD_PORT:-8501}:8501"
     volumes:
       - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts:ro
+      - ${CFB_DATA_DIR:-./data}:/app/data:ro
     depends_on:
       cfb-forecast:
         condition: service_completed_successfully

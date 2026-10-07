@@ -32,6 +32,19 @@ def load_schedule(root: str):
     schedule["completed"] = schedule["completed"].astype(str).str.lower().isin(["true", "1"])
     return schedule.drop_duplicates("game_id")
 
+@st.cache_data(ttl=300)
+def load_live_results(root: str):
+    paths = sorted(Path(root).glob("results/*/results.csv"))
+    if not paths:
+        return pd.DataFrame()
+    frames = [pd.read_csv(path, low_memory=False) for path in paths]
+    results = pd.concat(frames, ignore_index=True)
+    results["game_id"] = pd.to_numeric(results["game_id"], errors="coerce")
+    results["home_points"] = pd.to_numeric(results["home_points"], errors="coerce")
+    results["away_points"] = pd.to_numeric(results["away_points"], errors="coerce")
+    results["is_final"] = results["is_final"].astype(str).str.lower().isin(["true", "1"])
+    return results.sort_values("retrieved_at").drop_duplicates("game_id", keep="last")
+
 
 def probability_label(row):
     return row.home_team if row.home_win_probability >= 0.5 else row.away_team
@@ -91,6 +104,10 @@ if not forecast_path.exists():
 
 page = st.sidebar.radio("View", ["Current forecast", "Historical backtest"])
 schedule = load_schedule(str(DATA_ROOT))
+live_results = load_live_results(str(ARTIFACT_ROOT))
+if not live_results.empty:
+    live_results["completed"] = live_results["is_final"]
+    schedule = pd.concat([schedule, live_results[["game_id", "completed", "home_points", "away_points"]]], ignore_index=True).drop_duplicates("game_id", keep="last")
 
 if page == "Historical backtest":
     st.header("Historical backtest against actual results")
