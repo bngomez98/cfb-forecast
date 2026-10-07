@@ -5,4 +5,6 @@ __pycache__/
 .venv/
 backtest.log
 forecast.log
+artifacts/weekly/
+artifacts/latest-weekly/
 data/pbp_*.parquet
