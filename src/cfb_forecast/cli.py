@@ -69,6 +69,10 @@ def main():
     rr.add_argument("--data",default="data"); rr.add_argument("--out",default="artifacts/results")
     rr.add_argument("--season",type=int,required=True); rr.add_argument("--week",type=int,default=None)
     rr.add_argument("--start",default=None); rr.add_argument("--end",default=None)
+    sb=sub.add_parser("season-backtest",help="Reconstruct and grade weekly forecasts across a season")
+    sb.add_argument("--data",default="data"); sb.add_argument("--model",default="artifacts/backtest/model")
+    sb.add_argument("--out",default="artifacts/backtest"); sb.add_argument("--season",type=int,required=True)
+    sb.add_argument("--draws",type=int,default=50000); sb.add_argument("--lead-hours",type=float,default=48.0)
     args=parser.parse_args()
     if args.command=="fetch":
         from .data import fetch as run
@@ -145,6 +149,11 @@ def main():
         results,manifest=refresh_results(args.data,args.out,args.season,args.week,args.start,args.end)
         print(pd.DataFrame([manifest]).to_string(index=False))
         print(results[["game_id","status","is_final","away_team","away_points","home_team","home_points"]].tail(20).to_string(index=False))
+    elif args.command=="season-backtest":
+        from .season_backtest import run_season_backtest
+        metrics,summary=run_season_backtest(args.data,args.model,args.out,args.season,args.draws,args.lead_hours)
+        print(pd.DataFrame([summary]).to_string(index=False))
+        print(metrics.to_string(index=False))
     elif args.command=="weekly-forecast":
         from .weekly import run_weekly_forecast
         result,manifest=run_weekly_forecast(args.data,args.model,args.out,args.season,args.week,args.as_of,args.market,args.draws)
