@@ -102,7 +102,7 @@ def refresh_results(data_root="data", output_root="artifacts/results", season=No
     if results_path.exists():
         previous = pd.read_csv(results_path)
         current = pd.concat([previous, current], ignore_index=True)
-    current["retrieved_at"] = pd.to_datetime(current["retrieved_at"], utc=True)
+    current["retrieved_at"] = pd.to_datetime(current["retrieved_at"], utc=True, format="mixed")
     current = current.sort_values("retrieved_at").drop_duplicates("game_id", keep="last")
     current.to_csv(results_path, index=False)
     manifest = {
