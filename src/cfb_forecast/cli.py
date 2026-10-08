@@ -77,6 +77,28 @@ def main():
     sb.add_argument("--data",default="data"); sb.add_argument("--model",default="artifacts/backtest/model")
     sb.add_argument("--out",default="artifacts/backtest"); sb.add_argument("--season",type=int,required=True)
     sb.add_argument("--draws",type=int,default=50000); sb.add_argument("--lead-hours",type=float,default=48.0)
+    cw = sub.add_parser(
+        "capture-weather",
+        help="Capture pregame weather for a slate of games through Open-Meteo",
+    )
+    cw.add_argument("--forecasts", required=True, help="forecasts.csv from a forecast run")
+    cw.add_argument("--venues", default="data/stadiums.csv")
+    cw.add_argument("--out", required=True, help="Output directory for the enriched CSV and capture log")
+    cw.add_argument("--timeout", type=float, default=15.0)
+    ci = sub.add_parser(
+        "capture-injuries",
+        help="Capture ESPN injury reports for a list of team IDs",
+    )
+    ci.add_argument("--team-ids", nargs="+", type=int, required=True)
+    ci.add_argument("--out", required=True)
+    ci.add_argument("--timeout", type=float, default=15.0)
+    cn = sub.add_parser(
+        "capture-nfl",
+        help="Capture the ESPN NFL scoreboard for a date (default: today, UTC)",
+    )
+    cn.add_argument("--date", default=None)
+    cn.add_argument("--out", required=True)
+    cn.add_argument("--timeout", type=float, default=15.0)
     args=parser.parse_args()
     if args.command=="fetch":
         from .data import fetch as run
@@ -164,3 +186,76 @@ def main():
         result,manifest=run_weekly_forecast(args.data,args.model,args.out,args.season,args.week,args.as_of,args.market,args.draws)
         print(pd.DataFrame([manifest]).to_string(index=False))
         print(result[["away_team","home_team","kickoff","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
+    elif args.command == "capture-weather":
+        from .capture_log import CAPTURE_LOG_FILENAME, append_capture, read_capture_log, summarize_capture_log
+        from .venues import load_venues
+        from .weather import enrich_forecasts_with_weather
+
+        forecasts = pd.read_csv(args.forecasts)
+        venues = load_venues(args.venues)
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        enriched, captures = enrich_forecasts_with_weather(
+            forecasts, venues, timeout=args.timeout
+        )
+        enriched.to_csv(out / "forecasts_with_weather.csv", index=False)
+        log_path = out / CAPTURE_LOG_FILENAME
+        for row in captures:
+            append_capture(
+                log_path,
+                source="weather.open-meteo",
+                status=row.get("weather_status", "unknown"),
+                observed_at=row.get("weather_observed_at"),
+                game_id=row.get("game_id"),
+                request_url=row.get("weather_request_url"),
+                extra={
+                    "temperature_c": row.get("weather_temperature_c"),
+                    "wind_speed_kph": row.get("weather_wind_speed_kph"),
+                    "precipitation_mm": row.get("weather_precipitation_mm"),
+                    "cloud_cover_percent": row.get("weather_cloud_cover_percent"),
+                    "weather_code": row.get("weather_code"),
+                },
+            )
+        summary = summarize_capture_log(read_capture_log(log_path))
+        print(pd.Series(summary["status_counts_by_source"].get("weather.open-meteo", {})).to_string())
+        print(f"wrote {len(enriched)} rows to {out}/forecasts_with_weather.csv")
+    elif args.command == "capture-injuries":
+        from .capture_log import CAPTURE_LOG_FILENAME, append_capture, read_capture_log, summarize_capture_log
+        from .injuries import fetch_injuries_for_games, summarize_reports
+
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        reports = fetch_injuries_for_games(args.team_ids, timeout=args.timeout)
+        rows = []
+        log_path = out / CAPTURE_LOG_FILENAME
+        for report in reports:
+            append_capture(
+                log_path,
+                source="injuries.espn.cfb",
+                status=report.status,
+                observed_at=report.observed_at,
+                request_url=report.request_url,
+                extra={"team_id": report.team_id, "player_count": report.count},
+            )
+            rows.extend(report.to_rows())
+        pd.DataFrame(rows).to_csv(out / "injury_report.csv", index=False)
+        print(pd.Series(summarize_reports(reports)).to_string())
+        print(f"wrote {len(rows)} player rows to {out}/injury_report.csv")
+    elif args.command == "capture-nfl":
+        from .capture_log import CAPTURE_LOG_FILENAME, append_capture
+        from .nfl import fetch_nfl_scoreboard
+
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        capture = fetch_nfl_scoreboard(args.date, timeout=args.timeout)
+        log_path = out / CAPTURE_LOG_FILENAME
+        append_capture(
+            log_path,
+            source="nfl.espn.scoreboard",
+            status=capture.status,
+            observed_at=capture.observed_at,
+            request_url=capture.request_url,
+            extra={"scoreboard_date": capture.date, "games_listed": len(capture.games)},
+        )
+        pd.DataFrame(capture.to_rows()).to_csv(out / "nfl_scoreboard.csv", index=False)
+        print(pd.Series(capture.to_record()).to_string())
