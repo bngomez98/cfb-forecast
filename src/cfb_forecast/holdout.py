@@ -1,17 +1,17 @@
 """Immutable prospective holdout freezing, integrity verification, and later settlement."""
 from __future__ import annotations
 
-from pathlib import Path
-from datetime import datetime, timezone
 import hashlib
 import json
 import shutil
-import pandas as pd
-import numpy as np
+from datetime import UTC, datetime
+from pathlib import Path
 
-from .data import sha256, normalize_schedule, timestamp
-from .evaluate import metrics
+import pandas as pd
+
+from .data import normalize_schedule, sha256, timestamp
 from .distribution import discrete_crps
+from .evaluate import metrics
 
 
 def _hash_tree(root: Path, exclude=("holdout_manifest.json", "settlements")):
@@ -30,7 +30,7 @@ def freeze_holdout(forecast_dir, data_root, model_root, holdout_root, batch_id=N
     src=Path(forecast_dir); data=Path(data_root); model=Path(model_root); root=Path(holdout_root)
     manifest=json.loads((src/"forecast_manifest.json").read_text())
     pred=pd.read_csv(src/"forecasts.csv")
-    freeze_at=timestamp(freeze_at or datetime.now(timezone.utc))
+    freeze_at=timestamp(freeze_at or datetime.now(UTC))
     kickoff=pd.to_datetime(pred.kickoff,utc=True)
     if (kickoff<=freeze_at).any():
         bad=pred.loc[kickoff<=freeze_at,["game_id","away_team","home_team","kickoff"]]
@@ -133,7 +133,7 @@ def settle_holdout(holdout_dir, current_data_root, settled_at=None):
             v,p=_pmf_for(total_path,r.game_id,"total"); rec["total_crps"]=discrete_crps(v,p,actual_total)
         rows.append(rec)
     result=pd.DataFrame(rows)
-    summary={"batch_id":receipt["batch_id"],"settled_at":timestamp(settled_at or datetime.now(timezone.utc)).isoformat(),"forecast_games":int(len(pred)),"settled_games":int(len(result)),"unsettled_games":int(len(pred)-len(result))}
+    summary={"batch_id":receipt["batch_id"],"settled_at":timestamp(settled_at or datetime.now(UTC)).isoformat(),"forecast_games":int(len(pred)),"settled_games":int(len(result)),"unsettled_games":int(len(pred)-len(result))}
     if len(result):
         summary.update(metrics(result.home_win,result.forecast_home_win_probability,result.projected_home_margin,result.actual_margin,result.projected_total,result.actual_total))
         if "margin_crps" in result: summary["mean_margin_crps"]=float(result.margin_crps.mean())

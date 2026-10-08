@@ -7,13 +7,13 @@ or mutate forecasts.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from pathlib import Path
 import json
+from datetime import UTC, datetime
+from pathlib import Path
 
+from .chronology import run_chronological_update
 from .data import timestamp
 from .market import capture_sportsdataverse_snapshot
-from .chronology import run_chronological_update
 
 
 def run_prospective_collection(
@@ -36,7 +36,7 @@ def run_prospective_collection(
     whatever older eligible market rows are already in the store; the failure is
     explicit in the receipt and no quote is invented.
     """
-    at = timestamp(now or datetime.now(timezone.utc))
+    at = timestamp(now or datetime.now(UTC))
     ledger_root = Path(ledger_root)
     receipt_dir = ledger_root / "collection_receipts"
     receipt_dir.mkdir(parents=True, exist_ok=True)

@@ -1,10 +1,9 @@
 """Retrieve live college-football scores from ESPN's public scoreboard API."""
-from datetime import datetime, timezone
-from pathlib import Path
 import json
-import time
 import urllib.parse
 import urllib.request
+from datetime import UTC, datetime
+from pathlib import Path
 
 import pandas as pd
 
@@ -54,7 +53,7 @@ def fetch_scoreboard(season, dates):
     for date in dates:
         query = urllib.parse.urlencode({"dates": pd.Timestamp(date).strftime("%Y%m%d"), "limit": 500})
         payload = _request_json(f"{ESPN_SCOREBOARD}?{query}")
-        retrieved_at = datetime.now(timezone.utc).isoformat()
+        retrieved_at = datetime.now(UTC).isoformat()
         for event in payload.get("events", []):
             row = _event_row(event, retrieved_at)
             if row is not None:
@@ -95,7 +94,7 @@ def refresh_results(data_root="data", output_root="artifacts/results", season=No
     destination = output_root / label
     snapshot_dir = destination / "snapshots"
     snapshot_dir.mkdir(parents=True, exist_ok=True)
-    retrieved_at = datetime.now(timezone.utc)
+    retrieved_at = datetime.now(UTC)
     current.to_csv(snapshot_dir / f"{retrieved_at:%Y%m%dT%H%M%SZ}.csv", index=False)
 
     results_path = destination / "results.csv"

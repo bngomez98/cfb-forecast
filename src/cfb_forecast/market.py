@@ -1,9 +1,10 @@
 """Timestamped market history and cutoff-safe market diagnostics."""
 from __future__ import annotations
 
-from pathlib import Path
-from datetime import datetime, timezone
 import json
+from datetime import UTC, datetime
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -164,7 +165,7 @@ def empty_market_history(path):
         f.to_csv(path, index=False)
     meta = {
         "schema_version": 1,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "purpose": "append-only point-in-time bookmaker snapshots for prospective collection",
     }
     path.with_suffix(path.suffix + ".json").write_text(json.dumps(meta, indent=2))
@@ -172,7 +173,8 @@ def empty_market_history(path):
 
 
 def _download_csv(url):
-    import io, urllib.request
+    import io
+    import urllib.request
     req=urllib.request.Request(url,headers={"User-Agent":"cfb-forecast/0.2"})
     with urllib.request.urlopen(req,timeout=60) as response:
         return pd.read_csv(io.BytesIO(response.read()))
@@ -184,7 +186,7 @@ def capture_sportsdataverse_snapshot(season, store_path, observed_at=None):
     Repeating this command over time creates a prospective line-history series.
     It intentionally records retrieval time, not an invented bookmaker quote time.
     """
-    at=timestamp(observed_at or datetime.now(timezone.utc))
+    at=timestamp(observed_at or datetime.now(UTC))
     url=f"https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_cfb_betting/betting_{int(season)}.csv"
     raw=_download_csv(url)
     require_columns(raw,["game_id","home_team_spread","over_under","game_spread_available"],"SportsDataverse betting")
@@ -206,7 +208,7 @@ def backfill_sportsdataverse_closing(seasons, out_path):
     Historical rows are not assigned observed_at and must never be used as
     point-in-time forecast inputs. They are closing/resolved market benchmarks.
     """
-    rows=[]; retrieved=datetime.now(timezone.utc).isoformat()
+    rows=[]; retrieved=datetime.now(UTC).isoformat()
     for season in seasons:
         url=f"https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_cfb_betting/betting_{int(season)}.csv"
         f=_download_csv(url).copy(); f["retrieved_at"]=retrieved; f["source_url"]=url; rows.append(f)

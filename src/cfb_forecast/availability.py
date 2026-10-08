@@ -1,12 +1,13 @@
 """Prospective data-availability receipts for a forecast cutoff."""
 from __future__ import annotations
 
-from pathlib import Path
-from datetime import datetime, timezone
 import json
+from datetime import UTC, datetime
+from pathlib import Path
+
 import pandas as pd
 
-from .data import sha256, timestamp, ADV_FIELDS
+from .data import ADV_FIELDS, sha256, timestamp
 
 
 def _manifest(data_root: Path) -> dict:
@@ -83,7 +84,7 @@ def availability_snapshot(data_root, as_of, schedules, summaries, paths) -> dict
     return {
         "schema_version": 1,
         "as_of": at.isoformat(),
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "forecast_season": forecast_season,
         "prospective_current_season_source_check": "pass" if clean_current else "fail",
         "prior_eligible_fbs_games": int(len(prior)),

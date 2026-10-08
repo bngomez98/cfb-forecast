@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
-from sklearn.metrics import log_loss,brier_score_loss
+from sklearn.metrics import brier_score_loss, log_loss
+
 
 def metrics(y,p,margin=None,actual_margin=None,total=None,actual_total=None,mu=None,actual_scores=None):
     y=np.asarray(y,dtype=int); p=np.asarray(p,dtype=float)

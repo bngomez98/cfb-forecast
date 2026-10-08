@@ -1,14 +1,16 @@
 import numpy as np
 import pandas as pd
 import pytest
+
 from cfb_forecast.config import StateConfig
-from cfb_forecast.data import normalize_schedule,timestamp
-from cfb_forecast.features import clean_plays
-from cfb_forecast.ratings import DynamicRatings,build_features
-from cfb_forecast.model import ScoreHead,residual_covariance
-from cfb_forecast.simulate import simulate_scores,win_probability
-from cfb_forecast.market import market_at_cutoff
+from cfb_forecast.data import normalize_schedule, timestamp
 from cfb_forecast.evaluate import metrics
+from cfb_forecast.features import clean_plays
+from cfb_forecast.market import market_at_cutoff
+from cfb_forecast.model import ScoreHead, residual_covariance
+from cfb_forecast.ratings import DynamicRatings, build_features
+from cfb_forecast.simulate import simulate_scores, win_probability
+
 
 def fixture_games():
     return normalize_schedule(pd.DataFrame([
@@ -125,8 +127,8 @@ def test_single_class_evaluation_and_score_errors():
 def test_residual_covariance_calibration_rejects_tiny_sample():
     with pytest.raises(ValueError): residual_covariance(np.ones((2,2)),np.ones((2,2)))
 
-from cfb_forecast.distribution import probability_tables, discrete_crps
-from cfb_forecast.market import normalize_market_history, market_history_summary
+from cfb_forecast.distribution import discrete_crps, probability_tables
+from cfb_forecast.market import market_history_summary, normalize_market_history
 
 
 def test_distribution_tables_sum_to_one_and_crps_prefers_truth():
@@ -179,6 +181,7 @@ def test_chronological_due_games_never_include_started_games():
 
 def test_prospective_collection_records_market_failure_and_still_runs(monkeypatch, tmp_path):
     from pathlib import Path
+
     import cfb_forecast.collector as collector
     dummy_ledger=pd.DataFrame({"game_id":[1]})
     dummy_added=pd.DataFrame(columns=["game_id"])

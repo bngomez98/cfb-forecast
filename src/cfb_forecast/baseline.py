@@ -4,8 +4,10 @@ import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
-from .ratings import cutoff_for_games
+
 from .evaluate import metrics
+from .ratings import cutoff_for_games
+
 
 def elo_features(games,explicit=None):
     rating={int(t):1500. for t in set(games.home_id)|set(games.away_id)}

@@ -1,7 +1,8 @@
 """Weekly forecast orchestration for upcoming FBS games."""
-from pathlib import Path
-from datetime import datetime, timezone
 import shutil
+from datetime import UTC, datetime
+from pathlib import Path
+
 import pandas as pd
 
 from .data import load_data, timestamp
@@ -21,7 +22,7 @@ def run_weekly_forecast(
     """Forecast the next upcoming week, or an explicitly selected week."""
     data_root = Path(data_root)
     out_root = Path(out_root)
-    as_of = timestamp(as_of or datetime.now(timezone.utc).isoformat())
+    as_of = timestamp(as_of or datetime.now(UTC).isoformat())
     schedules, _, _ = load_data(data_root)
     games = schedules[
         schedules.fbs_game

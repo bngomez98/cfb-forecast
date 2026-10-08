@@ -1,0 +1,34 @@
+home_id,team,stadium,latitude,longitude,indoor
+333,Alabama,Bryant-Denny Stadium,33.2083,-87.5504,false
+2,Auburn,Jordan-Hare Stadium,32.6025,-85.4894,false
+57,Florida,Ben Hill Griffin Stadium,29.6500,-82.3486,false
+61,Georgia,Sanford Stadium,33.9500,-83.3733,false
+99,LSU,Tiger Stadium,30.4119,-91.1836,false
+245,Texas A&M,Kyle Field,30.6102,-96.3400,false
+2633,Tennessee,Neyland Stadium,35.9550,-83.9250,false
+251,Texas,Darrell K Royal-Texas Memorial Stadium,30.2836,-97.7325,false
+197,Oklahoma,Memorial Stadium (Owen Field),35.2058,-97.4428,false
+213,Penn State,Beaver Stadium,40.8122,-77.8564,false
+194,Ohio State,Ohio Stadium,40.0017,-83.0197,false
+87,Notre Dame,Notre Dame Stadium,41.6986,-86.2339,false
+2483,Oregon,Autzen Stadium,44.0583,-123.0686,false
+264,Washington,Husky Stadium,47.6500,-122.3017,false
+30,USC,Los Angeles Memorial Coliseum,34.0142,-118.2878,false
+26,UCLA,Rose Bowl,34.1611,-118.1678,false
+275,Wisconsin,Camp Randall Stadium,43.0697,-89.4125,false
+77,Iowa,Kinnick Stadium,41.6586,-91.5508,false
+158,Nebraska,Memorial Stadium (Lincoln),40.8206,-96.7056,false
+228,Clemson,Memorial Stadium (Death Valley),34.6792,-82.8431,false
+52,Florida State,Doak S. Campbell Stadium,30.4383,-84.3042,false
+259,Virginia Tech,Lane Stadium,37.2200,-80.4175,false
+2572,San Jose State,CEFCU Stadium,37.3186,-121.9183,false
+68,San Diego State,Snapdragon Stadium,32.7831,-117.1197,false
+2426,Oklahoma State,Boone Pickens Stadium,36.1256,-97.0656,false
+2628,BYU,LaVell Edwards Stadium,40.2572,-111.6547,false
+254,Utah,Rice-Eccles Stadium,40.7606,-111.8489,false
+2117,Buffalo,UB Stadium,43.0083,-78.7881,false
+2638,Troy,Veterans Memorial Stadium,31.7961,-85.9517,false
+2439,Akron,InfoCision Stadium,41.0772,-81.5125,false
+221,Syracuse,JMA Wireless Dome,43.0361,-76.1364,true
+2546,UNLV,Allegiant Stadium,36.0908,-115.1831,true
+2335,Idaho,Kibbie Dome,46.7319,-117.0233,true

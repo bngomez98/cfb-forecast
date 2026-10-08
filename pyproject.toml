@@ -21,3 +21,38 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+extend-exclude = ["artifacts", "data"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long: handled selectively; some wide math expressions are intentional
+    "B008",  # function call in default argument: pandas Timedelta/Timestamp accept this
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Files below pre-date the syntax cleanup pass and still carry chained
+# semicolon statements. They are correct and tested; a follow-up pass will
+# reformat them to multi-line style and these exemptions will be dropped.
+"src/cfb_forecast/cli.py" = ["E701", "E702", "E741"]
+"src/cfb_forecast/forecast.py" = ["E701", "E702", "B905"]
+"src/cfb_forecast/holdout.py" = ["E701", "E702", "B905"]
+"src/cfb_forecast/distribution.py" = ["E701", "E702"]
+"src/cfb_forecast/market.py" = ["E701", "E702", "B905"]
+"src/cfb_forecast/baseline.py" = ["E701", "E702", "B905"]
+"src/cfb_forecast/evaluate.py" = ["E701", "E702"]
+"src/cfb_forecast/data.py" = ["E701", "E702"]
+"src/cfb_forecast/backtest.py" = ["E701", "E702"]
+"src/cfb_forecast/ratings.py" = ["E702"]
+"tests/*" = ["E402", "E501", "E701", "E702", "B905"]

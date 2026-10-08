@@ -1,19 +1,21 @@
 """Replay only available prior results, then freeze one as-of state snapshot."""
-from pathlib import Path
-from datetime import datetime,timezone
 import json
 import shutil
+from datetime import UTC, datetime
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from .config import StateConfig
-from .data import load_data,timestamp,sha256
-from .features import observations
-from .ratings import DynamicRatings
-from .model import load_model,ScoreHead
-from .simulate import simulate_scores
-from .distribution import probability_tables
-from .market import market_at_cutoff,market_history_summary,read_market_history
+
 from .availability import availability_snapshot
+from .config import StateConfig
+from .data import load_data, sha256, timestamp
+from .distribution import probability_tables
+from .features import observations
+from .market import market_at_cutoff, market_history_summary, read_market_history
+from .model import ScoreHead, load_model
+from .ratings import DynamicRatings
+from .simulate import simulate_scores
 
 
 def forecast(data_root,model_root,out_root,as_of,through,season,market_path=None,draws=50000,market_provider=None,save_distribution=True,target_game_ids=None):
@@ -88,7 +90,7 @@ def forecast(data_root,model_root,out_root,as_of,through,season,market_path=None
     np.savez_compressed(out/"state_snapshot.npz",team_ids=state.teams,mean=state.mean,cov=state.cov,features=F)
     avail=availability_snapshot(data_root,at,schedules,summaries,paths)
     (out/"data_availability.json").write_text(json.dumps(avail,indent=2))
-    trace={"as_of":at.isoformat(),"through":end.isoformat(),"model_sha256":sha256(Path(model_root)/"model.json"),"source_hashes":{p.name:sha256(p) for p in paths},"market_sha256":sha256(market_path) if market_path else None,"market_file":market_file,"market_provider":market_provider,"used_game_ids":past.game_id.astype(int).tolist(),"latest_result_available_at":state.latest_update.isoformat(),"created_at":datetime.now(timezone.utc).isoformat(),"distribution_files":distribution_files,"target_game_ids":targets.game_id.astype(int).tolist(),"data_availability_check":avail["prospective_current_season_source_check"],"information_limit":"Downloaded record versions may postdate individual historical stat publication times. Prospective current-season source capture is checked separately in data_availability.json."}
+    trace={"as_of":at.isoformat(),"through":end.isoformat(),"model_sha256":sha256(Path(model_root)/"model.json"),"source_hashes":{p.name:sha256(p) for p in paths},"market_sha256":sha256(market_path) if market_path else None,"market_file":market_file,"market_provider":market_provider,"used_game_ids":past.game_id.astype(int).tolist(),"latest_result_available_at":state.latest_update.isoformat(),"created_at":datetime.now(UTC).isoformat(),"distribution_files":distribution_files,"target_game_ids":targets.game_id.astype(int).tolist(),"data_availability_check":avail["prospective_current_season_source_check"],"information_limit":"Downloaded record versions may postdate individual historical stat publication times. Prospective current-season source capture is checked separately in data_availability.json."}
     (out/"forecast_manifest.json").write_text(json.dumps(trace,indent=2))
     return pd.DataFrame(rows)
 
@@ -162,6 +164,6 @@ def advance_forecast_snapshot(previous_forecast_dir,data_root,model_root,out_roo
     avail=availability_snapshot(data_root,at,schedules,None,source_paths)
     avail["advanced_from_saved_state"]={"previous_forecast":str(prev),"previous_as_of":old_at.isoformat(),"newly_eligible_results_between_cutoffs":0}
     (out/"data_availability.json").write_text(json.dumps(avail,indent=2))
-    trace={"as_of":at.isoformat(),"through":end.isoformat(),"model_sha256":sha256(Path(model_root)/"model.json"),"source_hashes":old_manifest["source_hashes"],"market_sha256":sha256(market_path) if market_path else None,"market_provider":market_provider,"used_game_ids":old_manifest.get("used_game_ids",[]),"latest_result_available_at":state.latest_update.isoformat() if state.latest_update is not None else None,"created_at":datetime.now(timezone.utc).isoformat(),"distribution_files":distribution_files,"target_game_ids":targets.game_id.astype(int).tolist(),"data_availability_check":avail["prospective_current_season_source_check"],"state_transition":{"from_as_of":old_at.isoformat(),"to_as_of":at.isoformat(),"newly_eligible_results":0},"information_limit":"Advanced from an exact saved state only because no final result became newly eligible between cutoffs. Historical source vintages remain the same fixed hashes."}
+    trace={"as_of":at.isoformat(),"through":end.isoformat(),"model_sha256":sha256(Path(model_root)/"model.json"),"source_hashes":old_manifest["source_hashes"],"market_sha256":sha256(market_path) if market_path else None,"market_provider":market_provider,"used_game_ids":old_manifest.get("used_game_ids",[]),"latest_result_available_at":state.latest_update.isoformat() if state.latest_update is not None else None,"created_at":datetime.now(UTC).isoformat(),"distribution_files":distribution_files,"target_game_ids":targets.game_id.astype(int).tolist(),"data_availability_check":avail["prospective_current_season_source_check"],"state_transition":{"from_as_of":old_at.isoformat(),"to_as_of":at.isoformat(),"newly_eligible_results":0},"information_limit":"Advanced from an exact saved state only because no final result became newly eligible between cutoffs. Historical source vintages remain the same fixed hashes."}
     (out/"forecast_manifest.json").write_text(json.dumps(trace,indent=2))
     return pd.DataFrame(rows)

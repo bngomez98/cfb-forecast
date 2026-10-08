@@ -1,8 +1,10 @@
 """Reconstruct and grade weekly forecasts across a season."""
-from pathlib import Path
 import json
+from pathlib import Path
+
 import pandas as pd
-from .data import load_data, timestamp
+
+from .data import load_data
 from .forecast import forecast
 
 

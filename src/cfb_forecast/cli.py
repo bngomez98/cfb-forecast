@@ -1,9 +1,13 @@
 import argparse
 from pathlib import Path
+
 import pandas as pd
+
+from ._logging import configure_cli_logging
 
 
 def main():
+    configure_cli_logging()
     parser=argparse.ArgumentParser(description="College football forecasting with reproducible cutoffs")
     sub=parser.add_subparsers(dest="command",required=True)
     fetch=sub.add_parser("fetch",help="Download free schedules and PBP summaries")
@@ -103,8 +107,9 @@ def main():
         from .market import backfill_sportsdataverse_closing
         r=backfill_sportsdataverse_closing(args.seasons,args.out); print(f"closing-market rows: {len(r)} -> {args.out}")
     elif args.command=="distribution-backtest":
-        from .distribution import validate_heldout_distribution
         import json
+
+        from .distribution import validate_heldout_distribution
         preds=pd.read_csv(args.predictions); models={}
         for v in ["score","pbp"]:
             models[v]=json.loads((Path(args.models)/v/"heldout"/"model.json").read_text())

@@ -1,13 +1,17 @@
 """Free source ingestion, schema guards, snapshots and outcome availability."""
-from pathlib import Path
-from datetime import datetime, timezone
+from __future__ import annotations
+
 import hashlib
 import json
-import os
+import logging
 import time
 import urllib.request
-import numpy as np
+from datetime import UTC, datetime
+from pathlib import Path
+
 import pandas as pd
+
+log = logging.getLogger(__name__)
 
 RELEASE = "https://github.com/sportsdataverse/sportsdataverse-data/releases/download"
 SCHEDULE_FIELDS = ["game_id", "season", "week", "start_date", "completed", "neutral_site", "home_id", "away_id", "home_team", "away_team", "home_points", "away_points"]
@@ -101,7 +105,8 @@ def fetch(root, seasons, refresh=False, raw_pbp=False):
         for name, url in jobs:
             target = root / name
             if target.exists() and not refresh:
-                print(f"cached {name}", flush=True); continue
+                log.info("cached %s", name)
+                continue
             tmp = target.with_suffix(".download")
             for attempt in range(3):
                 try:
@@ -122,9 +127,9 @@ def fetch(root, seasons, refresh=False, raw_pbp=False):
                         raise
                     time.sleep(2 ** attempt)
             tmp.replace(target)
-            manifest["files"][name] = {"url": url, "sha256": sha256(target), "downloaded_at": datetime.now(timezone.utc).isoformat(), "bytes": target.stat().st_size}
+            manifest["files"][name] = {"url": url, "sha256": sha256(target), "downloaded_at": datetime.now(UTC).isoformat(), "bytes": target.stat().st_size}
             manifest_path.write_text(json.dumps(manifest, indent=2))
-            print(f"downloaded {name}", flush=True)
+            log.info("downloaded %s", name)
     return manifest
 
 def audit(schedules, summaries):
