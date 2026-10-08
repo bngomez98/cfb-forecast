@@ -99,6 +99,21 @@ def main():
     cn.add_argument("--date", default=None)
     cn.add_argument("--out", required=True)
     cn.add_argument("--timeout", type=float, default=15.0)
+    cr = sub.add_parser(
+        "capture-rosters",
+        help="Capture current rosters from ESPN for a list of team IDs",
+    )
+    cr.add_argument("--team-ids", nargs="+", type=int, required=True)
+    cr.add_argument("--out", required=True)
+    cr.add_argument("--timeout", type=float, default=15.0)
+    crh = sub.add_parser(
+        "capture-historical-rosters",
+        help="Download SportsDataverse's per-season roster parquet for all FBS teams",
+    )
+    crh.add_argument("--seasons", nargs="+", type=int, required=True)
+    crh.add_argument("--out", required=True)
+    crh.add_argument("--cache-dir", default="data/rosters")
+    crh.add_argument("--timeout", type=float, default=60.0)
     args=parser.parse_args()
     if args.command=="fetch":
         from .data import fetch as run
@@ -241,6 +256,60 @@ def main():
         pd.DataFrame(rows).to_csv(out / "injury_report.csv", index=False)
         print(pd.Series(summarize_reports(reports)).to_string())
         print(f"wrote {len(rows)} player rows to {out}/injury_report.csv")
+    elif args.command == "capture-rosters":
+        from .capture_log import CAPTURE_LOG_FILENAME, append_capture
+        from .rosters import fetch_current_rosters, summarize_captures
+
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        captures = fetch_current_rosters(args.team_ids, timeout=args.timeout)
+        frames = []
+        log_path = out / CAPTURE_LOG_FILENAME
+        for capture in captures:
+            append_capture(
+                log_path,
+                source="rosters.espn.cfb.current",
+                status=capture.status,
+                observed_at=capture.observed_at,
+                request_url=capture.request_url,
+                extra={"team_id": capture.team_id, "player_count": capture.count},
+            )
+            frames.append(capture.to_frame())
+        pd.concat(frames, ignore_index=True).to_csv(
+            out / "rosters_current.csv", index=False
+        )
+        print(pd.Series(summarize_captures(captures)).to_string())
+        print(f"wrote {out}/rosters_current.csv")
+    elif args.command == "capture-historical-rosters":
+        from .capture_log import CAPTURE_LOG_FILENAME, append_capture
+        from .rosters import fetch_historical_rosters, summarize_captures
+
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        captures = []
+        frames = []
+        log_path = out / CAPTURE_LOG_FILENAME
+        for season in args.seasons:
+            capture = fetch_historical_rosters(
+                season,
+                cache_dir=args.cache_dir,
+                timeout=args.timeout,
+            )
+            captures.append(capture)
+            append_capture(
+                log_path,
+                source="rosters.sportsdataverse.historical",
+                status=capture.status,
+                observed_at=capture.observed_at,
+                request_url=capture.request_url,
+                extra={"season": season, "player_count": capture.count},
+            )
+            frames.append(capture.to_frame())
+        pd.concat(frames, ignore_index=True).to_csv(
+            out / "rosters_historical.csv", index=False
+        )
+        print(pd.Series(summarize_captures(captures)).to_string())
+        print(f"wrote {out}/rosters_historical.csv")
     elif args.command == "capture-nfl":
         from .capture_log import CAPTURE_LOG_FILENAME, append_capture
         from .nfl import fetch_nfl_scoreboard
