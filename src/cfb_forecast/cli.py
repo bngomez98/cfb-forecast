@@ -73,6 +73,8 @@ def main():
     sb.add_argument("--data",default="data"); sb.add_argument("--model",default="artifacts/backtest/model")
     sb.add_argument("--out",default="artifacts/backtest"); sb.add_argument("--season",type=int,required=True)
     sb.add_argument("--draws",type=int,default=50000); sb.add_argument("--lead-hours",type=float,default=48.0)
+    pf=sub.add_parser("preflight",help="Validate mounted data and artifact paths")
+    pf.add_argument("--data",default="data"); pf.add_argument("--artifacts",default="artifacts"); pf.add_argument("--season",type=int,default=None)
     args=parser.parse_args()
     if args.command=="fetch":
         from .data import fetch as run
@@ -154,6 +156,9 @@ def main():
         metrics,summary=run_season_backtest(args.data,args.model,args.out,args.season,args.draws,args.lead_hours)
         print(pd.DataFrame([summary]).to_string(index=False))
         print(metrics.to_string(index=False))
+    elif args.command=="preflight":
+        from .preflight import run_preflight
+        run_preflight(args.data,args.artifacts,args.season)
     elif args.command=="weekly-forecast":
         from .weekly import run_weekly_forecast
         result,manifest=run_weekly_forecast(args.data,args.model,args.out,args.season,args.week,args.as_of,args.market,args.draws)

@@ -23,9 +23,6 @@ services:
     volumes:
       - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts:ro
       - ${CFB_DATA_DIR:-./data}:/app/data:ro
-    volumes:
-      - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts:ro
-      - ${CFB_DATA_DIR:-./data}:/app/data:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health')"]
       interval: 30s
