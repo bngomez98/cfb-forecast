@@ -34,25 +34,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Pull forecast image
         run: docker pull "$IMAGE"
-      - name: Refresh ESPN results
-        run: |
-          mkdir -p artifacts/results
-          docker run --rm \
-            -v "$PWD/data:/app/data:ro" \
-            -v "$PWD/artifacts:/app/artifacts" \
-            "$IMAGE" results-refresh --season "$SEASON" --out /app/artifacts/results
-      - name: Generate weekly forecast
-        run: |
-          docker run --rm \
-            -v "$PWD/data:/app/data" \
-            -v "$PWD/artifacts:/app/artifacts" \
-            "$IMAGE" weekly-forecast --season "$SEASON" --draws "$DRAWS"
-      - name: Run season backtest
-        run: |
-          docker run --rm \
-            -v "$PWD/data:/app/data:ro" \
-            -v "$PWD/artifacts:/app/artifacts" \
-            "$IMAGE" season-backtest --season "$SEASON" --draws "$DRAWS" --lead-hours 48
+      - name: Run Python pipeline
+        env:
+          CFB_FORECAST_SEASON: ${{ env.SEASON }}
+          CFB_FORECAST_DRAWS: ${{ env.DRAWS }}
+          CFB_IMAGE: ${{ env.IMAGE }}
+        run: python -m scripts.cfb weekly --season "$SEASON" --draws "$DRAWS"
       - name: Upload integrated artifacts
         uses: actions/upload-artifact@v4
         with:
