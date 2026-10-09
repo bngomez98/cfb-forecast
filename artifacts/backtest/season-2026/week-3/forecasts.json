@@ -1,0 +1,2795 @@
+[
+  {
+    "game_id": 401858225,
+    "season": 2026,
+    "home_team": "Pittsburgh",
+    "away_team": "Syracuse",
+    "kickoff": "2026-09-17T23:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 33.29114377999243,
+    "expected_away_score": 12.354001093884191,
+    "projected_home_margin": 20.93714268610824,
+    "projected_total": 45.645144873876625,
+    "home_win_probability": 0.9030522726689552,
+    "simulated_home_win_probability": 0.913,
+    "simulation_draws": 1000,
+    "simulation_seed": 5209309521007948201,
+    "margin_interval_80": [
+      2.0,
+      41.0
+    ],
+    "total_interval_80": [
+      26.0,
+      67.0
+    ],
+    "home_score_interval_80": [
+      18.0,
+      49.0
+    ],
+    "away_score_interval_80": [
+      0.0,
+      26.0
+    ],
+    "simulated_mean_home_score": 33.508,
+    "simulated_mean_away_score": 12.819,
+    "simulated_margin_mean": 20.689,
+    "simulated_margin_sd": 15.477591377046844,
+    "simulated_total_mean": 46.327,
+    "simulated_total_sd": 15.688664863690766,
+    "simulated_score_correlation": 0.01386946370126317,
+    "home_score_median": 33.5,
+    "away_score_median": 12.0,
+    "margin_median": 20.0,
+    "total_median": 46.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401858226,
+    "season": 2026,
+    "home_team": "Wake Forest",
+    "away_team": "Miami",
+    "kickoff": "2026-09-18T23:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 19.732887327646544,
+    "expected_away_score": 33.096791936806014,
+    "projected_home_margin": -13.36390460915947,
+    "projected_total": 52.82967926445256,
+    "home_win_probability": 0.20348858069855752,
+    "simulated_home_win_probability": 0.209,
+    "simulation_draws": 1000,
+    "simulation_seed": 3770077810665198783,
+    "margin_interval_80": [
+      -33.0,
+      7.0
+    ],
+    "total_interval_80": [
+      31.0,
+      74.0
+    ],
+    "home_score_interval_80": [
+      4.0,
+      35.0
+    ],
+    "away_score_interval_80": [
+      18.0,
+      47.0
+    ],
+    "simulated_mean_home_score": 19.982,
+    "simulated_mean_away_score": 32.752,
+    "simulated_margin_mean": -12.77,
+    "simulated_margin_sd": 15.517341521275089,
+    "simulated_total_mean": 52.734,
+    "simulated_total_sd": 16.791998547380093,
+    "simulated_score_correlation": 0.07897945390461743,
+    "home_score_median": 20.0,
+    "away_score_median": 33.0,
+    "margin_median": -13.0,
+    "total_median": 52.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856811,
+    "season": 2026,
+    "home_team": "Texas Tech",
+    "away_team": "Houston",
+    "kickoff": "2026-09-19T00:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 30.0722833936264,
+    "expected_away_score": 20.733528223695853,
+    "projected_home_margin": 9.338755169930547,
+    "projected_total": 50.80581161732225,
+    "home_win_probability": 0.7188626068844901,
+    "simulated_home_win_probability": 0.71,
+    "simulation_draws": 1000,
+    "simulation_seed": 16890831612571820149,
+    "margin_interval_80": [
+      -13.0,
+      28.100000000000023
+    ],
+    "total_interval_80": [
+      28.0,
+      72.10000000000002
+    ],
+    "home_score_interval_80": [
+      13.0,
+      46.0
+    ],
+    "away_score_interval_80": [
+      7.0,
+      36.0
+    ],
+    "simulated_mean_home_score": 29.245,
+    "simulated_mean_away_score": 21.028,
+    "simulated_margin_mean": 8.217,
+    "simulated_margin_sd": 15.919464197652518,
+    "simulated_total_mean": 50.273,
+    "simulated_total_sd": 17.227340254730336,
+    "simulated_score_correlation": 0.07922464757698872,
+    "home_score_median": 29.0,
+    "away_score_median": 21.0,
+    "margin_median": 8.0,
+    "total_median": 50.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401869940,
+    "season": 2026,
+    "home_team": "Delaware",
+    "away_team": "Coastal Carolina",
+    "kickoff": "2026-09-19T15:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 31.355329004631777,
+    "expected_away_score": 22.112174541167928,
+    "projected_home_margin": 9.24315446346385,
+    "projected_total": 53.4675035457997,
+    "home_win_probability": 0.7168584102332966,
+    "simulated_home_win_probability": 0.724,
+    "simulation_draws": 1000,
+    "simulation_seed": 7982044382339920228,
+    "margin_interval_80": [
+      -11.099999999999994,
+      29.0
+    ],
+    "total_interval_80": [
+      32.0,
+      76.0
+    ],
+    "home_score_interval_80": [
+      16.900000000000006,
+      47.0
+    ],
+    "away_score_interval_80": [
+      8.0,
+      37.0
+    ],
+    "simulated_mean_home_score": 31.478,
+    "simulated_mean_away_score": 22.503,
+    "simulated_margin_mean": 8.975,
+    "simulated_margin_sd": 15.894496217559398,
+    "simulated_total_mean": 53.981,
+    "simulated_total_sd": 16.681094025809514,
+    "simulated_score_correlation": 0.04843733202252165,
+    "home_score_median": 31.0,
+    "away_score_median": 22.0,
+    "margin_median": 9.0,
+    "total_median": 55.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856686,
+    "season": 2026,
+    "home_team": "Arkansas",
+    "away_team": "Georgia",
+    "kickoff": "2026-09-19T16:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 23.447128137877435,
+    "expected_away_score": 35.72109283218221,
+    "projected_home_margin": -12.273964694304773,
+    "projected_total": 59.16822097005964,
+    "home_win_probability": 0.2231510110178982,
+    "simulated_home_win_probability": 0.227,
+    "simulation_draws": 1000,
+    "simulation_seed": 3333512308647165129,
+    "margin_interval_80": [
+      -33.0,
+      10.0
+    ],
+    "total_interval_80": [
+      39.0,
+      81.10000000000002
+    ],
+    "home_score_interval_80": [
+      8.0,
+      40.0
+    ],
+    "away_score_interval_80": [
+      22.0,
+      51.0
+    ],
+    "simulated_mean_home_score": 24.01,
+    "simulated_mean_away_score": 35.789,
+    "simulated_margin_mean": -11.779,
+    "simulated_margin_sd": 16.079449857122217,
+    "simulated_total_mean": 59.799,
+    "simulated_total_sd": 16.126706721140234,
+    "simulated_score_correlation": 0.002949174241251504,
+    "home_score_median": 24.0,
+    "away_score_median": 36.0,
+    "margin_median": -12.0,
+    "total_median": 59.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856792,
+    "season": 2026,
+    "home_team": "Kansas State",
+    "away_team": "Tulane",
+    "kickoff": "2026-09-19T16:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 30.29797363268452,
+    "expected_away_score": 15.369864364607967,
+    "projected_home_margin": 14.928109268076554,
+    "projected_total": 45.66783799729249,
+    "home_win_probability": 0.8228505779103341,
+    "simulated_home_win_probability": 0.789,
+    "simulation_draws": 1000,
+    "simulation_seed": 18117076411403926901,
+    "margin_interval_80": [
+      -7.0,
+      35.0
+    ],
+    "total_interval_80": [
+      26.0,
+      67.0
+    ],
+    "home_score_interval_80": [
+      14.0,
+      46.0
+    ],
+    "away_score_interval_80": [
+      2.0,
+      31.0
+    ],
+    "simulated_mean_home_score": 30.062,
+    "simulated_mean_away_score": 15.842,
+    "simulated_margin_mean": 14.22,
+    "simulated_margin_sd": 16.313176260916197,
+    "simulated_total_mean": 45.904,
+    "simulated_total_sd": 16.168679915509806,
+    "simulated_score_correlation": -0.009013424434143956,
+    "home_score_median": 30.0,
+    "away_score_median": 15.0,
+    "margin_median": 14.0,
+    "total_median": 45.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856798,
+    "season": 2026,
+    "home_team": "Iowa State",
+    "away_team": "Bowling Green",
+    "kickoff": "2026-09-19T16:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 36.570417641251765,
+    "expected_away_score": 9.397816860298583,
+    "projected_home_margin": 27.172600780953182,
+    "projected_total": 45.96823450155035,
+    "home_win_probability": 0.954106811715425,
+    "simulated_home_win_probability": 0.968,
+    "simulation_draws": 1000,
+    "simulation_seed": 7759572405601841798,
+    "margin_interval_80": [
+      8.0,
+      44.0
+    ],
+    "total_interval_80": [
+      28.0,
+      67.0
+    ],
+    "home_score_interval_80": [
+      22.0,
+      52.0
+    ],
+    "away_score_interval_80": [
+      0.0,
+      23.0
+    ],
+    "simulated_mean_home_score": 36.469,
+    "simulated_mean_away_score": 10.311,
+    "simulated_margin_mean": 26.158,
+    "simulated_margin_sd": 14.418978567947972,
+    "simulated_total_mean": 46.78,
+    "simulated_total_sd": 15.269733618002796,
+    "simulated_score_correlation": 0.05921300278652308,
+    "home_score_median": 36.0,
+    "away_score_median": 9.0,
+    "margin_median": 27.0,
+    "total_median": 46.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856812,
+    "season": 2026,
+    "home_team": "Kansas",
+    "away_team": "Arizona State",
+    "kickoff": "2026-09-19T16:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 25.43466502667912,
+    "expected_away_score": 29.751316677452188,
+    "projected_home_margin": -4.316651650773068,
+    "projected_total": 55.18598170413131,
+    "home_win_probability": 0.3944087401337214,
+    "simulated_home_win_probability": 0.399,
+    "simulation_draws": 1000,
+    "simulation_seed": 12368589039171703133,
+    "margin_interval_80": [
+      -25.0,
+      17.0
+    ],
+    "total_interval_80": [
+      34.0,
+      78.0
+    ],
+    "home_score_interval_80": [
+      10.0,
+      42.0
+    ],
+    "away_score_interval_80": [
+      16.0,
+      45.0
+    ],
+    "simulated_mean_home_score": 25.931,
+    "simulated_mean_away_score": 30.047,
+    "simulated_margin_mean": -4.116,
+    "simulated_margin_sd": 16.49759724065037,
+    "simulated_total_mean": 55.978,
+    "simulated_total_sd": 16.652111241785793,
+    "simulated_score_correlation": 0.009338824408650704,
+    "home_score_median": 26.0,
+    "away_score_median": 30.0,
+    "margin_median": -4.0,
+    "total_median": 56.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401858229,
+    "season": 2026,
+    "home_team": "Clemson",
+    "away_team": "North Carolina",
+    "kickoff": "2026-09-19T16:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 20.272706366835195,
+    "expected_away_score": 20.333639018236653,
+    "projected_home_margin": -0.060932651401458315,
+    "projected_total": 40.60634538507185,
+    "home_win_probability": 0.4984916640872855,
+    "simulated_home_win_probability": 0.481,
+    "simulation_draws": 1000,
+    "simulation_seed": 11557559562090412853,
+    "margin_interval_80": [
+      -21.0,
+      20.0
+    ],
+    "total_interval_80": [
+      21.0,
+      62.0
+    ],
+    "home_score_interval_80": [
+      5.0,
+      36.0
+    ],
+    "away_score_interval_80": [
+      7.0,
+      35.0
+    ],
+    "simulated_mean_home_score": 20.565,
+    "simulated_mean_away_score": 20.946,
+    "simulated_margin_mean": -0.381,
+    "simulated_margin_sd": 15.809483823919702,
+    "simulated_total_mean": 41.511,
+    "simulated_total_sd": 16.120289784701228,
+    "simulated_score_correlation": 0.019498931239305926,
+    "home_score_median": 20.0,
+    "away_score_median": 21.0,
+    "margin_median": -1.0,
+    "total_median": 41.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401858451,
+    "season": 2026,
+    "home_team": "Minnesota",
+    "away_team": "Akron",
+    "kickoff": "2026-09-19T16:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 30.596186116247353,
+    "expected_away_score": 18.87552516330353,
+    "projected_home_margin": 11.720660952943824,
+    "projected_total": 49.47171127955088,
+    "home_win_probability": 0.7664673519159954,
+    "simulated_home_win_probability": 0.764,
+    "simulation_draws": 1000,
+    "simulation_seed": 12524807232845572399,
+    "margin_interval_80": [
+      -9.0,
+      31.0
+    ],
+    "total_interval_80": [
+      30.0,
+      72.0
+    ],
+    "home_score_interval_80": [
+      16.0,
+      47.0
+    ],
+    "away_score_interval_80": [
+      5.0,
+      33.0
+    ],
+    "simulated_mean_home_score": 31.176,
+    "simulated_mean_away_score": 19.35,
+    "simulated_margin_mean": 11.826,
+    "simulated_margin_sd": 16.268939805728042,
+    "simulated_total_mean": 50.526,
+    "simulated_total_sd": 16.194368823192264,
+    "simulated_score_correlation": -0.004616575087989755,
+    "home_score_median": 31.0,
+    "away_score_median": 19.0,
+    "margin_median": 12.0,
+    "total_median": 50.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401858454,
+    "season": 2026,
+    "home_team": "Ohio State",
+    "away_team": "Kent State",
+    "kickoff": "2026-09-19T16:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 50.65189313556294,
+    "expected_away_score": 5.528746671548305,
+    "projected_home_margin": 45.12314646401464,
+    "projected_total": 56.18063980711125,
+    "home_win_probability": 0.9974438645965189,
+    "simulated_home_win_probability": 0.997,
+    "simulation_draws": 1000,
+    "simulation_seed": 5150231112207170478,
+    "margin_interval_80": [
+      24.0,
+      61.0
+    ],
+    "total_interval_80": [
+      39.0,
+      77.0
+    ],
+    "home_score_interval_80": [
+      35.0,
+      66.0
+    ],
+    "away_score_interval_80": [
+      0.0,
+      19.0
+    ],
+    "simulated_mean_home_score": 50.674,
+    "simulated_mean_away_score": 7.779,
+    "simulated_margin_mean": 42.895,
+    "simulated_margin_sd": 14.2193588169497,
+    "simulated_total_mean": 58.453,
+    "simulated_total_sd": 14.614012466135382,
+    "simulated_score_correlation": 0.029282050750710973,
+    "home_score_median": 51.0,
+    "away_score_median": 6.0,
+    "margin_median": 43.0,
+    "total_median": 59.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401858456,
+    "season": 2026,
+    "home_team": "Penn State",
+    "away_team": "Buffalo",
+    "kickoff": "2026-09-19T16:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 36.08508399436069,
+    "expected_away_score": 10.06617809001801,
+    "projected_home_margin": 26.018905904342677,
+    "projected_total": 46.1512620843787,
+    "home_win_probability": 0.946786440934053,
+    "simulated_home_win_probability": 0.942,
+    "simulation_draws": 1000,
+    "simulation_seed": 4539687211638155607,
+    "margin_interval_80": [
+      5.900000000000006,
+      44.0
+    ],
+    "total_interval_80": [
+      27.0,
+      68.0
+    ],
+    "home_score_interval_80": [
+      20.0,
+      52.0
+    ],
+    "away_score_interval_80": [
+      0.0,
+      24.0
+    ],
+    "simulated_mean_home_score": 36.097,
+    "simulated_mean_away_score": 10.608,
+    "simulated_margin_mean": 25.489,
+    "simulated_margin_sd": 15.357399803636314,
+    "simulated_total_mean": 46.705,
+    "simulated_total_sd": 15.657430508551847,
+    "simulated_score_correlation": 0.020168540309225255,
+    "home_score_median": 37.0,
+    "away_score_median": 9.0,
+    "margin_median": 26.0,
+    "total_median": 46.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401860889,
+    "season": 2026,
+    "home_team": "Texas State",
+    "away_team": "North Texas",
+    "kickoff": "2026-09-19T16:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 29.978339399831768,
+    "expected_away_score": 39.378438085399424,
+    "projected_home_margin": -9.400098685567656,
+    "projected_total": 69.35677748523119,
+    "home_win_probability": 0.27985499196255276,
+    "simulated_home_win_probability": 0.283,
+    "simulation_draws": 1000,
+    "simulation_seed": 466743135899040717,
+    "margin_interval_80": [
+      -31.0,
+      12.0
+    ],
+    "total_interval_80": [
+      48.0,
+      92.0
+    ],
+    "home_score_interval_80": [
+      15.0,
+      46.0
+    ],
+    "away_score_interval_80": [
+      24.0,
+      54.0
+    ],
+    "simulated_mean_home_score": 29.993,
+    "simulated_mean_away_score": 39.242,
+    "simulated_margin_mean": -9.249,
+    "simulated_margin_sd": 16.360705109244883,
+    "simulated_total_mean": 69.235,
+    "simulated_total_sd": 16.92472219037055,
+    "simulated_score_correlation": 0.03389910894345982,
+    "home_score_median": 30.0,
+    "away_score_median": 39.0,
+    "margin_median": -9.0,
+    "total_median": 69.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401858460,
+    "season": 2026,
+    "home_team": "Wisconsin",
+    "away_team": "Eastern Michigan",
+    "kickoff": "2026-09-19T16:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 29.153210376663626,
+    "expected_away_score": 12.246157966026061,
+    "projected_home_margin": 16.907052410637565,
+    "projected_total": 41.399368342689684,
+    "home_win_probability": 0.8529283802218521,
+    "simulated_home_win_probability": 0.83,
+    "simulation_draws": 1000,
+    "simulation_seed": 9943545465342350487,
+    "margin_interval_80": [
+      -5.0,
+      35.0
+    ],
+    "total_interval_80": [
+      22.0,
+      62.0
+    ],
+    "home_score_interval_80": [
+      13.0,
+      45.0
+    ],
+    "away_score_interval_80": [
+      0.0,
+      27.0
+    ],
+    "simulated_mean_home_score": 28.763,
+    "simulated_mean_away_score": 13.302,
+    "simulated_margin_mean": 15.461,
+    "simulated_margin_sd": 15.53666202460705,
+    "simulated_total_mean": 42.065,
+    "simulated_total_sd": 15.659054281181254,
+    "simulated_score_correlation": 0.008022531927866719,
+    "home_score_median": 29.0,
+    "away_score_median": 13.0,
+    "margin_median": 16.0,
+    "total_median": 41.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856695,
+    "season": 2026,
+    "home_team": "Vanderbilt",
+    "away_team": "NC State",
+    "kickoff": "2026-09-19T16:45:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 34.95399051119472,
+    "expected_away_score": 22.776528989272528,
+    "projected_home_margin": 12.17746152192219,
+    "projected_total": 57.730519500467246,
+    "home_win_probability": 0.7750574445874772,
+    "simulated_home_win_probability": 0.771,
+    "simulation_draws": 1000,
+    "simulation_seed": 2613075758124837541,
+    "margin_interval_80": [
+      -8.0,
+      33.0
+    ],
+    "total_interval_80": [
+      38.0,
+      79.0
+    ],
+    "home_score_interval_80": [
+      19.0,
+      49.0
+    ],
+    "away_score_interval_80": [
+      8.0,
+      37.0
+    ],
+    "simulated_mean_home_score": 35.037,
+    "simulated_mean_away_score": 22.965,
+    "simulated_margin_mean": 12.072,
+    "simulated_margin_sd": 16.10422808339978,
+    "simulated_total_mean": 58.002,
+    "simulated_total_sd": 16.395878165588474,
+    "simulated_score_correlation": 0.01799622085824748,
+    "home_score_median": 35.0,
+    "away_score_median": 23.0,
+    "margin_median": 12.0,
+    "total_median": 58.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401864508,
+    "season": 2026,
+    "home_team": "Central Michigan",
+    "away_team": "Wyoming",
+    "kickoff": "2026-09-19T17:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 22.107754288864683,
+    "expected_away_score": 18.93832812140399,
+    "projected_home_margin": 3.169426167460692,
+    "projected_total": 41.046082410268674,
+    "home_win_probability": 0.5779538252550609,
+    "simulated_home_win_probability": 0.571,
+    "simulation_draws": 1000,
+    "simulation_seed": 17354579364052427144,
+    "margin_interval_80": [
+      -17.0,
+      23.0
+    ],
+    "total_interval_80": [
+      21.0,
+      61.0
+    ],
+    "home_score_interval_80": [
+      7.0,
+      37.0
+    ],
+    "away_score_interval_80": [
+      5.0,
+      33.0
+    ],
+    "simulated_mean_home_score": 22.229,
+    "simulated_mean_away_score": 19.112,
+    "simulated_margin_mean": 3.117,
+    "simulated_margin_sd": 15.282763947462968,
+    "simulated_total_mean": 41.341,
+    "simulated_total_sd": 15.821410684134207,
+    "simulated_score_correlation": 0.03477256285860006,
+    "home_score_median": 22.0,
+    "away_score_median": 19.0,
+    "margin_median": 3.0,
+    "total_median": 41.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401862774,
+    "season": 2026,
+    "home_team": "Toledo",
+    "away_team": "Temple",
+    "kickoff": "2026-09-19T19:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 27.146644550834104,
+    "expected_away_score": 19.39986038382819,
+    "projected_home_margin": 7.746784167005913,
+    "projected_total": 46.546504934662295,
+    "home_win_probability": 0.6846297443599094,
+    "simulated_home_win_probability": 0.674,
+    "simulation_draws": 1000,
+    "simulation_seed": 15533320204364667153,
+    "margin_interval_80": [
+      -13.0,
+      29.0
+    ],
+    "total_interval_80": [
+      25.0,
+      68.0
+    ],
+    "home_score_interval_80": [
+      11.0,
+      42.0
+    ],
+    "away_score_interval_80": [
+      4.0,
+      34.0
+    ],
+    "simulated_mean_home_score": 26.968,
+    "simulated_mean_away_score": 19.687,
+    "simulated_margin_mean": 7.281,
+    "simulated_margin_sd": 15.926320563353192,
+    "simulated_total_mean": 46.655,
+    "simulated_total_sd": 16.383234887694964,
+    "simulated_score_correlation": 0.028389708081499907,
+    "home_score_median": 27.0,
+    "away_score_median": 20.0,
+    "margin_median": 7.0,
+    "total_median": 46.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856685,
+    "season": 2026,
+    "home_team": "Alabama",
+    "away_team": "Florida State",
+    "kickoff": "2026-09-19T19:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 34.93416634261403,
+    "expected_away_score": 17.1286365489678,
+    "projected_home_margin": 17.805529793646226,
+    "projected_total": 52.062802891581825,
+    "home_win_probability": 0.8653824920654379,
+    "simulated_home_win_probability": 0.866,
+    "simulation_draws": 1000,
+    "simulation_seed": 5850713587957225929,
+    "margin_interval_80": [
+      -2.0999999999999943,
+      38.0
+    ],
+    "total_interval_80": [
+      31.0,
+      73.0
+    ],
+    "home_score_interval_80": [
+      19.900000000000006,
+      50.0
+    ],
+    "away_score_interval_80": [
+      3.9000000000000057,
+      31.0
+    ],
+    "simulated_mean_home_score": 34.958,
+    "simulated_mean_away_score": 17.476,
+    "simulated_margin_mean": 17.482,
+    "simulated_margin_sd": 15.591175733752754,
+    "simulated_total_mean": 52.434,
+    "simulated_total_sd": 15.920650461306884,
+    "simulated_score_correlation": 0.021221103756271315,
+    "home_score_median": 34.0,
+    "away_score_median": 17.0,
+    "margin_median": 18.0,
+    "total_median": 53.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856694,
+    "season": 2026,
+    "home_team": "Texas A&M",
+    "away_team": "Kentucky",
+    "kickoff": "2026-09-19T19:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 35.8051653252302,
+    "expected_away_score": 13.790510153568926,
+    "projected_home_margin": 22.014655171661275,
+    "projected_total": 49.59567547879912,
+    "home_win_probability": 0.9140305933343633,
+    "simulated_home_win_probability": 0.903,
+    "simulation_draws": 1000,
+    "simulation_seed": 17683047038262156747,
+    "margin_interval_80": [
+      1.0,
+      42.0
+    ],
+    "total_interval_80": [
+      30.900000000000006,
+      71.0
+    ],
+    "home_score_interval_80": [
+      21.0,
+      51.0
+    ],
+    "away_score_interval_80": [
+      0.0,
+      29.0
+    ],
+    "simulated_mean_home_score": 36.07,
+    "simulated_mean_away_score": 14.446,
+    "simulated_margin_mean": 21.624,
+    "simulated_margin_sd": 16.06775643320488,
+    "simulated_total_mean": 50.516,
+    "simulated_total_sd": 15.691397769604976,
+    "simulated_score_correlation": -0.02397841314192658,
+    "home_score_median": 36.0,
+    "away_score_median": 14.0,
+    "margin_median": 22.0,
+    "total_median": 50.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856797,
+    "season": 2026,
+    "home_team": "Cincinnati",
+    "away_team": "Miami (OH)",
+    "kickoff": "2026-09-19T19:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 38.01444923004122,
+    "expected_away_score": 20.672670534738078,
+    "projected_home_margin": 17.341778695303145,
+    "projected_total": 58.6871197647793,
+    "home_win_probability": 0.8590476364957059,
+    "simulated_home_win_probability": 0.866,
+    "simulation_draws": 1000,
+    "simulation_seed": 7964968034081625601,
+    "margin_interval_80": [
+      -3.0,
+      38.10000000000002
+    ],
+    "total_interval_80": [
+      39.0,
+      81.0
+    ],
+    "home_score_interval_80": [
+      23.900000000000006,
+      54.10000000000002
+    ],
+    "away_score_interval_80": [
+      7.0,
+      35.0
+    ],
+    "simulated_mean_home_score": 38.858,
+    "simulated_mean_away_score": 20.981,
+    "simulated_margin_mean": 17.877,
+    "simulated_margin_sd": 16.208410890139216,
+    "simulated_total_mean": 59.839,
+    "simulated_total_sd": 16.551284663856883,
+    "simulated_score_correlation": 0.021272441668670355,
+    "home_score_median": 39.0,
+    "away_score_median": 21.0,
+    "margin_median": 18.0,
+    "total_median": 59.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856801,
+    "season": 2026,
+    "home_team": "Utah",
+    "away_team": "Utah State",
+    "kickoff": "2026-09-19T19:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 36.361117141595685,
+    "expected_away_score": 17.082666402791403,
+    "projected_home_margin": 19.27845073880428,
+    "projected_total": 53.44378354438709,
+    "home_win_probability": 0.8841946597141546,
+    "simulated_home_win_probability": 0.882,
+    "simulation_draws": 1000,
+    "simulation_seed": 5296245752042409685,
+    "margin_interval_80": [
+      -2.0,
+      39.0
+    ],
+    "total_interval_80": [
+      33.0,
+      75.0
+    ],
+    "home_score_interval_80": [
+      21.0,
+      52.0
+    ],
+    "away_score_interval_80": [
+      3.0,
+      32.0
+    ],
+    "simulated_mean_home_score": 36.414,
+    "simulated_mean_away_score": 17.398,
+    "simulated_margin_mean": 19.016,
+    "simulated_margin_sd": 15.765033469050431,
+    "simulated_total_mean": 53.812,
+    "simulated_total_sd": 15.958801312734591,
+    "simulated_score_correlation": 0.012303706493621119,
+    "home_score_median": 37.0,
+    "away_score_median": 17.0,
+    "margin_median": 20.0,
+    "total_median": 53.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401858230,
+    "season": 2026,
+    "home_team": "Louisville",
+    "away_team": "SMU",
+    "kickoff": "2026-09-19T19:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 27.925650838540115,
+    "expected_away_score": 26.355551918493624,
+    "projected_home_margin": 1.5700989200464903,
+    "projected_total": 54.28120275703374,
+    "home_win_probability": 0.5388051589138277,
+    "simulated_home_win_probability": 0.525,
+    "simulation_draws": 1000,
+    "simulation_seed": 7749714856102116968,
+    "margin_interval_80": [
+      -19.0,
+      20.0
+    ],
+    "total_interval_80": [
+      34.0,
+      76.0
+    ],
+    "home_score_interval_80": [
+      12.0,
+      43.0
+    ],
+    "away_score_interval_80": [
+      13.0,
+      42.0
+    ],
+    "simulated_mean_home_score": 28.186,
+    "simulated_mean_away_score": 27.038,
+    "simulated_margin_mean": 1.148,
+    "simulated_margin_sd": 16.2090354071064,
+    "simulated_total_mean": 55.224,
+    "simulated_total_sd": 16.610771858698854,
+    "simulated_score_correlation": 0.024599819934020002,
+    "home_score_median": 28.0,
+    "away_score_median": 27.0,
+    "margin_median": 2.0,
+    "total_median": 56.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401858450,
+    "season": 2026,
+    "home_team": "Michigan",
+    "away_team": "UTEP",
+    "kickoff": "2026-09-19T19:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 37.16066579870219,
+    "expected_away_score": 9.332731117723487,
+    "projected_home_margin": 27.827934680978704,
+    "projected_total": 46.49339691642568,
+    "home_win_probability": 0.9578903117735259,
+    "simulated_home_win_probability": 0.955,
+    "simulation_draws": 1000,
+    "simulation_seed": 7898198021286987563,
+    "margin_interval_80": [
+      7.0,
+      45.0
+    ],
+    "total_interval_80": [
+      29.0,
+      67.10000000000002
+    ],
+    "home_score_interval_80": [
+      22.0,
+      52.0
+    ],
+    "away_score_interval_80": [
+      0.0,
+      24.0
+    ],
+    "simulated_mean_home_score": 37.091,
+    "simulated_mean_away_score": 10.411,
+    "simulated_margin_mean": 26.68,
+    "simulated_margin_sd": 14.695766926757022,
+    "simulated_total_mean": 47.502,
+    "simulated_total_sd": 15.149042527152977,
+    "simulated_score_correlation": 0.03110276937695236,
+    "home_score_median": 37.0,
+    "away_score_median": 9.0,
+    "margin_median": 27.0,
+    "total_median": 47.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401858457,
+    "season": 2026,
+    "home_team": "Rutgers",
+    "away_team": "USC",
+    "kickoff": "2026-09-19T19:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 23.419368241198555,
+    "expected_away_score": 43.68517984837615,
+    "projected_home_margin": -20.265811607177596,
+    "projected_total": 67.1045480895747,
+    "home_win_probability": 0.10428895402784721,
+    "simulated_home_win_probability": 0.098,
+    "simulation_draws": 1000,
+    "simulation_seed": 4862086209707615726,
+    "margin_interval_80": [
+      -41.0,
+      -1.0
+    ],
+    "total_interval_80": [
+      47.0,
+      86.0
+    ],
+    "home_score_interval_80": [
+      7.0,
+      38.0
+    ],
+    "away_score_interval_80": [
+      30.0,
+      58.0
+    ],
+    "simulated_mean_home_score": 22.952,
+    "simulated_mean_away_score": 43.696,
+    "simulated_margin_mean": -20.744,
+    "simulated_margin_sd": 15.922939552859075,
+    "simulated_total_mean": 66.648,
+    "simulated_total_sd": 15.731229054577,
+    "simulated_score_correlation": -0.012124734774270295,
+    "home_score_median": 23.0,
+    "away_score_median": 43.0,
+    "margin_median": -21.0,
+    "total_median": 67.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401858231,
+    "season": 2026,
+    "home_team": "Duke",
+    "away_team": "Stanford",
+    "kickoff": "2026-09-19T20:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 33.26600034987402,
+    "expected_away_score": 20.43326464789343,
+    "projected_home_margin": 12.832735701980589,
+    "projected_total": 53.69926499776745,
+    "home_win_probability": 0.7870613007227396,
+    "simulated_home_win_probability": 0.764,
+    "simulation_draws": 1000,
+    "simulation_seed": 1763098774349730917,
+    "margin_interval_80": [
+      -8.0,
+      32.0
+    ],
+    "total_interval_80": [
+      32.0,
+      76.0
+    ],
+    "home_score_interval_80": [
+      16.0,
+      48.0
+    ],
+    "away_score_interval_80": [
+      7.0,
+      36.0
+    ],
+    "simulated_mean_home_score": 32.631,
+    "simulated_mean_away_score": 21.408,
+    "simulated_margin_mean": 11.223,
+    "simulated_margin_sd": 15.630277559166267,
+    "simulated_total_mean": 54.039,
+    "simulated_total_sd": 16.736295366137114,
+    "simulated_score_correlation": 0.06869636932325617,
+    "home_score_median": 33.0,
+    "away_score_median": 22.0,
+    "margin_median": 11.0,
+    "total_median": 54.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401858449,
+    "season": 2026,
+    "home_team": "Indiana",
+    "away_team": "Western Kentucky",
+    "kickoff": "2026-09-19T20:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 51.26946205696186,
+    "expected_away_score": 8.95746848223725,
+    "projected_home_margin": 42.31199357472461,
+    "projected_total": 60.22693053919912,
+    "home_win_probability": 0.9956731742814936,
+    "simulated_home_win_probability": 0.999,
+    "simulation_draws": 1000,
+    "simulation_seed": 3542064621212276985,
+    "margin_interval_80": [
+      22.0,
+      58.0
+    ],
+    "total_interval_80": [
+      42.0,
+      82.0
+    ],
+    "home_score_interval_80": [
+      35.0,
+      65.0
+    ],
+    "away_score_interval_80": [
+      0.0,
+      22.0
+    ],
+    "simulated_mean_home_score": 50.636,
+    "simulated_mean_away_score": 10.194,
+    "simulated_margin_mean": 40.442,
+    "simulated_margin_sd": 14.176869175513316,
+    "simulated_total_mean": 60.83,
+    "simulated_total_sd": 15.102887048415518,
+    "simulated_score_correlation": 0.06563309911913624,
+    "home_score_median": 51.0,
+    "away_score_median": 9.0,
+    "margin_median": 40.0,
+    "total_median": 61.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401866422,
+    "season": 2026,
+    "home_team": "Liberty",
+    "away_team": "Ball State",
+    "kickoff": "2026-09-19T20:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 34.769571051164284,
+    "expected_away_score": 16.37401112712786,
+    "projected_home_margin": 18.395559924036423,
+    "projected_total": 51.14358217829215,
+    "home_win_probability": 0.8731559585969211,
+    "simulated_home_win_probability": 0.86,
+    "simulation_draws": 1000,
+    "simulation_seed": 9717439395626451706,
+    "margin_interval_80": [
+      -4.0,
+      38.0
+    ],
+    "total_interval_80": [
+      30.0,
+      74.10000000000002
+    ],
+    "home_score_interval_80": [
+      19.0,
+      51.0
+    ],
+    "away_score_interval_80": [
+      2.0,
+      32.0
+    ],
+    "simulated_mean_home_score": 34.852,
+    "simulated_mean_away_score": 16.972,
+    "simulated_margin_mean": 17.88,
+    "simulated_margin_sd": 15.890629695267336,
+    "simulated_total_mean": 51.824,
+    "simulated_total_sd": 17.042578251939272,
+    "simulated_score_correlation": 0.0708448834667933,
+    "home_score_median": 35.0,
+    "away_score_median": 17.0,
+    "margin_median": 19.0,
+    "total_median": 52.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401867804,
+    "season": 2026,
+    "home_team": "Baylor",
+    "away_team": "Louisiana Tech",
+    "kickoff": "2026-09-19T20:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 33.11363604312766,
+    "expected_away_score": 17.526875754769996,
+    "projected_home_margin": 15.586760288357667,
+    "projected_total": 50.64051179789766,
+    "home_win_probability": 0.8332660211951699,
+    "simulated_home_win_probability": 0.836,
+    "simulation_draws": 1000,
+    "simulation_seed": 3233608974354722220,
+    "margin_interval_80": [
+      -5.0,
+      36.0
+    ],
+    "total_interval_80": [
+      30.0,
+      73.0
+    ],
+    "home_score_interval_80": [
+      18.0,
+      49.0
+    ],
+    "away_score_interval_80": [
+      3.0,
+      32.10000000000002
+    ],
+    "simulated_mean_home_score": 33.778,
+    "simulated_mean_away_score": 17.779,
+    "simulated_margin_mean": 15.999,
+    "simulated_margin_sd": 15.758341420477104,
+    "simulated_total_mean": 51.557,
+    "simulated_total_sd": 16.65839888024216,
+    "simulated_score_correlation": 0.05591337906509615,
+    "home_score_median": 34.0,
+    "away_score_median": 17.0,
+    "margin_median": 16.0,
+    "total_median": 51.5,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856691,
+    "season": 2026,
+    "home_team": "South Carolina",
+    "away_team": "Mississippi State",
+    "kickoff": "2026-09-19T20:15:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 31.871924264101896,
+    "expected_away_score": 27.43546649183698,
+    "projected_home_margin": 4.436457772264916,
+    "projected_total": 59.307390755938876,
+    "home_win_probability": 0.6084495954628231,
+    "simulated_home_win_probability": 0.605,
+    "simulation_draws": 1000,
+    "simulation_seed": 18431633966985324739,
+    "margin_interval_80": [
+      -15.0,
+      24.0
+    ],
+    "total_interval_80": [
+      38.900000000000006,
+      81.0
+    ],
+    "home_score_interval_80": [
+      18.0,
+      47.0
+    ],
+    "away_score_interval_80": [
+      14.0,
+      43.0
+    ],
+    "simulated_mean_home_score": 32.24,
+    "simulated_mean_away_score": 27.881,
+    "simulated_margin_mean": 4.359,
+    "simulated_margin_sd": 15.234047236213861,
+    "simulated_total_mean": 60.121,
+    "simulated_total_sd": 16.720464495130898,
+    "simulated_score_correlation": 0.09283938975324205,
+    "home_score_median": 32.0,
+    "away_score_median": 28.0,
+    "margin_median": 5.0,
+    "total_median": 60.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401862710,
+    "season": 2026,
+    "home_team": "Old Dominion",
+    "away_team": "East Carolina",
+    "kickoff": "2026-09-19T22:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 27.571590174644687,
+    "expected_away_score": 19.44715551502857,
+    "projected_home_margin": 8.124434659616117,
+    "projected_total": 47.01874568967325,
+    "home_win_probability": 0.6929107338364213,
+    "simulated_home_win_probability": 0.707,
+    "simulation_draws": 1000,
+    "simulation_seed": 18014590794662237836,
+    "margin_interval_80": [
+      -13.0,
+      27.0
+    ],
+    "total_interval_80": [
+      27.0,
+      69.0
+    ],
+    "home_score_interval_80": [
+      12.0,
+      43.0
+    ],
+    "away_score_interval_80": [
+      6.0,
+      35.0
+    ],
+    "simulated_mean_home_score": 27.677,
+    "simulated_mean_away_score": 20.319,
+    "simulated_margin_mean": 7.358,
+    "simulated_margin_sd": 15.475636701969044,
+    "simulated_total_mean": 47.996,
+    "simulated_total_sd": 16.279096811340395,
+    "simulated_score_correlation": 0.05088125649098884,
+    "home_score_median": 27.0,
+    "away_score_median": 20.0,
+    "margin_median": 8.0,
+    "total_median": 47.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401862771,
+    "season": 2026,
+    "home_team": "Florida Atlantic",
+    "away_team": "Florida International",
+    "kickoff": "2026-09-19T22:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 28.498294077079247,
+    "expected_away_score": 30.480061172159186,
+    "projected_home_margin": -1.9817670950799382,
+    "projected_total": 58.97835524923843,
+    "home_win_probability": 0.45106627862760995,
+    "simulated_home_win_probability": 0.415,
+    "simulation_draws": 1000,
+    "simulation_seed": 2833003878665910539,
+    "margin_interval_80": [
+      -22.0,
+      17.0
+    ],
+    "total_interval_80": [
+      38.0,
+      80.0
+    ],
+    "home_score_interval_80": [
+      13.0,
+      43.0
+    ],
+    "away_score_interval_80": [
+      17.0,
+      45.0
+    ],
+    "simulated_mean_home_score": 28.096,
+    "simulated_mean_away_score": 30.496,
+    "simulated_margin_mean": -2.4,
+    "simulated_margin_sd": 14.979532248584613,
+    "simulated_total_mean": 58.592,
+    "simulated_total_sd": 16.37778274882677,
+    "simulated_score_correlation": 0.08928580890818788,
+    "home_score_median": 28.0,
+    "away_score_median": 30.0,
+    "margin_median": -3.0,
+    "total_median": 59.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401864574,
+    "season": 2026,
+    "home_team": "App State",
+    "away_team": "Charlotte",
+    "kickoff": "2026-09-19T22:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 28.84588084961719,
+    "expected_away_score": 20.607996092430106,
+    "projected_home_margin": 8.237884757187082,
+    "projected_total": 49.453876942047295,
+    "home_win_probability": 0.6953795870158423,
+    "simulated_home_win_probability": 0.729,
+    "simulation_draws": 1000,
+    "simulation_seed": 13148407847364706509,
+    "margin_interval_80": [
+      -11.0,
+      31.0
+    ],
+    "total_interval_80": [
+      28.0,
+      71.0
+    ],
+    "home_score_interval_80": [
+      14.0,
+      46.0
+    ],
+    "away_score_interval_80": [
+      5.0,
+      35.0
+    ],
+    "simulated_mean_home_score": 29.858,
+    "simulated_mean_away_score": 20.207,
+    "simulated_margin_mean": 9.651,
+    "simulated_margin_sd": 16.319360297527613,
+    "simulated_total_mean": 50.065,
+    "simulated_total_sd": 17.01005929199299,
+    "simulated_score_correlation": 0.04169570112984121,
+    "home_score_median": 30.0,
+    "away_score_median": 20.0,
+    "margin_median": 10.0,
+    "total_median": 49.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401871047,
+    "season": 2026,
+    "home_team": "Missouri State",
+    "away_team": "Marshall",
+    "kickoff": "2026-09-19T22:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 25.562496450428906,
+    "expected_away_score": 25.495639326903486,
+    "projected_home_margin": 0.06685712352541984,
+    "projected_total": 51.058135777332396,
+    "home_win_probability": 0.5016549903725455,
+    "simulated_home_win_probability": 0.497,
+    "simulation_draws": 1000,
+    "simulation_seed": 11210134426327949083,
+    "margin_interval_80": [
+      -20.0,
+      20.0
+    ],
+    "total_interval_80": [
+      29.0,
+      71.0
+    ],
+    "home_score_interval_80": [
+      10.0,
+      41.0
+    ],
+    "away_score_interval_80": [
+      11.0,
+      40.0
+    ],
+    "simulated_mean_home_score": 25.598,
+    "simulated_mean_away_score": 25.744,
+    "simulated_margin_mean": -0.146,
+    "simulated_margin_sd": 15.340404558290242,
+    "simulated_total_mean": 51.342,
+    "simulated_total_sd": 16.857675320672694,
+    "simulated_score_correlation": 0.09406632089698284,
+    "home_score_median": 26.0,
+    "away_score_median": 26.0,
+    "margin_median": -1.0,
+    "total_median": 51.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856687,
+    "season": 2026,
+    "home_team": "Auburn",
+    "away_team": "Florida",
+    "kickoff": "2026-09-19T23:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 25.355235682883748,
+    "expected_away_score": 22.59545832213063,
+    "projected_home_margin": 2.7597773607531195,
+    "projected_total": 47.95069400501438,
+    "home_win_probability": 0.5679836796953752,
+    "simulated_home_win_probability": 0.566,
+    "simulation_draws": 1000,
+    "simulation_seed": 2169048541981485917,
+    "margin_interval_80": [
+      -18.0,
+      24.0
+    ],
+    "total_interval_80": [
+      27.0,
+      70.0
+    ],
+    "home_score_interval_80": [
+      9.0,
+      41.0
+    ],
+    "away_score_interval_80": [
+      8.0,
+      37.0
+    ],
+    "simulated_mean_home_score": 25.713,
+    "simulated_mean_away_score": 22.829,
+    "simulated_margin_mean": 2.884,
+    "simulated_margin_sd": 16.240760644326556,
+    "simulated_total_mean": 48.542,
+    "simulated_total_sd": 16.54496817681956,
+    "simulated_score_correlation": 0.018684243781367432,
+    "home_score_median": 26.0,
+    "away_score_median": 23.0,
+    "margin_median": 3.0,
+    "total_median": 48.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856689,
+    "season": 2026,
+    "home_team": "Missouri",
+    "away_team": "Troy",
+    "kickoff": "2026-09-19T23:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 32.31119695422994,
+    "expected_away_score": 9.171051284021662,
+    "projected_home_margin": 23.14014567020828,
+    "projected_total": 41.4822482382516,
+    "home_win_probability": 0.9244755943663522,
+    "simulated_home_win_probability": 0.927,
+    "simulation_draws": 1000,
+    "simulation_seed": 18362919049693370467,
+    "margin_interval_80": [
+      3.0,
+      40.0
+    ],
+    "total_interval_80": [
+      22.0,
+      64.0
+    ],
+    "home_score_interval_80": [
+      16.0,
+      48.0
+    ],
+    "away_score_interval_80": [
+      0.0,
+      23.0
+    ],
+    "simulated_mean_home_score": 31.92,
+    "simulated_mean_away_score": 10.473,
+    "simulated_margin_mean": 21.447,
+    "simulated_margin_sd": 14.52970417122466,
+    "simulated_total_mean": 42.393,
+    "simulated_total_sd": 15.845113398730179,
+    "simulated_score_correlation": 0.09052914580273613,
+    "home_score_median": 32.0,
+    "away_score_median": 10.0,
+    "margin_median": 22.0,
+    "total_median": 42.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856800,
+    "season": 2026,
+    "home_team": "UCF",
+    "away_team": "Georgia State",
+    "kickoff": "2026-09-19T23:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 26.33839504120949,
+    "expected_away_score": 16.083744434227693,
+    "projected_home_margin": 10.254650606981798,
+    "projected_total": 42.422139475437184,
+    "home_win_probability": 0.7377085491598502,
+    "simulated_home_win_probability": 0.723,
+    "simulation_draws": 1000,
+    "simulation_seed": 17081339125749876000,
+    "margin_interval_80": [
+      -9.0,
+      28.0
+    ],
+    "total_interval_80": [
+      24.0,
+      65.0
+    ],
+    "home_score_interval_80": [
+      12.0,
+      41.0
+    ],
+    "away_score_interval_80": [
+      3.0,
+      31.0
+    ],
+    "simulated_mean_home_score": 26.188,
+    "simulated_mean_away_score": 16.927,
+    "simulated_margin_mean": 9.261,
+    "simulated_margin_sd": 15.01280331128278,
+    "simulated_total_mean": 43.115,
+    "simulated_total_sd": 16.054267797520836,
+    "simulated_score_correlation": 0.06728914025705773,
+    "home_score_median": 26.0,
+    "away_score_median": 17.0,
+    "margin_median": 9.0,
+    "total_median": 43.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401861963,
+    "season": 2026,
+    "home_team": "Southern Miss",
+    "away_team": "UConn",
+    "kickoff": "2026-09-19T23:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 29.104864996140456,
+    "expected_away_score": 28.0127551442706,
+    "projected_home_margin": 1.092109851869857,
+    "projected_total": 57.117620140411056,
+    "home_win_probability": 0.5270136376325941,
+    "simulated_home_win_probability": 0.519,
+    "simulation_draws": 1000,
+    "simulation_seed": 2621846240862963691,
+    "margin_interval_80": [
+      -19.0,
+      21.0
+    ],
+    "total_interval_80": [
+      37.0,
+      78.10000000000002
+    ],
+    "home_score_interval_80": [
+      14.0,
+      44.10000000000002
+    ],
+    "away_score_interval_80": [
+      14.0,
+      42.0
+    ],
+    "simulated_mean_home_score": 29.422,
+    "simulated_mean_away_score": 28.302,
+    "simulated_margin_mean": 1.12,
+    "simulated_margin_sd": 15.763250936278343,
+    "simulated_total_mean": 57.724,
+    "simulated_total_sd": 16.41399534675343,
+    "simulated_score_correlation": 0.040658880305000256,
+    "home_score_median": 29.0,
+    "away_score_median": 28.0,
+    "margin_median": 2.0,
+    "total_median": 58.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401862773,
+    "season": 2026,
+    "home_team": "Rice",
+    "away_team": "Western Michigan",
+    "kickoff": "2026-09-19T23:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 13.399142198929017,
+    "expected_away_score": 26.204248245632833,
+    "projected_home_margin": -12.805106046703816,
+    "projected_total": 39.60339044456185,
+    "home_win_probability": 0.2134371712983405,
+    "simulated_home_win_probability": 0.207,
+    "simulation_draws": 1000,
+    "simulation_seed": 14430901439497633704,
+    "margin_interval_80": [
+      -31.0,
+      8.100000000000023
+    ],
+    "total_interval_80": [
+      20.900000000000006,
+      60.0
+    ],
+    "home_score_interval_80": [
+      0.0,
+      29.0
+    ],
+    "away_score_interval_80": [
+      11.0,
+      40.0
+    ],
+    "simulated_mean_home_score": 13.91,
+    "simulated_mean_away_score": 26.056,
+    "simulated_margin_mean": -12.146,
+    "simulated_margin_sd": 15.334334867408689,
+    "simulated_total_mean": 39.966,
+    "simulated_total_sd": 15.708647478557968,
+    "simulated_score_correlation": 0.024117244942094062,
+    "home_score_median": 13.0,
+    "away_score_median": 26.0,
+    "margin_median": -13.0,
+    "total_median": 40.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401864443,
+    "season": 2026,
+    "home_team": "Middle Tennessee",
+    "away_team": "Nevada",
+    "kickoff": "2026-09-19T23:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 24.650943870358944,
+    "expected_away_score": 30.006084513456283,
+    "projected_home_margin": -5.355140643097339,
+    "projected_total": 54.65702838381523,
+    "home_win_probability": 0.3698372901412045,
+    "simulated_home_win_probability": 0.369,
+    "simulation_draws": 1000,
+    "simulation_seed": 18075774978671996391,
+    "margin_interval_80": [
+      -26.0,
+      16.0
+    ],
+    "total_interval_80": [
+      33.0,
+      75.0
+    ],
+    "home_score_interval_80": [
+      8.0,
+      41.0
+    ],
+    "away_score_interval_80": [
+      16.0,
+      44.0
+    ],
+    "simulated_mean_home_score": 24.705,
+    "simulated_mean_away_score": 29.917,
+    "simulated_margin_mean": -5.212,
+    "simulated_margin_sd": 16.33137378697119,
+    "simulated_total_mean": 54.622,
+    "simulated_total_sd": 16.230728651312997,
+    "simulated_score_correlation": -0.006217346811715902,
+    "home_score_median": 25.0,
+    "away_score_median": 30.0,
+    "margin_median": -5.0,
+    "total_median": 55.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401866423,
+    "season": 2026,
+    "home_team": "South Alabama",
+    "away_team": "Ohio",
+    "kickoff": "2026-09-19T23:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 31.526696791200482,
+    "expected_away_score": 29.29116611366997,
+    "projected_home_margin": 2.2355306775305124,
+    "projected_total": 60.81786290487045,
+    "home_win_probability": 0.5551618346677593,
+    "simulated_home_win_probability": 0.552,
+    "simulation_draws": 1000,
+    "simulation_seed": 14944653818530426247,
+    "margin_interval_80": [
+      -17.0,
+      23.0
+    ],
+    "total_interval_80": [
+      39.0,
+      83.0
+    ],
+    "home_score_interval_80": [
+      17.0,
+      47.0
+    ],
+    "away_score_interval_80": [
+      14.0,
+      44.0
+    ],
+    "simulated_mean_home_score": 31.467,
+    "simulated_mean_away_score": 29.165,
+    "simulated_margin_mean": 2.302,
+    "simulated_margin_sd": 15.906596613223577,
+    "simulated_total_mean": 60.632,
+    "simulated_total_sd": 16.45969311674727,
+    "simulated_score_correlation": 0.03417026103666061,
+    "home_score_median": 31.0,
+    "away_score_median": 29.0,
+    "margin_median": 2.0,
+    "total_median": 60.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401869948,
+    "season": 2026,
+    "home_team": "Jacksonville State",
+    "away_team": "Georgia Southern",
+    "kickoff": "2026-09-19T23:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 26.33377881503289,
+    "expected_away_score": 20.760925719636354,
+    "projected_home_margin": 5.572853095396535,
+    "projected_total": 47.09470453466925,
+    "home_win_probability": 0.6352509650659712,
+    "simulated_home_win_probability": 0.626,
+    "simulation_draws": 1000,
+    "simulation_seed": 18444788165324872512,
+    "margin_interval_80": [
+      -16.0,
+      26.0
+    ],
+    "total_interval_80": [
+      27.0,
+      70.0
+    ],
+    "home_score_interval_80": [
+      11.0,
+      43.0
+    ],
+    "away_score_interval_80": [
+      7.0,
+      36.0
+    ],
+    "simulated_mean_home_score": 26.307,
+    "simulated_mean_away_score": 21.418,
+    "simulated_margin_mean": 4.889,
+    "simulated_margin_sd": 15.990008110046704,
+    "simulated_total_mean": 47.725,
+    "simulated_total_sd": 16.77142378141032,
+    "simulated_score_correlation": 0.047963900557035415,
+    "home_score_median": 26.0,
+    "away_score_median": 21.0,
+    "margin_median": 5.0,
+    "total_median": 47.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856688,
+    "season": 2026,
+    "home_team": "Ole Miss",
+    "away_team": "LSU",
+    "kickoff": "2026-09-19T23:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 28.084211680655002,
+    "expected_away_score": 29.897292234472914,
+    "projected_home_margin": -1.8130805538179118,
+    "projected_total": 57.98150391512792,
+    "home_win_probability": 0.45521312118592827,
+    "simulated_home_win_probability": 0.471,
+    "simulation_draws": 1000,
+    "simulation_seed": 8933060707147483949,
+    "margin_interval_80": [
+      -23.0,
+      19.0
+    ],
+    "total_interval_80": [
+      38.0,
+      80.0
+    ],
+    "home_score_interval_80": [
+      12.0,
+      44.0
+    ],
+    "away_score_interval_80": [
+      16.0,
+      45.0
+    ],
+    "simulated_mean_home_score": 28.025,
+    "simulated_mean_away_score": 29.972,
+    "simulated_margin_mean": -1.947,
+    "simulated_margin_sd": 16.318225255078307,
+    "simulated_total_mean": 57.997,
+    "simulated_total_sd": 16.139562462361752,
+    "simulated_score_correlation": -0.011039517922902484,
+    "home_score_median": 28.0,
+    "away_score_median": 29.0,
+    "margin_median": -2.0,
+    "total_median": 58.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856690,
+    "season": 2026,
+    "home_team": "Oklahoma",
+    "away_team": "New Mexico",
+    "kickoff": "2026-09-19T23:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 26.144679255180126,
+    "expected_away_score": 15.304351685244042,
+    "projected_home_margin": 10.840327569936084,
+    "projected_total": 41.449030940424166,
+    "home_win_probability": 0.7494111756789126,
+    "simulated_home_win_probability": 0.763,
+    "simulation_draws": 1000,
+    "simulation_seed": 2528655969400062873,
+    "margin_interval_80": [
+      -7.0,
+      31.0
+    ],
+    "total_interval_80": [
+      21.0,
+      62.0
+    ],
+    "home_score_interval_80": [
+      12.0,
+      42.0
+    ],
+    "away_score_interval_80": [
+      1.0,
+      30.0
+    ],
+    "simulated_mean_home_score": 26.842,
+    "simulated_mean_away_score": 15.357,
+    "simulated_margin_mean": 11.485,
+    "simulated_margin_sd": 15.13528499407434,
+    "simulated_total_mean": 42.199,
+    "simulated_total_sd": 15.951923484735715,
+    "simulated_score_correlation": 0.05273927336928649,
+    "home_score_median": 27.0,
+    "away_score_median": 14.0,
+    "margin_median": 12.0,
+    "total_median": 42.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856795,
+    "season": 2026,
+    "home_team": "Colorado State",
+    "away_team": "BYU",
+    "kickoff": "2026-09-19T23:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 20.077200000512516,
+    "expected_away_score": 34.494030440530786,
+    "projected_home_margin": -14.41683044001827,
+    "projected_total": 54.5712304410433,
+    "home_win_probability": 0.18551156786506673,
+    "simulated_home_win_probability": 0.179,
+    "simulation_draws": 1000,
+    "simulation_seed": 11378490429781219147,
+    "margin_interval_80": [
+      -35.0,
+      6.0
+    ],
+    "total_interval_80": [
+      34.0,
+      76.10000000000002
+    ],
+    "home_score_interval_80": [
+      4.0,
+      36.0
+    ],
+    "away_score_interval_80": [
+      21.0,
+      49.0
+    ],
+    "simulated_mean_home_score": 20.169,
+    "simulated_mean_away_score": 34.99,
+    "simulated_margin_mean": -14.821,
+    "simulated_margin_sd": 16.04638418602289,
+    "simulated_total_mean": 55.159,
+    "simulated_total_sd": 16.691864405671925,
+    "simulated_score_correlation": 0.03944930470880878,
+    "home_score_median": 19.0,
+    "away_score_median": 35.0,
+    "margin_median": -15.0,
+    "total_median": 55.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856796,
+    "season": 2026,
+    "home_team": "Northwestern",
+    "away_team": "Colorado",
+    "kickoff": "2026-09-19T23:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 24.838280871510865,
+    "expected_away_score": 17.29072871307493,
+    "projected_home_margin": 7.547552158435934,
+    "projected_total": 42.129009584585795,
+    "home_win_probability": 0.6802230342481945,
+    "simulated_home_win_probability": 0.667,
+    "simulation_draws": 1000,
+    "simulation_seed": 11547507160909029443,
+    "margin_interval_80": [
+      -15.0,
+      26.0
+    ],
+    "total_interval_80": [
+      23.0,
+      65.0
+    ],
+    "home_score_interval_80": [
+      9.0,
+      40.0
+    ],
+    "away_score_interval_80": [
+      4.0,
+      32.0
+    ],
+    "simulated_mean_home_score": 25.054,
+    "simulated_mean_away_score": 18.276,
+    "simulated_margin_mean": 6.778,
+    "simulated_margin_sd": 15.565699695388158,
+    "simulated_total_mean": 43.33,
+    "simulated_total_sd": 16.120948637874417,
+    "simulated_score_correlation": 0.03530885932294147,
+    "home_score_median": 25.0,
+    "away_score_median": 18.0,
+    "margin_median": 7.0,
+    "total_median": 43.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856802,
+    "season": 2026,
+    "home_team": "Virginia",
+    "away_team": "West Virginia",
+    "kickoff": "2026-09-19T23:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 28.979335681394954,
+    "expected_away_score": 13.970734372443719,
+    "projected_home_margin": 15.008601308951235,
+    "projected_total": 42.95007005383867,
+    "home_win_probability": 0.8241450226643294,
+    "simulated_home_win_probability": 0.831,
+    "simulation_draws": 1000,
+    "simulation_seed": 11087268596745031902,
+    "margin_interval_80": [
+      -6.0,
+      33.0
+    ],
+    "total_interval_80": [
+      22.0,
+      65.0
+    ],
+    "home_score_interval_80": [
+      14.0,
+      45.0
+    ],
+    "away_score_interval_80": [
+      0.0,
+      28.0
+    ],
+    "simulated_mean_home_score": 28.888,
+    "simulated_mean_away_score": 14.53,
+    "simulated_margin_mean": 14.358,
+    "simulated_margin_sd": 14.719867883595644,
+    "simulated_total_mean": 43.418,
+    "simulated_total_sd": 16.472237571459765,
+    "simulated_score_correlation": 0.11360149522713647,
+    "home_score_median": 29.0,
+    "away_score_median": 14.0,
+    "margin_median": 15.0,
+    "total_median": 43.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401858232,
+    "season": 2026,
+    "home_team": "Maryland",
+    "away_team": "Virginia Tech",
+    "kickoff": "2026-09-19T23:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 26.717742438223112,
+    "expected_away_score": 25.186483075846894,
+    "projected_home_margin": 1.5312593623762183,
+    "projected_total": 51.904225514070006,
+    "home_win_probability": 0.5378481569468769,
+    "simulated_home_win_probability": 0.52,
+    "simulation_draws": 1000,
+    "simulation_seed": 10583087680505360447,
+    "margin_interval_80": [
+      -19.0,
+      22.0
+    ],
+    "total_interval_80": [
+      30.0,
+      73.0
+    ],
+    "home_score_interval_80": [
+      11.0,
+      43.0
+    ],
+    "away_score_interval_80": [
+      11.0,
+      39.0
+    ],
+    "simulated_mean_home_score": 26.286,
+    "simulated_mean_away_score": 25.027,
+    "simulated_margin_mean": 1.259,
+    "simulated_margin_sd": 15.71180383596294,
+    "simulated_total_mean": 51.313,
+    "simulated_total_sd": 16.75648563424953,
+    "simulated_score_correlation": 0.06491205696767702,
+    "home_score_median": 26.0,
+    "away_score_median": 25.0,
+    "margin_median": 1.0,
+    "total_median": 51.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401858453,
+    "season": 2026,
+    "home_team": "Notre Dame",
+    "away_team": "Michigan State",
+    "kickoff": "2026-09-19T23:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 37.3948862430915,
+    "expected_away_score": 18.138922817036537,
+    "projected_home_margin": 19.25596342605496,
+    "projected_total": 55.533809060128036,
+    "home_win_probability": 0.8839222492887675,
+    "simulated_home_win_probability": 0.895,
+    "simulation_draws": 1000,
+    "simulation_seed": 9753962828690511676,
+    "margin_interval_80": [
+      -1.0,
+      40.0
+    ],
+    "total_interval_80": [
+      36.0,
+      78.0
+    ],
+    "home_score_interval_80": [
+      22.0,
+      55.0
+    ],
+    "away_score_interval_80": [
+      4.0,
+      31.100000000000023
+    ],
+    "simulated_mean_home_score": 37.963,
+    "simulated_mean_away_score": 18.526,
+    "simulated_margin_mean": 19.437,
+    "simulated_margin_sd": 15.550751006200855,
+    "simulated_total_mean": 56.489,
+    "simulated_total_sd": 16.608965552879468,
+    "simulated_score_correlation": 0.0667585312475202,
+    "home_score_median": 38.0,
+    "away_score_median": 19.0,
+    "margin_median": 19.0,
+    "total_median": 56.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856692,
+    "season": 2026,
+    "home_team": "Tennessee",
+    "away_team": "Kennesaw State",
+    "kickoff": "2026-09-19T23:45:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 43.76082029462859,
+    "expected_away_score": 20.46319251468518,
+    "projected_home_margin": 23.297627779943408,
+    "projected_total": 64.22401280931376,
+    "home_win_probability": 0.9258564669364575,
+    "simulated_home_win_probability": 0.912,
+    "simulation_draws": 1000,
+    "simulation_seed": 6344610359062609495,
+    "margin_interval_80": [
+      2.0,
+      44.0
+    ],
+    "total_interval_80": [
+      44.900000000000006,
+      84.0
+    ],
+    "home_score_interval_80": [
+      28.0,
+      59.10000000000002
+    ],
+    "away_score_interval_80": [
+      7.0,
+      35.0
+    ],
+    "simulated_mean_home_score": 43.961,
+    "simulated_mean_away_score": 20.878,
+    "simulated_margin_mean": 23.083,
+    "simulated_margin_sd": 16.015948976617704,
+    "simulated_total_mean": 64.839,
+    "simulated_total_sd": 15.999846064074305,
+    "simulated_score_correlation": -0.0010145545454340937,
+    "home_score_median": 44.0,
+    "away_score_median": 21.0,
+    "margin_median": 24.0,
+    "total_median": 65.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856693,
+    "season": 2026,
+    "home_team": "Texas",
+    "away_team": "UTSA",
+    "kickoff": "2026-09-20T00:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 38.56184914077988,
+    "expected_away_score": 17.881404610041333,
+    "projected_home_margin": 20.680444530738544,
+    "projected_total": 56.44325375082121,
+    "home_win_probability": 0.900291311675222,
+    "simulated_home_win_probability": 0.924,
+    "simulation_draws": 1000,
+    "simulation_seed": 16568579455601397728,
+    "margin_interval_80": [
+      3.0,
+      42.0
+    ],
+    "total_interval_80": [
+      36.0,
+      80.0
+    ],
+    "home_score_interval_80": [
+      24.0,
+      55.10000000000002
+    ],
+    "away_score_interval_80": [
+      4.0,
+      31.0
+    ],
+    "simulated_mean_home_score": 39.73,
+    "simulated_mean_away_score": 17.849,
+    "simulated_margin_mean": 21.881,
+    "simulated_margin_sd": 15.253508072194688,
+    "simulated_total_mean": 57.579,
+    "simulated_total_sd": 16.544590731791537,
+    "simulated_score_correlation": 0.0825866290269038,
+    "home_score_median": 40.0,
+    "away_score_median": 17.0,
+    "margin_median": 22.0,
+    "total_median": 58.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856799,
+    "season": 2026,
+    "home_team": "TCU",
+    "away_team": "Arkansas State",
+    "kickoff": "2026-09-20T00:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 33.51636752434642,
+    "expected_away_score": 19.322582662748438,
+    "projected_home_margin": 14.193784861597983,
+    "projected_total": 52.83895018709486,
+    "home_win_probability": 0.8107649342063532,
+    "simulated_home_win_probability": 0.78,
+    "simulation_draws": 1000,
+    "simulation_seed": 14619915981735828301,
+    "margin_interval_80": [
+      -9.0,
+      36.0
+    ],
+    "total_interval_80": [
+      31.900000000000006,
+      75.0
+    ],
+    "home_score_interval_80": [
+      17.0,
+      50.0
+    ],
+    "away_score_interval_80": [
+      5.0,
+      35.0
+    ],
+    "simulated_mean_home_score": 33.44,
+    "simulated_mean_away_score": 19.943,
+    "simulated_margin_mean": 13.497,
+    "simulated_margin_sd": 16.872482676585317,
+    "simulated_total_mean": 53.383,
+    "simulated_total_sd": 16.695000270561067,
+    "simulated_score_correlation": -0.01065176971436455,
+    "home_score_median": 33.0,
+    "away_score_median": 20.0,
+    "margin_median": 14.0,
+    "total_median": 53.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401862776,
+    "season": 2026,
+    "home_team": "Louisiana",
+    "away_team": "UAB",
+    "kickoff": "2026-09-20T00:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 32.848972697608986,
+    "expected_away_score": 26.34915654726386,
+    "projected_home_margin": 6.499816150345126,
+    "projected_total": 59.198129244872845,
+    "home_win_probability": 0.6566402643177491,
+    "simulated_home_win_probability": 0.649,
+    "simulation_draws": 1000,
+    "simulation_seed": 13090607906350835890,
+    "margin_interval_80": [
+      -14.0,
+      28.0
+    ],
+    "total_interval_80": [
+      37.0,
+      79.0
+    ],
+    "home_score_interval_80": [
+      17.0,
+      48.0
+    ],
+    "away_score_interval_80": [
+      12.0,
+      40.0
+    ],
+    "simulated_mean_home_score": 32.524,
+    "simulated_mean_away_score": 25.57,
+    "simulated_margin_mean": 6.954,
+    "simulated_margin_sd": 16.3459191565685,
+    "simulated_total_mean": 58.094,
+    "simulated_total_sd": 16.425741047787433,
+    "simulated_score_correlation": 0.004885455127986543,
+    "home_score_median": 32.0,
+    "away_score_median": 25.0,
+    "margin_median": 7.0,
+    "total_median": 59.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401860887,
+    "season": 2026,
+    "home_team": "San Diego State",
+    "away_team": "James Madison",
+    "kickoff": "2026-09-20T02:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 19.264858107754947,
+    "expected_away_score": 22.983267458720455,
+    "projected_home_margin": -3.7184093509655085,
+    "projected_total": 42.2481255664754,
+    "home_win_probability": 0.4087639139312752,
+    "simulated_home_win_probability": 0.421,
+    "simulation_draws": 1000,
+    "simulation_seed": 5995822615077226495,
+    "margin_interval_80": [
+      -23.0,
+      17.100000000000023
+    ],
+    "total_interval_80": [
+      22.0,
+      64.0
+    ],
+    "home_score_interval_80": [
+      4.0,
+      35.0
+    ],
+    "away_score_interval_80": [
+      8.0,
+      36.0
+    ],
+    "simulated_mean_home_score": 19.813,
+    "simulated_mean_away_score": 22.727,
+    "simulated_margin_mean": -2.914,
+    "simulated_margin_sd": 15.536794907444586,
+    "simulated_total_mean": 42.54,
+    "simulated_total_sd": 16.36662049007877,
+    "simulated_score_correlation": 0.052239689355671935,
+    "home_score_median": 19.0,
+    "away_score_median": 23.0,
+    "margin_median": -3.5,
+    "total_median": 43.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401856793,
+    "season": 2026,
+    "home_team": "Arizona",
+    "away_team": "Northern Illinois",
+    "kickoff": "2026-09-20T02:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 35.51015206836575,
+    "expected_away_score": 11.647000363310074,
+    "projected_home_margin": 23.863151705055675,
+    "projected_total": 47.157152431675826,
+    "home_win_probability": 0.9306565920771745,
+    "simulated_home_win_probability": 0.943,
+    "simulation_draws": 1000,
+    "simulation_seed": 13522498878501961959,
+    "margin_interval_80": [
+      5.0,
+      43.0
+    ],
+    "total_interval_80": [
+      27.900000000000006,
+      68.0
+    ],
+    "home_score_interval_80": [
+      20.0,
+      51.0
+    ],
+    "away_score_interval_80": [
+      0.0,
+      25.0
+    ],
+    "simulated_mean_home_score": 35.798,
+    "simulated_mean_away_score": 12.036,
+    "simulated_margin_mean": 23.762,
+    "simulated_margin_sd": 15.010885472972028,
+    "simulated_total_mean": 47.834,
+    "simulated_total_sd": 15.781492309014997,
+    "simulated_score_correlation": 0.05137854479060932,
+    "home_score_median": 36.0,
+    "away_score_median": 11.0,
+    "margin_median": 24.5,
+    "total_median": 47.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401864507,
+    "season": 2026,
+    "home_team": "Sacramento State",
+    "away_team": "North Dakota State",
+    "kickoff": "2026-09-20T02:30:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 16.80446687172636,
+    "expected_away_score": 35.05753985050826,
+    "projected_home_margin": -18.253072978781905,
+    "projected_total": 51.862006722234625,
+    "home_win_probability": 0.12869201250809592,
+    "simulated_home_win_probability": 0.141,
+    "simulation_draws": 1000,
+    "simulation_seed": 5028884409823602752,
+    "margin_interval_80": [
+      -38.0,
+      4.0
+    ],
+    "total_interval_80": [
+      33.0,
+      73.0
+    ],
+    "home_score_interval_80": [
+      1.0,
+      33.0
+    ],
+    "away_score_interval_80": [
+      21.0,
+      49.0
+    ],
+    "simulated_mean_home_score": 17.358,
+    "simulated_mean_away_score": 35.272,
+    "simulated_margin_mean": -17.914,
+    "simulated_margin_sd": 16.083073999371802,
+    "simulated_total_mean": 52.63,
+    "simulated_total_sd": 15.409820328691785,
+    "simulated_score_correlation": -0.04274138188533745,
+    "home_score_median": 17.0,
+    "away_score_median": 35.0,
+    "margin_median": -19.0,
+    "total_median": 53.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401858458,
+    "season": 2026,
+    "home_team": "UCLA",
+    "away_team": "Purdue",
+    "kickoff": "2026-09-20T03:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 35.509334977168734,
+    "expected_away_score": 23.89340843934768,
+    "projected_home_margin": 11.615926537821053,
+    "projected_total": 59.402743416516415,
+    "home_win_probability": 0.7644725000901659,
+    "simulated_home_win_probability": 0.749,
+    "simulation_draws": 1000,
+    "simulation_seed": 5325161085473243271,
+    "margin_interval_80": [
+      -9.0,
+      31.100000000000023
+    ],
+    "total_interval_80": [
+      38.900000000000006,
+      82.0
+    ],
+    "home_score_interval_80": [
+      19.0,
+      51.10000000000002
+    ],
+    "away_score_interval_80": [
+      10.0,
+      38.0
+    ],
+    "simulated_mean_home_score": 35.794,
+    "simulated_mean_away_score": 24.407,
+    "simulated_margin_mean": 11.387,
+    "simulated_margin_sd": 16.252857791366612,
+    "simulated_total_mean": 60.201,
+    "simulated_total_sd": 16.90077617256779,
+    "simulated_score_correlation": 0.03956268669190058,
+    "home_score_median": 37.0,
+    "away_score_median": 24.0,
+    "margin_median": 12.0,
+    "total_median": 60.0,
+    "market_snapshot_count": 0
+  },
+  {
+    "game_id": 401860888,
+    "season": 2026,
+    "home_team": "San Jos\u00e9 State",
+    "away_team": "Fresno State",
+    "kickoff": "2026-09-20T03:00:00+00:00",
+    "as_of": "2026-09-15T23:30:00+00:00",
+    "latest_result_available_at": "2026-09-13T11:59:00+00:00",
+    "prior_fbs_games": 3964,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 25.03491755536191,
+    "expected_away_score": 22.3501361567556,
+    "projected_home_margin": 2.6847813986063116,
+    "projected_total": 47.38505371211751,
+    "home_win_probability": 0.5661535126669162,
+    "simulated_home_win_probability": 0.554,
+    "simulation_draws": 1000,
+    "simulation_seed": 878932585916229629,
+    "margin_interval_80": [
+      -18.0,
+      23.0
+    ],
+    "total_interval_80": [
+      26.0,
+      68.0
+    ],
+    "home_score_interval_80": [
+      8.0,
+      41.0
+    ],
+    "away_score_interval_80": [
+      8.0,
+      36.0
+    ],
+    "simulated_mean_home_score": 24.502,
+    "simulated_mean_away_score": 22.108,
+    "simulated_margin_mean": 2.394,
+    "simulated_margin_sd": 16.06321234345082,
+    "simulated_total_mean": 46.61,
+    "simulated_total_sd": 16.734992081263737,
+    "simulated_score_correlation": 0.04115248124375331,
+    "home_score_median": 25.0,
+    "away_score_median": 22.0,
+    "margin_median": 3.0,
+    "total_median": 46.0,
+    "market_snapshot_count": 0
+  }
+]

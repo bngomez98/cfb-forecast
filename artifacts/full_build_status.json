@@ -1,0 +1,6 @@
+{
+  "status": "failed",
+  "started_at": "2026-10-09T05:14:54Z",
+  "stage": "repository",
+  "error": "Command failed at line 45: git fetch --all --prune"
+}

@@ -1,0 +1,12 @@
+
+[1;36m[03:26:07] Checking Git repository[0m
+git@github.com: Permission denied (publickey).
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+BUILD FAILED
+Stage: repository
+Reason: Command failed at line 45: git fetch --all --prune
+Log: /mnt/c/Users/brian/Downloads/cfb_forecast/cfb_forecast/artifacts/logs/full_build_20261009T032607Z.log

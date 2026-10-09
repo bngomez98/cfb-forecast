@@ -18,12 +18,10 @@ RUN apt-get update \
 
 COPY pyproject.toml ./
 COPY src ./src
+COPY scripts ./scripts
 RUN --mount=type=cache,target=/root/.cache/pip python -m pip install .
 
-COPY data ./data
-COPY artifacts ./artifacts
-COPY examples ./examples
-COPY scripts ./scripts
+COPY . .
 
 RUN useradd --create-home --uid 10001 cfb \
     && chown -R cfb:cfb /app

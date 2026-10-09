@@ -1,10 +1,5 @@
-# Version-control and editor files
+# Exclude only repository metadata, caches, local environments, and transient downloads.
 .git
-.gitignore
-.vscode
-.idea
-
-# Python caches and local environments
 __pycache__
 *.py[cod]
 .pytest_cache
@@ -12,13 +7,4 @@ __pycache__
 .venv
 venv
 env
-
-# Logs and transient outputs
-*.log
-*.tmp
-
-# Documentation not needed at runtime
-*.md
-
-# Tests are excluded from the runtime image
- tests
+*.download

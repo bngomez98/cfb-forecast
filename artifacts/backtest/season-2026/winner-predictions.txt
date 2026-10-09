@@ -1,0 +1,240 @@
+CFB FORECAST WINNER PREDICTIONS
+================================================================================
+
+Predicted winner versus actual winner, joined by game_id.
+
+WEEK 1
+--------------------------------------------------------------------------------
+2026-08-29T16:00:00+00:00 | North Carolina at TCU | PICK: TCU (71.2%) | ACTUAL: North Carolina | FINAL: 15-10 | WRONG
+2026-08-29T19:00:00+00:00 | San José State at USC | PICK: USC (90.7%) | ACTUAL: USC | FINAL: 26-42 | CORRECT
+2026-08-29T19:30:00+00:00 | NC State at Virginia | PICK: Virginia (66.7%) | ACTUAL: Virginia | FINAL: 8-34 | CORRECT
+2026-08-29T21:30:00+00:00 | Jacksonville State at North Dakota State | PICK: North Dakota State (73.0%) | ACTUAL: North Dakota State | FINAL: 7-33 | CORRECT
+2026-08-29T22:30:00+00:00 | Sacramento State at Eastern Michigan | PICK: Sacramento State (60.7%) | ACTUAL: Eastern Michigan | FINAL: 17-28 | WRONG
+2026-08-29T23:00:00+00:00 | Hawai'i at Stanford | PICK: Stanford (63.9%) | ACTUAL: Stanford | FINAL: 27-37 | CORRECT
+2026-08-29T23:00:00+00:00 | New Mexico State at Florida State | PICK: Florida State (89.1%) | ACTUAL: Florida State | FINAL: 17-34 | CORRECT
+2026-08-30T02:00:00+00:00 | Memphis at UNLV | PICK: UNLV (58.5%) | ACTUAL: Memphis | FINAL: 27-21 | WRONG
+2026-09-03T22:00:00+00:00 | Massachusetts at Rutgers | PICK: Rutgers (92.7%) | ACTUAL: Massachusetts | FINAL: 37-21 | WRONG
+2026-09-03T23:00:00+00:00 | Akron at Wake Forest | PICK: Wake Forest (88.3%) | ACTUAL: Wake Forest | FINAL: 16-38 | CORRECT
+2026-09-04T00:00:00+00:00 | Colorado at Georgia Tech | PICK: Georgia Tech (77.1%) | ACTUAL: Colorado | FINAL: 14-13 | WRONG
+2026-09-04T01:00:00+00:00 | UAB at Illinois | PICK: Illinois (86.0%) | ACTUAL: Illinois | FINAL: 23-42 | CORRECT
+2026-09-04T22:30:00+00:00 | San José State at Eastern Michigan | PICK: Eastern Michigan (58.5%) | ACTUAL: San José State | FINAL: 27-21 | WRONG
+2026-09-05T00:00:00+00:00 | UTEP at Oklahoma | PICK: Oklahoma (94.8%) | ACTUAL: Oklahoma | FINAL: 0-51 | CORRECT
+2026-09-05T00:00:00+00:00 | Toledo at Michigan State | PICK: Michigan State (52.3%) | ACTUAL: Michigan State | FINAL: 20-30 | CORRECT
+2026-09-05T01:00:00+00:00 | Miami at Stanford | PICK: Miami (80.8%) | ACTUAL: Miami | FINAL: 45-6 | CORRECT
+2026-09-05T01:00:00+00:00 | Fresno State at USC | PICK: USC (80.6%) | ACTUAL: USC | FINAL: 0-39 | CORRECT
+2026-09-05T16:00:00+00:00 | East Carolina at Alabama | PICK: Alabama (74.0%) | ACTUAL: Alabama | FINAL: 10-48 | CORRECT
+2026-09-05T16:00:00+00:00 | Oregon State at Houston | PICK: Houston (82.2%) | ACTUAL: Houston | FINAL: 20-33 | CORRECT
+2026-09-05T16:00:00+00:00 | Coastal Carolina at West Virginia | PICK: West Virginia (75.8%) | ACTUAL: West Virginia | FINAL: 24-31 | CORRECT
+2026-09-05T16:00:00+00:00 | North Texas at Indiana | PICK: Indiana (91.7%) | ACTUAL: Indiana | FINAL: 16-52 | CORRECT
+2026-09-05T16:00:00+00:00 | Ohio at Nebraska | PICK: Nebraska (64.6%) | ACTUAL: Nebraska | FINAL: 21-49 | CORRECT
+2026-09-05T16:00:00+00:00 | Liberty at James Madison | PICK: James Madison (87.9%) | ACTUAL: James Madison | FINAL: 13-20 | CORRECT
+2026-09-05T16:30:00+00:00 | Miami (OH) at Pittsburgh | PICK: Pittsburgh (79.9%) | ACTUAL: Pittsburgh | FINAL: 14-59 | CORRECT
+2026-09-05T16:30:00+00:00 | Ball State at Ohio State | PICK: Ohio State (98.8%) | ACTUAL: Ohio State | FINAL: 3-56 | CORRECT
+2026-09-05T16:45:00+00:00 | Kent State at South Carolina | PICK: South Carolina (90.2%) | ACTUAL: South Carolina | FINAL: 0-57 | CORRECT
+2026-09-05T19:30:00+00:00 | Baylor at Auburn | PICK: Auburn (64.4%) | ACTUAL: Auburn | FINAL: 16-17 | CORRECT
+2026-09-05T19:30:00+00:00 | Texas State at Texas | PICK: Texas (80.1%) | ACTUAL: Texas | FINAL: 7-59 | CORRECT
+2026-09-05T19:30:00+00:00 | Boston College at Cincinnati | PICK: Cincinnati (68.4%) | ACTUAL: Cincinnati | FINAL: 15-34 | CORRECT
+2026-09-05T19:30:00+00:00 | Tulane at Duke | PICK: Duke (58.6%) | ACTUAL: Duke | FINAL: 3-17 | CORRECT
+2026-09-05T19:30:00+00:00 | Boise State at Oregon | PICK: Oregon (88.7%) | ACTUAL: Oregon | FINAL: 27-34 | CORRECT
+2026-09-05T19:30:00+00:00 | Marshall at Penn State | PICK: Penn State (84.6%) | ACTUAL: Penn State | FINAL: 0-45 | CORRECT
+2026-09-05T19:45:00+00:00 | Oklahoma State at Tulsa | PICK: Tulsa (54.2%) | ACTUAL: Tulsa | FINAL: 10-24 | CORRECT
+2026-09-05T20:15:00+00:00 | Northern Illinois at Iowa | PICK: Iowa (94.1%) | ACTUAL: Iowa | FINAL: 0-40 | CORRECT
+2026-09-05T22:00:00+00:00 | Wyoming at Colorado State | PICK: Colorado State (55.5%) | ACTUAL: Colorado State | FINAL: 13-35 | CORRECT
+2026-09-05T23:00:00+00:00 | Missouri State at Texas A&M | PICK: Texas A&M (91.3%) | ACTUAL: Texas A&M | FINAL: 0-50 | CORRECT
+2026-09-05T23:00:00+00:00 | Arkansas State at Memphis | PICK: Memphis (74.1%) | ACTUAL: Memphis | FINAL: 24-42 | CORRECT
+2026-09-05T23:00:00+00:00 | Florida International at South Florida | PICK: South Florida (86.6%) | ACTUAL: South Florida | FINAL: 9-19 | CORRECT
+2026-09-05T23:00:00+00:00 | Sam Houston at Troy | PICK: Troy (81.2%) | ACTUAL: Troy | FINAL: 21-24 | CORRECT
+2026-09-05T23:30:00+00:00 | Clemson at LSU | PICK: LSU (56.9%) | ACTUAL: LSU | FINAL: 10-51 | CORRECT
+2026-09-05T23:30:00+00:00 | UL Monroe at Mississippi State | PICK: Mississippi State (82.6%) | ACTUAL: Mississippi State | FINAL: 13-62 | CORRECT
+2026-09-05T23:30:00+00:00 | Western Michigan at Michigan | PICK: Michigan (75.7%) | ACTUAL: Michigan | FINAL: 12-13 | CORRECT
+2026-09-05T23:45:00+00:00 | Florida Atlantic at Florida | PICK: Florida (81.7%) | ACTUAL: Florida | FINAL: 21-66 | CORRECT
+2026-09-06T02:00:00+00:00 | UNLV at Hawai'i | PICK: UNLV (50.7%) | ACTUAL: UNLV | FINAL: 21-6 | CORRECT
+2026-09-06T02:00:00+00:00 | Central Michigan at New Mexico | PICK: New Mexico (74.5%) | ACTUAL: New Mexico | FINAL: 7-38 | CORRECT
+2026-09-06T02:30:00+00:00 | UCLA at California | PICK: California (59.1%) | ACTUAL: UCLA | FINAL: 45-24 | WRONG
+2026-09-06T02:30:00+00:00 | Western Kentucky at Nevada | PICK: Nevada (51.8%) | ACTUAL: Nevada | FINAL: 14-49 | CORRECT
+2026-09-06T20:00:00+00:00 | Washington State at Washington | PICK: Washington (76.1%) | ACTUAL: Washington | FINAL: 10-24 | CORRECT
+2026-09-06T23:30:00+00:00 | Louisville at Ole Miss | PICK: Ole Miss (67.0%) | ACTUAL: Ole Miss | FINAL: 38-41 | CORRECT
+2026-09-06T23:30:00+00:00 | Wisconsin at Notre Dame | PICK: Notre Dame (82.6%) | ACTUAL: Notre Dame | FINAL: 13-41 | CORRECT
+2026-09-07T23:30:00+00:00 | SMU at Florida State | PICK: SMU (50.4%) | ACTUAL: SMU | FINAL: 27-24 | CORRECT
+
+WEEK 2
+--------------------------------------------------------------------------------
+2026-09-11T23:30:00+00:00 | Rutgers at Boston College | PICK: Boston College (72.5%) | ACTUAL: Boston College | FINAL: 21-28 | CORRECT
+2026-09-12T00:00:00+00:00 | Missouri at Kansas | PICK: Missouri (58.6%) | ACTUAL: Missouri | FINAL: 38-21 | CORRECT
+2026-09-12T16:00:00+00:00 | Oklahoma at Michigan | PICK: Oklahoma (58.2%) | ACTUAL: Michigan | FINAL: 10-17 | WRONG
+2026-09-12T16:00:00+00:00 | Arizona State at Texas A&M | PICK: Texas A&M (84.6%) | ACTUAL: Texas A&M | FINAL: 20-48 | CORRECT
+2026-09-12T16:00:00+00:00 | Washington State at Kansas State | PICK: Kansas State (59.6%) | ACTUAL: Kansas State | FINAL: 7-34 | CORRECT
+2026-09-12T16:00:00+00:00 | Oregon at Oklahoma State | PICK: Oregon (89.0%) | ACTUAL: Oklahoma State | FINAL: 31-39 | WRONG
+2026-09-12T16:00:00+00:00 | Old Dominion at Virginia Tech | PICK: Old Dominion (55.1%) | ACTUAL: Virginia Tech | FINAL: 21-44 | WRONG
+2026-09-12T16:00:00+00:00 | Wake Forest at Purdue | PICK: Wake Forest (60.1%) | ACTUAL: Wake Forest | FINAL: 38-36 | CORRECT
+2026-09-12T16:00:00+00:00 | Penn State at Temple | PICK: Penn State (87.3%) | ACTUAL: Penn State | FINAL: 27-9 | CORRECT
+2026-09-12T16:00:00+00:00 | South Florida at Army | PICK: South Florida (55.8%) | ACTUAL: South Florida | FINAL: 28-24 | CORRECT
+2026-09-12T16:00:00+00:00 | App State at East Carolina | PICK: East Carolina (71.3%) | ACTUAL: App State | FINAL: 27-24 | WRONG
+2026-09-12T16:45:00+00:00 | Western Kentucky at Georgia | PICK: Georgia (96.1%) | ACTUAL: Georgia | FINAL: 20-70 | CORRECT
+2026-09-12T19:30:00+00:00 | Alabama at Kentucky | PICK: Alabama (74.3%) | ACTUAL: Alabama | FINAL: 45-17 | CORRECT
+2026-09-12T19:30:00+00:00 | Mississippi State at Minnesota | PICK: Mississippi State (62.8%) | ACTUAL: Mississippi State | FINAL: 38-13 | CORRECT
+2026-09-12T19:30:00+00:00 | UCF at Pittsburgh | PICK: Pittsburgh (84.0%) | ACTUAL: Pittsburgh | FINAL: 7-12 | CORRECT
+2026-09-12T19:30:00+00:00 | Arizona at BYU | PICK: BYU (61.2%) | ACTUAL: BYU | FINAL: 17-28 | CORRECT
+2026-09-12T19:30:00+00:00 | California at Syracuse | PICK: Syracuse (53.9%) | ACTUAL: California | FINAL: 21-18 | WRONG
+2026-09-12T19:30:00+00:00 | Duke at Illinois | PICK: Illinois (59.3%) | ACTUAL: Duke | FINAL: 31-27 | WRONG
+2026-09-12T19:30:00+00:00 | Eastern Michigan at Michigan State | PICK: Michigan State (81.0%) | ACTUAL: Michigan State | FINAL: 7-35 | CORRECT
+2026-09-12T19:30:00+00:00 | Maryland at UConn | PICK: Maryland (51.2%) | ACTUAL: Maryland | FINAL: 38-14 | CORRECT
+2026-09-12T19:30:00+00:00 | Utah State at Washington | PICK: Washington (87.7%) | ACTUAL: Washington | FINAL: 14-16 | CORRECT
+2026-09-12T19:30:00+00:00 | Rice at Notre Dame | PICK: Notre Dame (99.0%) | ACTUAL: Notre Dame | FINAL: 0-52 | CORRECT
+2026-09-12T19:30:00+00:00 | UTSA at Texas State | PICK: UTSA (61.3%) | ACTUAL: UTSA | FINAL: 31-26 | CORRECT
+2026-09-12T19:30:00+00:00 | UL Monroe at UAB | PICK: UAB (84.0%) | ACTUAL: UAB | FINAL: 20-26 | CORRECT
+2026-09-12T19:45:00+00:00 | UNLV at North Texas | PICK: North Texas (67.3%) | ACTUAL: North Texas | FINAL: 6-44 | CORRECT
+2026-09-12T20:15:00+00:00 | Delaware at Vanderbilt | PICK: Vanderbilt (93.4%) | ACTUAL: Vanderbilt | FINAL: 26-35 | CORRECT
+2026-09-12T22:00:00+00:00 | Memphis at Boise State | PICK: Boise State (61.0%) | ACTUAL: Boise State | FINAL: 20-38 | CORRECT
+2026-09-12T22:00:00+00:00 | Buffalo at Florida International | PICK: Florida International (69.5%) | ACTUAL: Florida International | FINAL: 20-33 | CORRECT
+2026-09-12T22:00:00+00:00 | Jacksonville State at Ohio | PICK: Ohio (66.1%) | ACTUAL: Ohio | FINAL: 27-29 | CORRECT
+2026-09-12T23:00:00+00:00 | Tennessee at Georgia Tech | PICK: Tennessee (52.0%) | ACTUAL: Tennessee | FINAL: 45-24 | CORRECT
+2026-09-12T23:00:00+00:00 | Bowling Green at Nebraska | PICK: Nebraska (88.4%) | ACTUAL: Nebraska | FINAL: 7-56 | CORRECT
+2026-09-12T23:00:00+00:00 | Tulsa at Sam Houston | PICK: Tulsa (63.7%) | ACTUAL: Tulsa | FINAL: 23-17 | CORRECT
+2026-09-12T23:00:00+00:00 | South Alabama at Tulane | PICK: Tulane (72.4%) | ACTUAL: Tulane | FINAL: 24-28 | CORRECT
+2026-09-12T23:00:00+00:00 | Georgia State at Kennesaw State | PICK: Kennesaw State (65.9%) | ACTUAL: Georgia State | FINAL: 31-17 | WRONG
+2026-09-12T23:00:00+00:00 | Middle Tennessee at Marshall | PICK: Marshall (62.8%) | ACTUAL: Marshall | FINAL: 26-28 | CORRECT
+2026-09-12T23:15:00+00:00 | San Diego State at UCLA | PICK: UCLA (64.2%) | ACTUAL: UCLA | FINAL: 10-28 | CORRECT
+2026-09-12T23:30:00+00:00 | Ohio State at Texas | PICK: Ohio State (54.8%) | ACTUAL: Texas | FINAL: 23-24 | WRONG
+2026-09-12T23:30:00+00:00 | Texas Tech at Oregon State | PICK: Texas Tech (88.9%) | ACTUAL: Texas Tech | FINAL: 35-24 | CORRECT
+2026-09-12T23:30:00+00:00 | Iowa State at Iowa | PICK: Iowa (80.7%) | ACTUAL: Iowa | FINAL: 13-16 | CORRECT
+2026-09-12T23:30:00+00:00 | Georgia Southern at Clemson | PICK: Clemson (66.9%) | ACTUAL: Clemson | FINAL: 7-22 | CORRECT
+2026-09-12T23:30:00+00:00 | Navy at Florida Atlantic | PICK: Navy (78.2%) | ACTUAL: Florida Atlantic | FINAL: 30-38 | WRONG
+2026-09-12T23:30:00+00:00 | Louisiana Tech at LSU | PICK: LSU (91.6%) | ACTUAL: LSU | FINAL: 14-45 | CORRECT
+2026-09-12T23:45:00+00:00 | Southern Miss at Auburn | PICK: Auburn (89.0%) | ACTUAL: Auburn | FINAL: 8-43 | CORRECT
+2026-09-12T23:45:00+00:00 | Charlotte at Ole Miss | PICK: Ole Miss (97.0%) | ACTUAL: Ole Miss | FINAL: 9-41 | CORRECT
+2026-09-13T02:00:00+00:00 | North Dakota State at Air Force | PICK: North Dakota State (67.4%) | ACTUAL: North Dakota State | FINAL: 38-32 | CORRECT
+2026-09-13T02:15:00+00:00 | Arkansas at Utah | PICK: Utah (74.1%) | ACTUAL: Utah | FINAL: 10-43 | CORRECT
+2026-09-13T02:30:00+00:00 | Sacramento State at Fresno State | PICK: Fresno State (56.4%) | ACTUAL: Fresno State | FINAL: 3-49 | CORRECT
+2026-09-13T03:00:00+00:00 | Louisiana at USC | PICK: USC (96.1%) | ACTUAL: USC | FINAL: 30-49 | CORRECT
+2026-09-13T03:59:00+00:00 | New Mexico State at Hawai'i | PICK: Hawai'i (62.8%) | ACTUAL: Hawai'i | FINAL: 19-29 | CORRECT
+
+WEEK 3
+--------------------------------------------------------------------------------
+2026-09-17T23:30:00+00:00 | Syracuse at Pittsburgh | PICK: Pittsburgh (90.3%) | ACTUAL: Pittsburgh | FINAL: 13-27 | CORRECT
+2026-09-18T23:30:00+00:00 | Miami at Wake Forest | PICK: Miami (79.7%) | ACTUAL: Miami | FINAL: 33-20 | CORRECT
+2026-09-19T00:00:00+00:00 | Houston at Texas Tech | PICK: Texas Tech (71.9%) | ACTUAL: Texas Tech | FINAL: 26-28 | CORRECT
+2026-09-19T15:30:00+00:00 | Coastal Carolina at Delaware | PICK: Delaware (71.7%) | ACTUAL: Delaware | FINAL: 14-22 | CORRECT
+2026-09-19T16:00:00+00:00 | Georgia at Arkansas | PICK: Georgia (77.7%) | ACTUAL: Georgia | FINAL: 45-17 | CORRECT
+2026-09-19T16:00:00+00:00 | Tulane at Kansas State | PICK: Kansas State (82.3%) | ACTUAL: Kansas State | FINAL: 20-31 | CORRECT
+2026-09-19T16:00:00+00:00 | Bowling Green at Iowa State | PICK: Iowa State (95.4%) | ACTUAL: Iowa State | FINAL: 7-55 | CORRECT
+2026-09-19T16:00:00+00:00 | Arizona State at Kansas | PICK: Arizona State (60.6%) | ACTUAL: Arizona State | FINAL: 24-17 | CORRECT
+2026-09-19T16:00:00+00:00 | North Carolina at Clemson | PICK: North Carolina (50.2%) | ACTUAL: Clemson | FINAL: 20-28 | WRONG
+2026-09-19T16:00:00+00:00 | Akron at Minnesota | PICK: Minnesota (76.6%) | ACTUAL: Minnesota | FINAL: 7-41 | CORRECT
+2026-09-19T16:00:00+00:00 | Kent State at Ohio State | PICK: Ohio State (99.7%) | ACTUAL: Ohio State | FINAL: 3-59 | CORRECT
+2026-09-19T16:00:00+00:00 | Buffalo at Penn State | PICK: Penn State (94.7%) | ACTUAL: Penn State | FINAL: 13-55 | CORRECT
+2026-09-19T16:00:00+00:00 | North Texas at Texas State | PICK: North Texas (72.0%) | ACTUAL: Texas State | FINAL: 35-49 | WRONG
+2026-09-19T16:30:00+00:00 | Eastern Michigan at Wisconsin | PICK: Wisconsin (85.3%) | ACTUAL: Wisconsin | FINAL: 10-54 | CORRECT
+2026-09-19T16:45:00+00:00 | NC State at Vanderbilt | PICK: Vanderbilt (77.5%) | ACTUAL: Vanderbilt | FINAL: 31-35 | CORRECT
+2026-09-19T17:00:00+00:00 | Wyoming at Central Michigan | PICK: Central Michigan (57.8%) | ACTUAL: Central Michigan | FINAL: 10-24 | CORRECT
+2026-09-19T19:00:00+00:00 | Temple at Toledo | PICK: Toledo (68.5%) | ACTUAL: Toledo | FINAL: 48-49 | CORRECT
+2026-09-19T19:30:00+00:00 | Florida State at Alabama | PICK: Alabama (86.5%) | ACTUAL: Alabama | FINAL: 36-50 | CORRECT
+2026-09-19T19:30:00+00:00 | Kentucky at Texas A&M | PICK: Texas A&M (91.4%) | ACTUAL: Kentucky | FINAL: 31-21 | WRONG
+2026-09-19T19:30:00+00:00 | Miami (OH) at Cincinnati | PICK: Cincinnati (85.9%) | ACTUAL: Cincinnati | FINAL: 31-35 | CORRECT
+2026-09-19T19:30:00+00:00 | Utah State at Utah | PICK: Utah (88.4%) | ACTUAL: Utah | FINAL: 0-33 | CORRECT
+2026-09-19T19:30:00+00:00 | SMU at Louisville | PICK: Louisville (53.9%) | ACTUAL: Louisville | FINAL: 31-41 | CORRECT
+2026-09-19T19:30:00+00:00 | UTEP at Michigan | PICK: Michigan (95.8%) | ACTUAL: Michigan | FINAL: 17-52 | CORRECT
+2026-09-19T19:30:00+00:00 | USC at Rutgers | PICK: USC (89.6%) | ACTUAL: USC | FINAL: 42-35 | CORRECT
+2026-09-19T20:00:00+00:00 | Stanford at Duke | PICK: Duke (78.7%) | ACTUAL: Duke | FINAL: 7-35 | CORRECT
+2026-09-19T20:00:00+00:00 | Western Kentucky at Indiana | PICK: Indiana (99.6%) | ACTUAL: Indiana | FINAL: 0-38 | CORRECT
+2026-09-19T20:00:00+00:00 | Ball State at Liberty | PICK: Liberty (87.3%) | ACTUAL: Liberty | FINAL: 15-51 | CORRECT
+2026-09-19T20:00:00+00:00 | Louisiana Tech at Baylor | PICK: Baylor (83.3%) | ACTUAL: Baylor | FINAL: 19-36 | CORRECT
+2026-09-19T20:15:00+00:00 | Mississippi State at South Carolina | PICK: South Carolina (60.8%) | ACTUAL: Mississippi State | FINAL: 41-34 | WRONG
+2026-09-19T22:00:00+00:00 | East Carolina at Old Dominion | PICK: Old Dominion (69.3%) | ACTUAL: East Carolina | FINAL: 20-17 | WRONG
+2026-09-19T22:00:00+00:00 | Florida International at Florida Atlantic | PICK: Florida International (54.9%) | ACTUAL: Florida Atlantic | FINAL: 10-16 | WRONG
+2026-09-19T22:00:00+00:00 | Charlotte at App State | PICK: App State (69.5%) | ACTUAL: App State | FINAL: 21-26 | CORRECT
+2026-09-19T22:30:00+00:00 | Marshall at Missouri State | PICK: Missouri State (50.2%) | ACTUAL: Marshall | FINAL: 30-24 | WRONG
+2026-09-19T23:00:00+00:00 | Florida at Auburn | PICK: Auburn (56.8%) | ACTUAL: Florida | FINAL: 44-39 | WRONG
+2026-09-19T23:00:00+00:00 | Troy at Missouri | PICK: Missouri (92.4%) | ACTUAL: Missouri | FINAL: 17-27 | CORRECT
+2026-09-19T23:00:00+00:00 | Georgia State at UCF | PICK: UCF (73.8%) | ACTUAL: UCF | FINAL: 30-44 | CORRECT
+2026-09-19T23:00:00+00:00 | UConn at Southern Miss | PICK: Southern Miss (52.7%) | ACTUAL: UConn | FINAL: 48-20 | WRONG
+2026-09-19T23:00:00+00:00 | Western Michigan at Rice | PICK: Western Michigan (78.7%) | ACTUAL: Western Michigan | FINAL: 28-21 | CORRECT
+2026-09-19T23:00:00+00:00 | Nevada at Middle Tennessee | PICK: Nevada (63.0%) | ACTUAL: Middle Tennessee | FINAL: 20-27 | WRONG
+2026-09-19T23:00:00+00:00 | Ohio at South Alabama | PICK: South Alabama (55.5%) | ACTUAL: South Alabama | FINAL: 36-41 | CORRECT
+2026-09-19T23:00:00+00:00 | Georgia Southern at Jacksonville State | PICK: Jacksonville State (63.5%) | ACTUAL: Jacksonville State | FINAL: 27-31 | CORRECT
+2026-09-19T23:30:00+00:00 | LSU at Ole Miss | PICK: LSU (54.5%) | ACTUAL: Ole Miss | FINAL: 24-32 | WRONG
+2026-09-19T23:30:00+00:00 | New Mexico at Oklahoma | PICK: Oklahoma (74.9%) | ACTUAL: Oklahoma | FINAL: 6-14 | CORRECT
+2026-09-19T23:30:00+00:00 | BYU at Colorado State | PICK: BYU (81.4%) | ACTUAL: BYU | FINAL: 41-23 | CORRECT
+2026-09-19T23:30:00+00:00 | Colorado at Northwestern | PICK: Northwestern (68.0%) | ACTUAL: Northwestern | FINAL: 7-41 | CORRECT
+2026-09-19T23:30:00+00:00 | West Virginia at Virginia | PICK: Virginia (82.4%) | ACTUAL: West Virginia | FINAL: 38-27 | WRONG
+2026-09-19T23:30:00+00:00 | Virginia Tech at Maryland | PICK: Maryland (53.8%) | ACTUAL: Virginia Tech | FINAL: 35-26 | WRONG
+2026-09-19T23:30:00+00:00 | Michigan State at Notre Dame | PICK: Notre Dame (88.4%) | ACTUAL: Notre Dame | FINAL: 10-27 | CORRECT
+2026-09-19T23:45:00+00:00 | Kennesaw State at Tennessee | PICK: Tennessee (92.6%) | ACTUAL: Tennessee | FINAL: 9-42 | CORRECT
+2026-09-20T00:00:00+00:00 | UTSA at Texas | PICK: Texas (90.0%) | ACTUAL: Texas | FINAL: 6-30 | CORRECT
+2026-09-20T00:00:00+00:00 | Arkansas State at TCU | PICK: TCU (81.1%) | ACTUAL: TCU | FINAL: 7-31 | CORRECT
+2026-09-20T00:00:00+00:00 | UAB at Louisiana | PICK: Louisiana (65.7%) | ACTUAL: Louisiana | FINAL: 14-21 | CORRECT
+2026-09-20T02:00:00+00:00 | James Madison at San Diego State | PICK: James Madison (59.1%) | ACTUAL: James Madison | FINAL: 26-13 | CORRECT
+2026-09-20T02:30:00+00:00 | Northern Illinois at Arizona | PICK: Arizona (93.1%) | ACTUAL: Arizona | FINAL: 17-42 | CORRECT
+2026-09-20T02:30:00+00:00 | North Dakota State at Sacramento State | PICK: North Dakota State (87.1%) | ACTUAL: North Dakota State | FINAL: 31-10 | CORRECT
+2026-09-20T03:00:00+00:00 | Purdue at UCLA | PICK: UCLA (76.4%) | ACTUAL: UCLA | FINAL: 38-52 | CORRECT
+2026-09-20T03:00:00+00:00 | Fresno State at San José State | PICK: San José State (56.6%) | ACTUAL: Fresno State | FINAL: 26-10 | WRONG
+
+WEEK 4
+--------------------------------------------------------------------------------
+2026-09-24T23:30:00+00:00 | Liberty at Coastal Carolina | PICK: Liberty (53.7%) | ACTUAL: Liberty | FINAL: 34-17 | CORRECT
+2026-09-25T20:00:00+00:00 | Army at Temple | PICK: Temple (58.7%) | ACTUAL: Army | FINAL: 21-17 | WRONG
+2026-09-25T23:00:00+00:00 | Navy at UAB | PICK: Navy (59.6%) | ACTUAL: UAB | FINAL: 20-24 | WRONG
+2026-09-26T00:00:00+00:00 | Northwestern at Indiana | PICK: Indiana (88.5%) | ACTUAL: Indiana | FINAL: 23-29 | CORRECT
+2026-09-26T02:30:00+00:00 | Clemson at California | PICK: Clemson (55.4%) | ACTUAL: Clemson | FINAL: 24-10 | CORRECT
+2026-09-26T16:00:00+00:00 | Texas at Tennessee | PICK: Texas (69.9%) | ACTUAL: Texas | FINAL: 20-17 | CORRECT
+2026-09-26T16:00:00+00:00 | Sam Houston at Texas Tech | PICK: Texas Tech (93.9%) | ACTUAL: Texas Tech | FINAL: 14-49 | CORRECT
+2026-09-26T16:00:00+00:00 | Colorado at Baylor | PICK: Baylor (75.9%) | ACTUAL: Baylor | FINAL: 13-23 | CORRECT
+2026-09-26T16:00:00+00:00 | Virginia Tech at Boston College | PICK: Virginia Tech (67.8%) | ACTUAL: Virginia Tech | FINAL: 21-14 | CORRECT
+2026-09-26T16:00:00+00:00 | Wake Forest at Louisville | PICK: Louisville (74.8%) | ACTUAL: Wake Forest | FINAL: 30-27 | WRONG
+2026-09-26T16:00:00+00:00 | Illinois at Ohio State | PICK: Ohio State (90.0%) | ACTUAL: Ohio State | FINAL: 19-42 | CORRECT
+2026-09-26T16:00:00+00:00 | San Diego State at Toledo | PICK: Toledo (62.7%) | ACTUAL: Toledo | FINAL: 16-41 | CORRECT
+2026-09-26T16:00:00+00:00 | Colorado State at UTSA | PICK: UTSA (82.5%) | ACTUAL: UTSA | FINAL: 45-59 | CORRECT
+2026-09-26T16:00:00+00:00 | UNLV at Akron | PICK: UNLV (63.7%) | ACTUAL: UNLV | FINAL: 38-10 | CORRECT
+2026-09-26T16:00:00+00:00 | Ball State at Kent State | PICK: Kent State (52.4%) | ACTUAL: Kent State | FINAL: 13-26 | CORRECT
+2026-09-26T16:45:00+00:00 | South Alabama at Kentucky | PICK: Kentucky (83.8%) | ACTUAL: Kentucky | FINAL: 21-45 | CORRECT
+2026-09-26T17:30:00+00:00 | UCLA at Maryland | PICK: UCLA (51.1%) | ACTUAL: UCLA | FINAL: 54-3 | CORRECT
+2026-09-26T18:00:00+00:00 | Notre Dame at Purdue | PICK: Notre Dame (92.1%) | ACTUAL: Notre Dame | FINAL: 49-10 | CORRECT
+2026-09-26T18:00:00+00:00 | Northern Illinois at Georgia State | PICK: Georgia State (75.4%) | ACTUAL: Georgia State | FINAL: 14-35 | CORRECT
+2026-09-26T19:00:00+00:00 | Hawai'i at Wyoming | PICK: Wyoming (50.6%) | ACTUAL: Wyoming | FINAL: 10-27 | CORRECT
+2026-09-26T19:30:00+00:00 | Ole Miss at Florida | PICK: Ole Miss (54.2%) | ACTUAL: Florida | FINAL: 28-52 | WRONG
+2026-09-26T19:30:00+00:00 | Oklahoma at Georgia | PICK: Georgia (73.2%) | ACTUAL: Georgia | FINAL: 13-41 | CORRECT
+2026-09-26T19:30:00+00:00 | TCU at UCF | PICK: UCF (52.4%) | ACTUAL: UCF | FINAL: 13-21 | CORRECT
+2026-09-26T19:30:00+00:00 | Utah at Iowa State | PICK: Utah (63.3%) | ACTUAL: Utah | FINAL: 31-17 | CORRECT
+2026-09-26T19:30:00+00:00 | Iowa at Michigan | PICK: Iowa (56.3%) | ACTUAL: Iowa | FINAL: 20-19 | CORRECT
+2026-09-26T19:30:00+00:00 | Boise State at Western Michigan | PICK: Boise State (50.2%) | ACTUAL: Boise State | FINAL: 32-7 | CORRECT
+2026-09-26T19:30:00+00:00 | UConn at Miami (OH) | PICK: Miami (OH) (53.4%) | ACTUAL: Miami (OH) | FINAL: 21-24 | CORRECT
+2026-09-26T19:30:00+00:00 | New Mexico at New Mexico State | PICK: New Mexico (78.4%) | ACTUAL: New Mexico | FINAL: 42-18 | CORRECT
+2026-09-26T20:00:00+00:00 | Houston at Georgia Southern | PICK: Houston (78.2%) | ACTUAL: Houston | FINAL: 42-28 | CORRECT
+2026-09-26T20:15:00+00:00 | Vanderbilt at Auburn | PICK: Auburn (64.9%) | ACTUAL: Auburn | FINAL: 15-21 | CORRECT
+2026-09-26T21:00:00+00:00 | Nebraska at Michigan State | PICK: Nebraska (51.4%) | ACTUAL: Nebraska | FINAL: 31-13 | CORRECT
+2026-09-26T21:00:00+00:00 | Wisconsin at Penn State | PICK: Penn State (72.6%) | ACTUAL: Wisconsin | FINAL: 24-20 | WRONG
+2026-09-26T21:00:00+00:00 | South Florida at Bowling Green | PICK: South Florida (91.0%) | ACTUAL: South Florida | FINAL: 14-6 | CORRECT
+2026-09-26T22:00:00+00:00 | Delaware at Virginia | PICK: Virginia (78.9%) | ACTUAL: Virginia | FINAL: 3-42 | CORRECT
+2026-09-26T22:00:00+00:00 | James Madison at Old Dominion | PICK: James Madison (61.7%) | ACTUAL: James Madison | FINAL: 46-20 | CORRECT
+2026-09-26T22:30:00+00:00 | Central Michigan at Miami | PICK: Miami (97.9%) | ACTUAL: Miami | FINAL: 3-52 | CORRECT
+2026-09-26T22:30:00+00:00 | Louisiana at Charlotte | PICK: Louisiana (57.7%) | ACTUAL: Louisiana | FINAL: 34-7 | CORRECT
+2026-09-26T23:00:00+00:00 | South Carolina at Alabama | PICK: Alabama (76.8%) | ACTUAL: Alabama | FINAL: 18-49 | CORRECT
+2026-09-26T23:00:00+00:00 | Kansas State at Cincinnati | PICK: Kansas State (68.7%) | ACTUAL: Cincinnati | FINAL: 26-31 | WRONG
+2026-09-26T23:00:00+00:00 | Oklahoma State at West Virginia | PICK: West Virginia (58.0%) | ACTUAL: Oklahoma State | FINAL: 41-24 | WRONG
+2026-09-26T23:00:00+00:00 | Southern Miss at Tulane | PICK: Tulane (86.9%) | ACTUAL: Tulane | FINAL: 21-24 | CORRECT
+2026-09-26T23:00:00+00:00 | Kennesaw State at Arkansas State | PICK: Arkansas State (62.4%) | ACTUAL: Arkansas State | FINAL: 14-17 | CORRECT
+2026-09-26T23:00:00+00:00 | Middle Tennessee at Jacksonville State | PICK: Jacksonville State (54.3%) | ACTUAL: Jacksonville State | FINAL: 13-23 | CORRECT
+2026-09-26T23:30:00+00:00 | Texas A&M at LSU | PICK: LSU (70.3%) | ACTUAL: LSU | FINAL: 6-35 | CORRECT
+2026-09-26T23:30:00+00:00 | Arizona at Washington State | PICK: Arizona (59.1%) | ACTUAL: Arizona | FINAL: 34-24 | CORRECT
+2026-09-26T23:30:00+00:00 | Oregon at USC | PICK: USC (62.5%) | ACTUAL: Oregon | FINAL: 41-27 | WRONG
+2026-09-26T23:30:00+00:00 | Troy at Utah State | PICK: Utah State (69.1%) | ACTUAL: Utah State | FINAL: 10-21 | CORRECT
+2026-09-26T23:30:00+00:00 | App State at NC State | PICK: NC State (72.9%) | ACTUAL: NC State | FINAL: 31-41 | CORRECT
+2026-09-26T23:45:00+00:00 | Missouri at Mississippi State | PICK: Mississippi State (70.7%) | ACTUAL: Mississippi State | FINAL: 24-31 | CORRECT
+2026-09-27T00:00:00+00:00 | Tulsa at Arkansas | PICK: Arkansas (67.8%) | ACTUAL: Arkansas | FINAL: 6-34 | CORRECT
+2026-09-27T00:00:00+00:00 | Florida Atlantic at UL Monroe | PICK: Florida Atlantic (66.1%) | ACTUAL: Florida Atlantic | FINAL: 45-17 | CORRECT
+2026-09-27T01:00:00+00:00 | Missouri State at SMU | PICK: SMU (95.5%) | ACTUAL: SMU | FINAL: 24-34 | CORRECT
+2026-09-27T01:00:00+00:00 | Oregon State at UTEP | PICK: Oregon State (75.9%) | ACTUAL: Oregon State | FINAL: 33-7 | CORRECT
+2026-09-27T01:00:00+00:00 | Massachusetts at Sacramento State | PICK: Massachusetts (56.4%) | ACTUAL: Massachusetts | FINAL: 35-6 | CORRECT
+2026-09-27T02:00:00+00:00 | Rice at Fresno State | PICK: Fresno State (80.5%) | ACTUAL: Fresno State | FINAL: 24-38 | CORRECT
+2026-09-27T02:30:00+00:00 | Georgia Tech at Stanford | PICK: Georgia Tech (52.8%) | ACTUAL: Stanford | FINAL: 27-34 | WRONG
+2026-09-27T02:30:00+00:00 | Air Force at Nevada | PICK: Nevada (63.3%) | ACTUAL: Air Force | FINAL: 36-33 | WRONG
+2026-09-27T03:00:00+00:00 | Minnesota at Washington | PICK: Washington (76.3%) | ACTUAL: Minnesota | FINAL: 27-24 | WRONG
+
+SEASON SUMMARY
+--------------------------------------------------------------------------------
+Games: 215
+Correct: 174
+Incorrect: 41
+Winner accuracy: 80.93%
+
+Source: C:\Users\brian\Downloads\cfb_forecast\cfb_forecast\artifacts\backtest\season-2026

@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-10-08T11:24:49.354604+00:00",
+  "root": "/mnt/c/Users/brian/Downloads/cfb_forecast",
+  "target": "/mnt/c/Users/brian/Downloads/cfb_forecast/cfb_forecast",
+  "sources": [
+    "/mnt/c/Users/brian/Downloads/cfb_forecast/cfb_forecast\\artifacts",
+    "/mnt/c/Users/brian/Downloads/cfb_forecast/cfb_forecast\\data"
+  ],
+  "dry_run": false,
+  "overwrite": false,
+  "copied_count": 0,
+  "conflict_count": 0,
+  "error_count": 0,
+  "copied": [],
+  "conflicts": [],
+  "errors": []
+}

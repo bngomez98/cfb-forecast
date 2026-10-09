@@ -2,15 +2,15 @@
   "files": {
     "schedule_2026.csv": {
       "url": "https://github.com/sportsdataverse/sportsdataverse-data/releases/download/cfb_schedules/cfb_schedules_2026.csv.gz",
-      "sha256": "82cd88e6266cc157912b7b689739ee27f28d9b0900b427b82c437e5c6aca1940",
-      "downloaded_at": "2026-10-02T14:03:04.236153+00:00",
-      "bytes": 762653
+      "sha256": "21393bd92fa5164091a996d44ab5a5b1baa5dae3fa2daf5ed2b33bfcd4f764a9",
+      "downloaded_at": "2026-10-08T11:18:06.728925+00:00",
+      "bytes": 768914
     },
     "adv_team_2026.parquet": {
       "url": "https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_cfb_adv_team/adv_team_2026.parquet",
-      "sha256": "62a43b781ed310b02a6d0e7b1d8868c4e916b926980dc18cb07d0899a223ec94",
-      "downloaded_at": "2026-10-02T14:03:13.756606+00:00",
-      "bytes": 144242
+      "sha256": "348667cb557c5d3d488e80075584cf8e5e09fc080f40b919f748de5209ba7f15",
+      "downloaded_at": "2026-10-08T11:18:07.200464+00:00",
+      "bytes": 161158
     },
     "schedule_2021.csv": {
       "url": "https://raw.githubusercontent.com/sportsdataverse/cfbfastR-data/main/schedules/csv/cfb_schedules_2021.csv",

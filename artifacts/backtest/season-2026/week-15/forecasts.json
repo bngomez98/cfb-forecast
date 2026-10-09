@@ -1,0 +1,51 @@
+[
+  {
+    "game_id": 401862844,
+    "season": 2026,
+    "home_team": "Army",
+    "away_team": "Navy",
+    "kickoff": "2026-12-12T20:00:00+00:00",
+    "as_of": "2026-12-10T20:00:00+00:00",
+    "latest_result_available_at": "2026-09-27T11:00:00+00:00",
+    "prior_fbs_games": 4079,
+    "model_variant": "pbp",
+    "head_training_through_season": 2025,
+    "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+    "expected_home_score": 23.330092284668506,
+    "expected_away_score": 24.551245207706405,
+    "projected_home_margin": -1.2211529230378986,
+    "projected_total": 47.88133749237491,
+    "home_win_probability": 0.46980022789265113,
+    "simulated_home_win_probability": 0.475,
+    "simulation_draws": 1000,
+    "simulation_seed": 14680038231438069817,
+    "margin_interval_80": [
+      -21.099999999999994,
+      19.0
+    ],
+    "total_interval_80": [
+      27.0,
+      70.0
+    ],
+    "home_score_interval_80": [
+      7.0,
+      38.0
+    ],
+    "away_score_interval_80": [
+      10.0,
+      39.0
+    ],
+    "simulated_mean_home_score": 23.502,
+    "simulated_mean_away_score": 24.563,
+    "simulated_margin_mean": -1.061,
+    "simulated_margin_sd": 15.558642304209913,
+    "simulated_total_mean": 48.065,
+    "simulated_total_sd": 16.617307540931833,
+    "simulated_score_correlation": 0.06592409904033604,
+    "home_score_median": 23.0,
+    "away_score_median": 25.0,
+    "margin_median": -1.5,
+    "total_median": 48.0,
+    "market_snapshot_count": 0
+  }
+]

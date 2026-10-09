@@ -1,13 +1,16 @@
 from pathlib import Path
 import ast
 import json
+import os
 import pandas as pd
 import streamlit as st
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 st.set_page_config(page_title="CFB Forecast", page_icon="🏈", layout="wide")
 
-ARTIFACT_ROOT = Path("/app/artifacts")
-DATA_ROOT = Path("/app/data")
+ARTIFACT_ROOT = Path(os.environ.get("CFB_ARTIFACTS_DIR", str(PROJECT_ROOT / "artifacts")))
+DATA_ROOT = Path(os.environ.get("CFB_DATA_DIR", str(PROJECT_ROOT / "data")))
 LATEST = ARTIFACT_ROOT / "latest-weekly"
 
 @st.cache_data(ttl=300)
