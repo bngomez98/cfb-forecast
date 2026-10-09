@@ -114,6 +114,24 @@ def main():
     crh.add_argument("--out", required=True)
     crh.add_argument("--cache-dir", default="data/rosters")
     crh.add_argument("--timeout", type=float, default=60.0)
+    cp = sub.add_parser(
+        "season-ppg",
+        help="Compute per-team season-to-date PPG scored and allowed at a cutoff",
+    )
+    cp.add_argument("--data", default="data")
+    cp.add_argument("--season", type=int, required=True)
+    cp.add_argument("--as-of", required=True)
+    cp.add_argument("--out", required=True)
+    cp.add_argument(
+        "--attach-forecasts",
+        default=None,
+        help="If given, read this forecasts.csv and write a forecast file enriched with PPG columns",
+    )
+    cp.add_argument(
+        "--include-fcs",
+        action="store_true",
+        help="Include FBS-vs-FCS games when computing PPG (default: FBS-only)",
+    )
     args=parser.parse_args()
     if args.command=="fetch":
         from .data import fetch as run
@@ -310,6 +328,35 @@ def main():
         )
         print(pd.Series(summarize_captures(captures)).to_string())
         print(f"wrote {out}/rosters_historical.csv")
+    elif args.command == "season-ppg":
+        from .capture_log import CAPTURE_LOG_FILENAME, append_capture
+        from .data import load_data
+        from .season_ppg import attach_ppg_to_forecasts, compute_season_ppg
+
+        schedules, _, _ = load_data(args.data)
+        ppg = compute_season_ppg(
+            schedules,
+            season=args.season,
+            as_of=args.as_of,
+            fbs_only=not args.include_fcs,
+        )
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        ppg.to_csv(out / "season_ppg.csv", index=False)
+        append_capture(
+            out / CAPTURE_LOG_FILENAME,
+            source="season_ppg.local",
+            status="captured" if len(ppg) else "no_games_before_cutoff",
+            observed_at=args.as_of,
+            extra={"season": args.season, "teams": int(len(ppg))},
+        )
+        if args.attach_forecasts:
+            forecasts = pd.read_csv(args.attach_forecasts)
+            enriched = attach_ppg_to_forecasts(forecasts, ppg)
+            enriched.to_csv(out / "forecasts_with_ppg.csv", index=False)
+            print(f"wrote {len(enriched)} enriched forecast rows to {out}/forecasts_with_ppg.csv")
+        print(ppg.head(20).to_string(index=False))
+        print(f"wrote PPG for {len(ppg)} teams to {out}/season_ppg.csv")
     elif args.command == "capture-nfl":
         from .capture_log import CAPTURE_LOG_FILENAME, append_capture
         from .nfl import fetch_nfl_scoreboard
