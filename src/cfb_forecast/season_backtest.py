@@ -2,7 +2,7 @@
 from pathlib import Path
 import json
 import pandas as pd
-from .data import load_data, timestamp
+from .data import load_data
 from .forecast import forecast
 
 

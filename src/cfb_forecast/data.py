@@ -3,10 +3,8 @@ from pathlib import Path
 from datetime import datetime, timezone
 import hashlib
 import json
-import os
 import time
 import urllib.request
-import numpy as np
 import pandas as pd
 
 RELEASE = "https://github.com/sportsdataverse/sportsdataverse-data/releases/download"

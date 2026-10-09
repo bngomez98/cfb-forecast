@@ -9,14 +9,13 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-import hashlib
 import json
 import shutil
 
 import numpy as np
 import pandas as pd
 
-from .data import load_data, normalize_schedule, sha256, timestamp
+from .data import normalize_schedule, sha256, timestamp
 from .forecast import forecast, advance_forecast_snapshot
 from .holdout import freeze_holdout, settle_holdout, verify_holdout
 from .evaluate import metrics

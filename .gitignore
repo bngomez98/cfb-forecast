@@ -1,11 +1,35 @@
+# Python
 __pycache__/
-*.pyc
-.pytest_cache/
+*.py[cod]
 *.egg-info/
+build/
+dist/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local environments (never commit a virtualenv)
 .venv/
-backtest.log
-forecast.log
-artifacts/weekly/
+venv/
+env/
+activate/
+
+# Local configuration
+.env
+
+# Logs
+*.log
+artifacts/logs/
+
+# Per-run pipeline outputs (published as CI artifacts instead)
+artifacts/pipeline/
 artifacts/latest-weekly/
 artifacts/results/
+
+# Large optional downloads
 data/pbp_*.parquet
+*.download

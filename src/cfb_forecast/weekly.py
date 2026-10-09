@@ -35,7 +35,7 @@ def run_weekly_forecast(
         week = int(games.sort_values("start_date").iloc[0].week)
     else:
         week = int(week)
-        games = games[games.week == week].copy()
+    games = games[games.week == week].copy()
     if games.empty:
         raise ValueError(f"No upcoming FBS games found for season {season}, week {week}")
 

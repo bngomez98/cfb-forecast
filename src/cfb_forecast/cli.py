@@ -75,7 +75,12 @@ def main():
     sb.add_argument("--draws",type=int,default=50000); sb.add_argument("--lead-hours",type=float,default=48.0)
     pf=sub.add_parser("preflight",help="Validate mounted data and artifact paths")
     pf.add_argument("--data",default="data"); pf.add_argument("--artifacts",default="artifacts"); pf.add_argument("--season",type=int,default=None)
+    from .pipeline import add_arguments as pipeline_arguments
+    pipeline_arguments(sub.add_parser("pipeline",help="Run an end-to-end pipeline: weekly, results, backtest or data"))
     args=parser.parse_args()
+    if args.command=="pipeline":
+        from .pipeline import run_from_args
+        raise SystemExit(run_from_args(args))
     if args.command=="fetch":
         from .data import fetch as run
         run(args.data,args.seasons,args.refresh,args.raw_pbp)

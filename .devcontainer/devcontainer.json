@@ -1,6 +1,22 @@
 {
   "name": "CFB forecasting",
   "image": "mcr.microsoft.com/devcontainers/python:3.12",
-  "postCreateCommand": "python -m pip install -e '.[test]'",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "containerEnv": {
+    "OPENBLAS_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1"
+  },
+  "postCreateCommand": "python -m pip install --constraint requirements-tested.txt -e '.[dev]'",
+  "forwardPorts": [8501],
+  "portsAttributes": {
+    "8501": { "label": "Dashboard", "onAutoForward": "openBrowser" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python", "charliermarsh.ruff", "ms-azuretools.vscode-docker"]
+    }
+  },
   "remoteUser": "vscode"
 }

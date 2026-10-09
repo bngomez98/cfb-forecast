@@ -1,23 +1,51 @@
+# CFB forecast stack.
+#
+#   docker compose up -d dashboard                 # dashboard on http://localhost:8501
+#   docker compose run --rm pipeline               # full weekly pipeline (refresh -> forecast -> grade)
+#   docker compose run --rm cfb-forecast backtest  # any engine subcommand
+#   docker compose --profile public up -d          # dashboard behind Caddy with automatic HTTPS
+#
+# Defaults are listed in .env.example; copy it to .env to override them.
+
+x-engine: &engine
+  image: ${CFB_IMAGE:-cfb-forecast:local}
+  build:
+    context: .
+    dockerfile: Dockerfile
+  # Run as the host user so files written to the bind mounts stay editable.
+  user: "${CFB_UID:-1000}:${CFB_GID:-1000}"
+  environment:
+    HOME: /tmp
+    CFB_DATA_DIR: /app/data
+    CFB_ARTIFACTS_DIR: /app/artifacts
+    CFB_FORECAST_SEASON: ${CFB_FORECAST_SEASON:-2026}
+    CFB_FORECAST_DRAWS: ${CFB_FORECAST_DRAWS:-50000}
+    CFB_BACKTEST_LEAD_HOURS: ${CFB_BACKTEST_LEAD_HOURS:-48}
+    CFB_REFRESH_DATA: ${CFB_REFRESH_DATA:-1}
+  volumes:
+    - ${CFB_DATA_DIR:-./data}:/app/data
+    - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts
+
 services:
   cfb-forecast:
-    image: ${CFB_IMAGE:-cfb-forecast:local}
-    build:
-      context: .
-      dockerfile: Dockerfile
-    environment:
-      PYTHONDONTWRITEBYTECODE: "1"
-      PYTHONUNBUFFERED: "1"
-      OPENBLAS_NUM_THREADS: "1"
-      OMP_NUM_THREADS: "1"
-      MKL_NUM_THREADS: "1"
-    volumes:
-      - ${CFB_DATA_DIR:-./data}:/app/data
-      - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts
-  cfb-dashboard:
+    <<: *engine
+    profiles: [cli]
+    command: ["--help"]
+
+  pipeline:
+    <<: *engine
+    profiles: [cli]
+    command: ["pipeline", "weekly"]
+
+  dashboard:
+    image: ${CFB_DASHBOARD_IMAGE:-cfb-forecast-dashboard:local}
     build:
       context: .
       dockerfile: dashboard/Dockerfile
-    image: ${CFB_DASHBOARD_IMAGE:-cfb-forecast-dashboard:local}
+    restart: unless-stopped
+    environment:
+      CFB_DATA_DIR: /app/data
+      CFB_ARTIFACTS_DIR: /app/artifacts
     ports:
       - "${CFB_DASHBOARD_PORT:-8501}:8501"
     volumes:
@@ -28,5 +56,25 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
-    command: ["streamlit", "run", "dashboard/app.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.fileWatcherType=none", "--browser.gatherUsageStats=false"]
+      start_period: 15s
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: [public]
+    restart: unless-stopped
+    environment:
+      CFB_DOMAIN: ${CFB_DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      dashboard:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:

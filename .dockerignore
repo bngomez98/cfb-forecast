@@ -1,10 +1,30 @@
-# Exclude only repository metadata, caches, local environments, and transient downloads.
+# Version control, CI and editor metadata
 .git
+.github
+.devcontainer
+.vscode
+.idea
+
+# Caches and local environments
 __pycache__
 *.py[cod]
 .pytest_cache
 .mypy_cache
+.ruff_cache
 .venv
 venv
 env
+activate
+build
+dist
+*.egg-info
+
+# Transient downloads and per-run outputs (regenerated inside the container)
 *.download
+data/pbp_*.parquet
+artifacts/pipeline
+artifacts/results
+artifacts/latest-weekly
+
+# Local configuration
+.env

@@ -1,202 +1,213 @@
-# College football forecasting engine
+# CFB Forecast
 
-A runnable Python package that downloads free college-football data, learns changing offense and defense states, produces score and win-probability forecasts, simulates joint scores, and evaluates predictions chronologically. Every delivered forecast has an explicit information cutoff, source hashes, model settings, and saved state features.
+Reproducible college football forecasting. The engine learns time-varying offense and defense strength for every FBS team, turns it into **joint score distributions**, and grades every prediction against games that had not yet been played when the forecast was made.
 
-This package was built from the earlier CFB historical backtests and extended into a reusable engine. The 13 judgment-based forecasts discussed in chat are not training inputs. The historical performance here is computed from this code, not inferred from those forecasts.
+| | |
+|---|---|
+| **Inputs** | Free SportsDataverse schedules and ESPN advanced team box scores, plus ESPN live scores |
+| **Model** | Kalman-filtered team states → ridge scoring head → correlated score simulation |
+| **Outputs** | Expected scores, win probability, margin/total intervals and full score PMFs per game |
+| **Guarantee** | Every forecast records its information cutoff, source hashes and model hash |
+| **2025 held-out** | 73.0% winners, log loss 0.541 over 808 FBS games ([details](docs/RESULTS.md)) |
 
-## Run in the cloud
+Forecasts are research outputs. The evaluation found **no** profitable betting edge.
 
-The `.devcontainer/devcontainer.json` file supports GitHub Codespaces. Put the extracted project in a repository and open a Codespace. Its setup installs the package and testing dependencies. It does not require creating a virtual environment on your Windows computer.
+---
 
-From the project directory in any Python 3.11+ environment:
+## Pipeline
 
-```bash
-python -m pip install -e ".[test]"
-python -m pytest -q
+One command, `cfb-pipeline weekly`, runs the whole weekly cycle in-process. It works the same way on a laptop and inside the Docker image.
 
-# Reproduce the bundled 2025 historical evaluation from the exact saved inputs.
-python -m cfb_forecast backtest --data data --out artifacts/reproduced --archive data/archive/matched_predictions.csv
+```mermaid
+flowchart LR
+    subgraph Sources
+        SDV[(SportsDataverse<br/>schedules + adv. box scores)]
+        ESPN[(ESPN public<br/>scoreboard)]
+    end
 
-# Download or refresh the current season. No paid API key is needed.
-python -m cfb_forecast fetch --data data --seasons 2026 --refresh
+    subgraph "cfb-pipeline weekly"
+        direction LR
+        D["1 · data<br/>fetch / refresh season"]
+        P["2 · preflight<br/>paths + model present"]
+        R["3 · results<br/>live scores"]
+        F["4 · forecast<br/>next FBS week"]
+        B["5 · backtest<br/>grade completed weeks"]
+        V["6 · verify<br/>outputs exist"]
+        D --> P --> R --> F --> B --> V
+    end
 
-# Generate forecasts using the supplied production model.
-# Change both timestamps to the actual desired forecast window, with UTC offsets.
-python -m cfb_forecast forecast --data data --model artifacts/backtest/model --out artifacts/new_forecasts --as-of 2026-10-02T13:45:43Z --through 2026-10-05T05:00:00Z --season 2026
+    SDV --> D
+    ESPN --> R
+    M[[artifacts/backtest/model<br/>production model]] --> P
+
+    F --> LW[/artifacts/latest-weekly/]
+    F --> WK[/artifacts/weekly/SEASON-week-N/]
+    R --> RS[/artifacts/results/]
+    B --> SB[/artifacts/backtest/season-SEASON/]
+    V --> RC[/artifacts/pipeline/latest.json/]
+
+    LW --> DASH{{Streamlit dashboard}}
+    RS --> DASH
+    WK --> DASH
+
+    classDef optional stroke-dasharray: 5 5
+    class R,B optional
 ```
 
-The first historical run can take several minutes, depending on CPU and BLAS configuration. Single-threaded BLAS (`OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1`) avoids overhead on small matrix updates in Linux. It does not change the model.
+Dashed stages are **optional**. If one fails (for example, the ESPN scoreboard is unreachable), the failure is recorded and the run finishes as `degraded`. If a **required** stage fails, the run stops with a nonzero exit code. If refreshing the data fails while a cached snapshot exists, the run falls back to the cache.
 
-Saved 2021–2025 inputs are bundled so the historical evaluation can run offline after dependency installation. The refreshed 2026 inputs and a forecast run for October 2–4 are also included. Forecasts are research outputs; no profitable betting edge was established by the evaluation. Read `RESULTS.md` for the measured results.
+| Action | Stages | Use |
+|---|---|---|
+| `cfb-pipeline weekly` | data → preflight → results → forecast → backtest → verify | The weekly run |
+| `cfb-pipeline results` | data → results | Live scores on game days |
+| `cfb-pipeline backtest` | data → preflight → backtest | Re-grade a season |
+| `cfb-pipeline data` | data | Download or refresh inputs only |
 
-## What the engine implements
+Every run writes a receipt to `artifacts/pipeline/` with each stage's status, timing, errors and outputs.
 
-| Component | Implementation |
-|---|---|
-| Free inputs | SportsDataverse schedules and ESPN-derived per-game advanced team summaries |
-| Dynamic ratings | Metric-specific Gaussian offense and defense states, full covariance, opponent adjustment, weekly drift and offseason shrinkage |
-| Pooling | Shared zero-centered Gaussian priors shrink teams with little evidence toward the population mean |
-| Scoring model | A regularized, standardized regression head fitted on earlier seasons |
-| PBP extension | Prior-game yards per play, yards per pass, yards per rush, first-down creation rate, and offense/defense interactions |
-| Probability calibration | Joint score residual covariance from an out-of-fit validation season |
-| Joint simulation | Correlated score draws, nonnegative integer rounding, approximate overtime, margin/total intervals and push probabilities |
-| Market diagnostics | Timestamp-filtered spread, total, moneyline and odds input; cover probabilities and expected net return calculations |
-| Baselines | Chronological calibrated Elo and retained public pregame forecast snapshots |
-| Verification | Tests for future-outcome exclusion, state covariance, time ordering, market timestamps, deterministic simulations, score-head serialization and invalid data |
+## Quick start
 
-The engine does not yet estimate player ability or injury effects, train its own EPA model, simulate individual drives, or learn information incremental to the market. Provider EPA, win probabilities, Elo and betting fields are deliberately excluded from the current statistical inputs. Raw-play cleaning and success/explosive-rate aggregation are available as a separate extension; the current fitted PBP head uses the deterministic per-game yardage and first-down fields in the advanced summaries, not that optional raw-play aggregate.
+### Local Python (3.11+)
 
-## Historical design
+```bash
+make install                       # pip install -e ".[dev]"
+make test                          # 25 tests
+make weekly                        # refresh data, forecast the next week, grade the season
+make dashboard                     # http://localhost:8501
+```
 
-Default chronology:
+### Docker
 
-| Season | Role |
-|---|---|
-| 2021 | Warmup; estimate normalization centers/scales; initialize ratings |
-| 2022–2023 | Fit candidate score/probability mappings |
-| 2024 | Select state drift, offseason carry, regularization, and score-versus-PBP variant; estimate out-of-fit score covariance |
-| 2025 | Evaluate frozen fitted heads and settings; refresh team states only after earlier games become available |
+```bash
+make docker-build                  # docker compose build: cfb-forecast:local + cfb-forecast-dashboard:local
+make docker-weekly                 # runs the pipeline container as your user
+make up                            # dashboard on http://localhost:8501
+```
 
-The released **heldout** models train their heads through 2024. The **production** models are separately refitted through 2025 after the 2025 test predictions are written. Refitting does not overwrite the held-out probabilities or metrics. Production forecasting rejects a model trained through the season being forecast.
+Configuration comes from environment variables. Defaults are in [`.env.example`](.env.example); copy it to `.env` to change them.
 
-These years have been studied in prior work. The implementation respects chronological fitting, but this is a reproducible historical evaluation rather than a newly blind experiment. A later prospective season is needed to assess whether the improvements hold.
+| Variable | Default | Meaning |
+|---|---|---|
+| `CFB_FORECAST_SEASON` | `2026` | Season to forecast |
+| `CFB_FORECAST_DRAWS` | `50000` | Monte Carlo draws per game |
+| `CFB_BACKTEST_LEAD_HOURS` | `48` | Backtest cutoff: hours before each week's first kickoff |
+| `CFB_REFRESH_DATA` | `1` in Docker, `0` locally | Re-download season inputs before forecasting |
+| `CFB_DATA_DIR` / `CFB_ARTIFACTS_DIR` | `./data` / `./artifacts` | Mounted input and output folders |
+| `CFB_DASHBOARD_PORT` | `8501` | Dashboard port |
+| `CFB_DOMAIN` | `localhost` | Hostname for the HTTPS proxy (`--profile public`) |
 
-FBS-versus-FBS games form both the rating and evaluation population. Missing PBP summaries do not remove a game: its final score still updates score states. Missing metric observations skip that metric's update, leaving its state shrunk with greater uncertainty. FBS–FCS games currently do not update these states.
+To publish the dashboard with automatic HTTPS, use `CFB_DOMAIN=forecast.example.org docker compose --profile public up -d`. Caddy reads [`deploy/Caddyfile`](deploy/Caddyfile).
 
-## Information cutoff and source quality
+### Scheduling
 
-Historical forecasts use Monday 00:00 UTC before kickoff. For the archived comparison games, the model instead uses the retained Git commit timestamp of that game's competitor forecast. A result can update the states only when its availability timestamp is **strictly earlier** than the forecast cutoff. The code asserts this condition and records the latest contributing result.
+Runs are triggered locally, not through CI. During the season, run `make weekly` once a week (Monday morning works: the weekend's results are final). On game days, run `make results` every 15 minutes. You can drive both with cron, systemd timers or Windows Task Scheduler.
 
-When actual completion timestamps are absent, result availability is conservatively approximated as kickoff plus eight hours. That is not an assertion that a game lasted eight hours. It prevents the model from taking a final score immediately at kickoff. A known `completed_at` field overrides the proxy.
+## How a forecast is made
 
-Schedules supply final outcomes. The largest score appearing in PBP is never treated as a final result. Duplicate game IDs and duplicate team-game summary rows fail validation. Rows marked completed without usable scores are explicitly quarantined, counted in `data_audit.csv`, and excluded from rating updates. Scores are not fabricated.
+```mermaid
+flowchart TB
+    S[Schedules + final scores] --> AV{"Result available<br/>before cutoff?"}
+    A[Per-game yards/play, pass, rush,<br/>first-down rate] --> AV
+    AV -- yes --> K["Kalman update<br/>offense & defense states per metric<br/>(weekly drift, offseason shrinkage)"]
+    AV -- no --> X[Excluded]
+    K --> H["Scoring head<br/>26 features → ridge regression<br/>(fit on earlier seasons only)"]
+    H --> SIM["Joint score simulation<br/>correlated Gaussian → integer scores,<br/>overtime resolution"]
+    MK[(Timestamped market lines<br/>optional)] --> SIM
+    SIM --> OUT["Per game: expected scores, win %,<br/>80% intervals, score/margin/total PMFs,<br/>cover & EV diagnostics"]
+```
 
-Historical datasets can be revised after games. Chronological result exclusion prevents later games entering earlier ratings; it does not reconstruct every historical revision or when each injury/stat correction was first published. Source hashes identify the exact record versions used. Source manifests distinguish the prior saved snapshots from newly downloaded files. Refreshing historical data changes reproducibility; use bundled snapshots for matching this run.
+Each season plays one role in the evaluation, so no year is used both to fit and to judge the model:
 
-The archive's commit timestamp and SHA are checked against retained metadata, and probabilities/lines are checked against its original CSV snapshots. This verifies the package's internal archive consistency. The retained metadata comes from the earlier archive verification; the backtest does not authenticate GitHub commits anew on each offline run.
+```mermaid
+gantt
+    title Chronological roles of each season
+    dateFormat YYYY
+    axisFormat %Y
+    section Fit
+    Warmup + normalization        :done, 2021, 2022
+    Fit scoring heads             :done, 2022, 2024
+    section Select
+    Choose settings, calibrate    :active, 2024, 2025
+    section Evaluate
+    Held-out test (frozen heads)  :crit, 2025, 2026
+    Prospective ledger            :2026, 2027
+```
 
-## Model equations
+A game's result can update team states only if it became available **strictly before** the forecast cutoff. When the real completion time is unknown, it is approximated as kickoff + 8 hours. The prospective 2026 ledger gives each game its own fixed cutoff, 24 hours before kickoff, and freezes the exact inputs of every run ([CHRONOLOGY.md](docs/CHRONOLOGY.md)). The equations and data policies are in [METHODOLOGY.md](docs/METHODOLOGY.md).
 
-For each metric, offense `o` and defensive prevention `d` are Gaussian latent states. Positive defense strength means fewer points/yards allowed. Each side's standardized observation follows:
+## Results
+
+**2025 held-out season.** 808 FBS-vs-FBS games, scored by heads fitted through 2024:
+
+| Model | Winner accuracy | Log loss | Brier | Margin MAE | Total MAE |
+|---|---:|---:|---:|---:|---:|
+| Calibrated Elo | 69.55% | 0.5750 | 0.1965 | — | — |
+| Score-state | 72.03% | **0.5377** | **0.1814** | 12.50 | **12.98** |
+| PBP-state (selected) | **73.02%** | 0.5406 | 0.1830 | **12.41** | 12.99 |
+
+Both state models beat Elo. The public forecast tracker in the archive still has lower probability error (0.5200 log loss across 763 matched games). See [docs/RESULTS.md](docs/RESULTS.md) for the paired bootstrap intervals and spread diagnostics.
+
+**2026 season to date** (committed snapshot, `artifacts/backtest/season-2026/summary.json`): 215 graded games over 4 weeks, 80.9% winners, Brier 0.148, margin MAE 12.9.
+
+## Command reference
+
+All engine commands run as `cfb-forecast <command>` (or `python -m cfb_forecast <command>`). In Docker they run as `docker compose run --rm cfb-forecast <command>`.
+
+| Group | Command | Purpose |
+|---|---|---|
+| Pipeline | `pipeline {weekly,results,backtest,data}` | End-to-end runs described above (`cfb-pipeline` is an alias) |
+| Data | `fetch --seasons 2026 [--refresh]` | Download SportsDataverse inputs |
+| | `results-refresh --season 2026` | ESPN live scoreboard snapshot |
+| | `preflight --season 2026` | Validate data and artifact paths |
+| Model | `backtest --archive data/archive/matched_predictions.csv` | Chronological fit, selection and 2025 evaluation (`make reproduce`) |
+| | `distribution-backtest` | CRPS check of held-out score distributions |
+| Forecast | `weekly-forecast --season 2026 [--week N]` | Next (or chosen) FBS week |
+| | `forecast --as-of … --through … --season 2026` | Any explicit cutoff window |
+| | `forecast-advance --previous DIR …` | Advance a frozen state when no new result is eligible |
+| | `season-backtest --season 2026` | Re-forecast and grade every completed week |
+| Market | `market-init`, `market-import`, `market-snapshot-sdv`, `market-backfill-sdv` | Timestamped line history ([template](examples/market_template.csv)) |
+| Holdout | `holdout-freeze`, `holdout-settle`, `holdout-verify` | Immutable prospective slates |
+| | `chronology-bootstrap`, `chronology-update`, `chronology-settle`, `chronology-verify` | Per-game 24-hour chronological ledger |
+| | `prospective-run` | Market capture + ledger append in one step |
+
+Run `cfb-forecast <command> --help` for every option.
+
+## Repository layout
 
 ```text
-home metric = home offense - away defense + venue adjustment + observation error
-away metric = away offense - home defense - venue adjustment + observation error
+cfb-forecast/
+├── src/cfb_forecast/         engine package
+│   ├── cli.py                  `cfb-forecast` command
+│   ├── pipeline.py             `cfb-pipeline` stage orchestration and run receipts
+│   ├── data.py                 ingestion, schema guards, source hashes
+│   ├── features.py ratings.py  per-game metrics and Kalman team states
+│   ├── model.py baseline.py    scoring head and Elo baseline
+│   ├── simulate.py distribution.py  joint score simulation and PMFs
+│   ├── forecast.py weekly.py   cutoff-aware forecasting
+│   ├── backtest.py season_backtest.py evaluate.py  historical evaluation
+│   ├── results.py              ESPN live scores
+│   ├── market.py               timestamped market history
+│   └── holdout.py chronology.py collector.py availability.py  prospective ledger
+├── tests/                    unit tests (chronology, covariance, serialization, markets…)
+├── dashboard/                Streamlit app + its Dockerfile
+├── data/                     bundled 2021–2026 inputs, source manifest, archived public forecasts
+├── artifacts/                fitted models, evaluations, frozen holdouts, forecasts
+│   ├── backtest/model/         production model used by the pipeline
+│   └── pipeline/               run receipts (git-ignored)
+├── docs/                     METHODOLOGY · RESULTS · CHRONOLOGY
+├── examples/                 market input template
+├── deploy/Caddyfile          HTTPS reverse proxy for the dashboard
+├── Dockerfile                engine image
+├── docker-compose.yml        builds both images; cli · pipeline · dashboard · caddy (public profile)
+├── Makefile                  common tasks (`make help`)
+├── pyproject.toml            package metadata, entry points, pytest and ruff config
+└── requirements-tested.txt   exact versions the bundled results were verified with
 ```
 
-The venue adjustment in score-state updates is half the configured 2.5-point home margin on each side. PBP metric updates have no fixed venue term; the fitted scoring head can learn their predictive relationship.
+## Data sources
 
-During the season, `theta_next = rho * theta + eta`, where `rho = 0.995 ** elapsed_weeks` and `Var(eta) = q * elapsed_weeks`. Across the offseason, the chosen carry factor shrinks the mean, and a separate variance increment represents uncertainty from roster/coaching changes. It does not individually model those changes.
-
-Conditioning uses the Gaussian Kalman formulas:
-
-```text
-S = H C H.T + R
-K = C H.T inverse(S)
-mean_new = mean + K (observation - H mean)
-C_new = C - K H C
-```
-
-Each metric uses separate states/covariance; both teams' observations in a game are conditioned jointly. The observation residual correlation is fixed at 0.10. Shared zero-centered priors identify offense/defense decompositions and produce partial pooling. State hyperparameters are selected empirically on 2024; this is not full Bayesian integration over unknown hyperparameters.
-
-The scoring head receives pregame offense, defense, their differences/products, uncertainty summaries, venue and early-season terms. It predicts both sides with the same standardized ridge regression. Output score means are clipped at zero. The score-only head uses a restricted six-column subset. The PBP head uses all 26 columns.
-
-The 2024 residual covariance contains game variation and realized estimation error. It is used as the forecast covariance without adding state uncertainty again. This empirical joint Gaussian approximation does not explicitly integrate every posterior parameter uncertainty through the nonlinear scoring head.
-
-Historical win probabilities integrate the continuous Gaussian margin analytically. Simulations additionally round/clamp scores and resolve tied draws with a generic 3- or 7-point overtime increment. Both the analytical probability and the bounded simulation probability are exported so the approximation is inspectable. These simulated integers are not a football possession/rules engine. Intervals include substantial game uncertainty; the two score means are expectations, not an assertion of an exact final score.
-
-## Market input
-
-`examples/market_template.csv` documents the optional input columns. Supply actual observed lines, with `observed_at` including a timezone. The latest snapshot at or before the cutoff and strictly before kickoff is selected. A later snapshot never enters an earlier forecast. Missing odds are not invented.
-
-Use standard **home-spread** signs: a home favorite giving 3.5 points has `home_spread=-3.5`. A simulated home cover is `home_score - away_score + home_spread > 0`; an equality is a push. `home_decimal` and `away_decimal` are the two spread prices. Moneyline fields are separate and are used only for a no-vig winner-probability comparison.
-
-```bash
-python -m cfb_forecast forecast --data data --model artifacts/backtest/model --out artifacts/with_market --as-of 2026-10-02T13:45:43Z --through 2026-10-05T05:00:00Z --season 2026 --market examples/my_actual_market.csv
-```
-
-Net expected return per unit is `P(win)*(decimal_odds-1)-P(loss)`; pushes return the stake. A positive calculated value depends on the validity of the model probability and does not establish an edge by itself. There is no automatic stake-sizing or bet-placement component.
-
-The old forecast archive uses `lineca` as a **home margin target**, which is the opposite sign from a conventional home spread. Its `lineavg` is an aggregate public forecast margin, not a market spread. Archived spread diagnostics are descriptive: original sportsbook prices and exact line availability are not established, so the package reports no historical betting ROI.
-
-## Outputs
-
-| File | Contents |
-|---|---|
-| `artifacts/backtest/predictions.csv` | Every held-out prediction and final outcome, cutoff and latest contributing result |
-| `artifacts/backtest/metrics.csv` | Winner accuracy, log loss, Brier score, margin/total/score error |
-| `artifacts/backtest/validation_trials.csv` | All score/PBP settings tried on 2024 |
-| `artifacts/backtest/elo_validation.csv` | Elo calibration selection on 2024 |
-| `artifacts/backtest/paired_comparisons.csv` | Season-week block-bootstrap comparisons |
-| `artifacts/backtest/archive_comparison.csv` | Matched pregame external forecasts and model outputs |
-| `artifacts/backtest/archive_spread_diagnostics.csv` | Descriptive spread directions at fixed edge thresholds |
-| `artifacts/backtest/run_manifest.json` | Fit/evaluation boundaries, source hashes, model choices and limitations |
-| `artifacts/backtest/model/model.json` | Selected production model, normalization, coefficients and covariance |
-| `artifacts/backtest/models/*/heldout/model.json` | Frozen heads used for 2025 evaluation |
-| `artifacts/forecast_2026-10-02/forecasts.json` | New computed score/probability forecasts and simulation intervals |
-| `artifacts/forecast_2026-10-02/forecast_manifest.json` | Forecast cutoff, every contributing game ID and source/model hashes |
-| `artifacts/forecast_2026-10-02/state_snapshot.npz` | Exact state means/covariance and feature vectors for that run |
-
-Source links:
-
-- https://github.com/sportsdataverse/sportsdataverse-data/releases/tag/cfb_schedules
-- https://github.com/sportsdataverse/sportsdataverse-data/releases/tag/espn_cfb_adv_team
-- https://github.com/sportsdataverse/sportsdataverse-data/releases/tag/espn_cfb_pbp
-- https://github.com/ssmarathontrading/ncaa_predictions
-
-## Extending the package
-
-The current modules separate data ingestion, metric observations, dynamic state updates, score heads, simulation, market evidence and evaluation. Add a new deterministic past-game metric through `features.py`, with an explicit missing-data policy. Add a different predictive head through `model.py`, retaining chronological fitting. Add new generative simulations through `simulate.py` and validate their probabilities against held-out outcomes.
-
-The next substantial forecasting improvement should be evaluated prospectively or on an additional untouched period. Candidate work includes calibrated player/availability inputs, possession/drive modeling, home-field heterogeneity and predicting residuals against timestamped market forecasts. None should be promoted into production solely because it sounds more sophisticated.
-
-## Prospective holdouts, market history, and full distributions
-
-Version 0.3 separates **slate forecasts** from the actual **chronological prospective holdout**. A slate can still be generated from one shared as-of state, but prospective evaluation uses a per-game event-time ledger. See `CHRONOLOGY.md`.
-
-The chronological default is a fixed 24-hour pregame cutoff. A game cannot enter the ledger before its own cutoff, forecast timestamps are never backdated, the model hash is fixed for the life of the ledger, and every appended run freezes its exact data/market/model/distribution inputs.
-
-The market and distribution tools remain available:
-
-```bash
-# Point-in-time free spread/total snapshot. Repeat on a schedule to build line movement.
-python -m cfb_forecast market-snapshot-sdv --season 2026 --store data/market_history.csv
-
-# Historical resolved/closing benchmark only; never used as an earlier forecast input.
-python -m cfb_forecast market-backfill-sdv --seasons 2021 2022 2023 2024 2025 2026 --out data/market_closing_history.csv
-
-# Forecasts now save joint score, margin and total probability distributions.
-python -m cfb_forecast distribution-backtest
-
-# Start the chronological ledger from an existing frozen slate, keeping only games already due.
-python -m cfb_forecast chronology-bootstrap --frozen-batch artifacts/holdouts/prospective_20261002T185600Z --ledger artifacts/chronological_holdout_2026 --lead-hours 24
-
-# Append only newly due games at later real cutoffs.
-python -m cfb_forecast chronology-update --data data --model artifacts/backtest/model --ledger artifacts/chronological_holdout_2026 --season 2026 --lead-hours 24 --market data/market_history.csv
-
-# Verify the append-only chain and every immutable run.
-python -m cfb_forecast chronology-verify --ledger artifacts/chronological_holdout_2026
-
-# After games finish, settle the chronological ledger.
-python -m cfb_forecast chronology-settle --ledger artifacts/chronological_holdout_2026 --data data
-```
-
-The public SportsDataverse `espn_cfb_betting` release is keyed by ESPN game ID and contains resolved home spread and total fields. `market-snapshot-sdv` treats the retrieval time as the availability timestamp and can therefore build a genuine prospective history from the moment collection begins. The historical backfill is kept separate because a resolved/closing line cannot be treated as if it were known at an earlier forecast cutoff.
-
-Forecast output includes a discrete joint score PMF plus derived margin and total PMFs. Settlement evaluates margin and total distributions with CRPS in addition to winner log loss/Brier score and point forecast error.
-
-## One-command prospective collection
-
-Run this at each real collection time. It stamps one execution time across the market capture and forecast cutoff, appends only games whose individual 24-hour cutoff is due, and writes an audit receipt. A market-source failure is recorded but never replaced with an invented quote.
-
-```bash
-python -m cfb_forecast prospective-run \
-  --data data \
-  --model artifacts/backtest/model \
-  --ledger artifacts/chronological_holdout_2026 \
-  --season 2026 \
-  --lead-hours 24 \
-  --market data/market_history.csv
-```
-
-Between newly available final results, the chronological updater advances the exact frozen state and verifies prior source hashes without rereading Parquet inputs. Once a new final result becomes eligible, it deliberately requires a full replay so the state update uses the game-level advanced summaries.
+- [SportsDataverse `cfb_schedules`](https://github.com/sportsdataverse/sportsdataverse-data/releases/tag/cfb_schedules)
+- [SportsDataverse `espn_cfb_adv_team`](https://github.com/sportsdataverse/sportsdataverse-data/releases/tag/espn_cfb_adv_team)
+- [SportsDataverse `espn_cfb_pbp`](https://github.com/sportsdataverse/sportsdataverse-data/releases/tag/espn_cfb_pbp) (optional raw plays)
+- [ESPN public scoreboard API](https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard)
+- [ssmarathontrading/ncaa_predictions](https://github.com/ssmarathontrading/ncaa_predictions) (archived public forecasts, comparison only)

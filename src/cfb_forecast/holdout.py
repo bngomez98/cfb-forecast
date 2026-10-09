@@ -7,7 +7,6 @@ import hashlib
 import json
 import shutil
 import pandas as pd
-import numpy as np
 
 from .data import sha256, normalize_schedule, timestamp
 from .evaluate import metrics
