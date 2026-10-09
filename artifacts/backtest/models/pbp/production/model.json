@@ -169,13 +169,13 @@
     "schedule_2023.csv": "7ffc245da1242fc44c021dae724029074aece78544ba498937cc7703417f0dff",
     "schedule_2024.csv": "3e4f3cab542657015ff73d1b527c41df58e6a17acf5fbe7d6fb518a1aabcac61",
     "schedule_2025.csv": "bfecf10bc5a8ffd2e3b6a76b5f0b03b406e17c1a0e03b2000bdf7e2263712db4",
-    "schedule_2026.csv": "82cd88e6266cc157912b7b689739ee27f28d9b0900b427b82c437e5c6aca1940",
+    "schedule_2026.csv": "21393bd92fa5164091a996d44ab5a5b1baa5dae3fa2daf5ed2b33bfcd4f764a9",
     "adv_team_2021.parquet": "1a4fc273985e016146dc101b062e57f78c7ce7369a41ad730113cc21961e844a",
     "adv_team_2022.parquet": "a0694181fbc2f465e310b8c2533c2502784de8b1f370079a01a787f17d097172",
     "adv_team_2023.parquet": "1f6af9ea5205b58582dac01eb549be40d535dc2f42abbefa9b35fbf1b8700d3b",
     "adv_team_2024.parquet": "521416af0a1157f52dc6f9d8d79d0a3d7a601d63f62631df210fb7bc4ec4a986",
     "adv_team_2025.parquet": "273d63f615c89596dd288fd0590e61c02f7d60a080dc51cdb3844cc602f0dd67",
-    "adv_team_2026.parquet": "62a43b781ed310b02a6d0e7b1d8868c4e916b926980dc18cb07d0899a223ec94"
+    "adv_team_2026.parquet": "348667cb557c5d3d488e80075584cf8e5e09fc080f40b919f748de5209ba7f15"
   },
   "input_note": "Retrospectively revised historical records; not immutable as-known statistics"
 }

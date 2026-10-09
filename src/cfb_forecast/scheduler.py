@@ -3,24 +3,22 @@
     cfb-forecast scheduler                 # run forever (the `scheduler` compose service)
     cfb-forecast scheduler --once          # run whatever is due now and exit (cron / Task Scheduler)
     cfb-forecast scheduler --status        # show each job's last run and whether it is due
-    cfb-forecast scheduler --run weekly    # force one job now
+    cfb-forecast scheduler --run forecast  # force one job now
 
 Jobs (all times UTC, overridable with environment variables):
 
 =============  ======================================================================  ==========
 job            when it runs                                                            action
 =============  ======================================================================  ==========
-results        daily at CFB_RESULTS_HOUR (8): final scores of completed games from      results
-               ESPN and the result sites (cross-checked into the ratings)
-pregame        every CFB_PREGAME_HOURS (6) while a game kicks off within 7 days,       pregame
-               and again within the 3 hours before each game day's first kickoff:
-               captures external predictions and lines (reference / market history)
-weekly         CFB_WEEKLY_DAY (mon) at CFB_WEEKLY_HOUR (13)                            weekly
-data           daily at CFB_DATA_HOUR (9) (refreshes the calendar)                    data
+forecast       every CFB_FORECAST_HOURS (24) in season, and at CFB_FORECAST_HOUR (9):  forecast
+               the ongoing pipeline — refresh data, completed results and player
+               ratings, then forecast every remaining upcoming FBS game
+backtest       CFB_BACKTEST_DAY (tue) at CFB_BACKTEST_HOUR (11), in season             backtest
 =============  ======================================================================  ==========
 
-There is no in-game polling. Outside the season (no FBS game within 21 days either
-side) only ``weekly`` and ``data`` keep their schedule, so the calendar notices when the next season appears.
+There is no in-game polling and no chronological ledger: each forecast run simply
+recomputes from current and historical data. Outside the season (no FBS game within
+21 days either side) nothing is due, so the calendar quietly resumes next season.
 State, a heartbeat and a single-instance lock live in ``<artifacts>/scheduler/``.
 """
 from __future__ import annotations
@@ -112,36 +110,27 @@ def _ran_after(state, name, moment):
 
 
 def build_jobs():
-    pregame_every = timedelta(hours=env_int("CFB_PREGAME_HOURS", 6))
-    weekly_day = DAYS[os.environ.get("CFB_WEEKLY_DAY", "mon")[:3].lower()]
-    weekly_hour = env_int("CFB_WEEKLY_HOUR", 13)
-    results_hour = env_int("CFB_RESULTS_HOUR", 8)
-    data_hour = env_int("CFB_DATA_HOUR", 9)
+    forecast_every = timedelta(hours=env_int("CFB_FORECAST_HOURS", 24))
+    forecast_hour = env_int("CFB_FORECAST_HOUR", 9)
+    backtest_day = DAYS[os.environ.get("CFB_BACKTEST_DAY", "tue")[:3].lower()]
+    backtest_hour = env_int("CFB_BACKTEST_HOUR", 11)
 
-    def results(now, st, cal):
-        return cal.in_season(now) and not _ran_after(st, "results", _daily_slot(now, results_hour))
-
-    def pregame(now, st, cal):
-        if not cal.any_between(now, now + timedelta(days=7)):
+    def forecast(now, st, cal):
+        # Once per CFB_FORECAST_HOURS during the season; also right at the daily slot so a
+        # restarted scheduler still produces the morning run. This is the ongoing pipeline.
+        if not cal.in_season(now):
             return False
-        gap = _since(st, "pregame", now)
-        return gap >= pregame_every or (cal.first_kickoff_today_within(now, 3) and gap >= timedelta(hours=1))
+        return _since(st, "forecast", now) >= forecast_every - timedelta(minutes=1) or not _ran_after(st, "forecast", _daily_slot(now, forecast_hour))
 
-    def weekly(now, st, cal):
-        slot = _daily_slot(now, weekly_hour)
-        while slot.weekday() != weekly_day:
+    def backtest(now, st, cal):
+        slot = _daily_slot(now, backtest_hour)
+        while slot.weekday() != backtest_day:
             slot -= timedelta(days=1)
-        return not _ran_after(st, "weekly", slot)
-
-
-    def data(now, st, cal):
-        return not _ran_after(st, "data", _daily_slot(now, data_hour))
+        return cal.in_season(now) and not _ran_after(st, "backtest", slot)
 
     return [
-        Job("data", "data", data, "Refresh season schedule and box scores"),
-        Job("results", "results", results, "Final scores of completed games from ESPN and result sites"),
-        Job("pregame", "pregame", pregame, "Capture external predictions and lines before kickoff"),
-        Job("weekly", "weekly", weekly, "Full weekly pipeline"),
+        Job("forecast", "forecast", forecast, "Daily full-slate forecast: refresh data/results/players, forecast every upcoming game"),
+        Job("backtest", "backtest", backtest, "Weekly point-in-time season backtest"),
     ]
 
 
@@ -206,8 +195,8 @@ class Scheduler:
         self.current = job.name
         try:
             ctx = self._context()
-            # Only the weekly and data jobs re-download inputs; frequent jobs use the cached snapshot.
-            ctx.refresh_data = job.name in ("weekly", "data")
+            # Every scheduled run refreshes current data; the daily cadence makes this cheap.
+            ctx.refresh_data = True
             receipt = run(job.action, ctx)
             entry.update(last_status=receipt["status"], last_error=None)
         except Exception as exc:  # the scheduler itself must survive any job failure
@@ -221,8 +210,7 @@ class Scheduler:
 
     def due(self, now, state):
         self.calendar.refresh()
-        in_season = self.calendar.in_season(now)
-        return [j for j in self.jobs if (in_season or j.name in ("weekly", "data")) and j.due(now, state, self.calendar)]
+        return [j for j in self.jobs if j.due(now, state, self.calendar)]
 
     def tick(self):
         now = datetime.now(timezone.utc)

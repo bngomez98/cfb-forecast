@@ -10,8 +10,9 @@ import numpy as np
 import pandas as pd
 from .config import METRICS,StateConfig
 from .data import load_data,audit,sha256,timestamp
-from .features import observations,normalization
+from .features import observations,normalization,attach_player_features,PLAYER_VARIANTS
 from .ratings import build_features
+from .players import load_aggregates,player_features_by_week,PlayerConfig
 from .model import ScoreHead,residual_covariance,write_model
 from .simulate import win_probability
 from .evaluate import metrics,calibration,paired_bootstrap
@@ -52,6 +53,14 @@ def verified_archive(path,games):
     arc=arc[good].drop(columns="start_date")
     return arc,dict(zip(arc.game_id.astype(int),arc.snapshot_utc))
 
+def load_player_features(data_root,games,lead_hours=48.0):
+    """Point-in-time player feature table for the backtest games, or None if no aggregates."""
+    agg=load_aggregates(data_root)
+    if agg.empty:
+        return None
+    return player_features_by_week(agg,games,lead_hours,PlayerConfig())
+
+
 def run_backtest(data_root,out_root,archive_path=None,warmup=2021,train_start=2022,validation=2024,test=2025):
     if not warmup<train_start<validation<test:
         raise ValueError("Need warmup < training start < validation < test year")
@@ -67,17 +76,23 @@ def run_backtest(data_root,out_root,archive_path=None,warmup=2021,train_start=20
     val=games.season.eq(validation).to_numpy(); te=games.season.eq(test).to_numpy()
     final_train=games.season.between(train_start,validation).to_numpy()
     arc,explicit=verified_archive(archive_path,games)
+    # Point-in-time player layer: hierarchical PBP player ratings as an extra feature block.
+    # Present only when per-player-game aggregates are available; the state-only variants are unaffected.
+    player_features=load_player_features(data_root,games)
+    variants=("score","pbp","pbp_player") if player_features is not None else ("score","pbp")
     # Archived competitor timestamps define the same information cutoff for both.
     cache={}; trials=[]
     for q in (.005,.02,.06):
         for carry in (.5,.8):
             cfg=StateConfig(process_variance=q,offseason_carry=carry)
             F,cutoffs,latest=build_features(games,Y,center,scale,cfg,explicit,warmup)
-            cache[(q,carry)]=(F,cutoffs,latest)
-            for variant in ("score","pbp"):
+            Fp=attach_player_features(F,games.game_id.tolist(),player_features) if player_features is not None else None
+            cache[(q,carry)]=(F,Fp,cutoffs,latest)
+            for variant in variants:
+                feats=Fp if variant in PLAYER_VARIANTS else F
                 for alpha in (10.,100.,1000.):
-                    head=ScoreHead(variant,alpha).fit(F,Y,train)
-                    train_mu=head.predict(F[train]); val_mu=head.predict(F[val])
+                    head=ScoreHead(variant,alpha).fit(feats,Y,train)
+                    train_mu=head.predict(feats[train]); val_mu=head.predict(feats[val])
                     # In-sample covariance is only for validation-grid ranking;
                     # released covariance comes from out-of-fit validation residuals.
                     sigma=residual_covariance(Y[train,:,0],train_mu)
@@ -86,7 +101,7 @@ def run_backtest(data_root,out_root,archive_path=None,warmup=2021,train_start=20
                     trials.append({"variant":variant,"q":q,"carry":carry,"alpha":alpha,**scores})
             print(f"computed chronological features q={q} carry={carry}",flush=True)
     pd.DataFrame(trials).to_csv(out/"validation_trials.csv",index=False)
-    selected={v:min((r for r in trials if r["variant"]==v),key=lambda r:r["log_loss"]) for v in ("score","pbp")}
+    selected={v:min((r for r in trials if r["variant"]==v),key=lambda r:r["log_loss"]) for v in variants}
     chosen_variant=min(selected,key=lambda v:selected[v]["log_loss"])
     result=games.loc[te,["game_id","season","week","start_date","home_id","away_id","home_team","away_team","home_points","away_points","neutral_site"]].copy()
     result["home_win"]=(result.home_points>result.away_points).astype(int)
@@ -94,17 +109,20 @@ def run_backtest(data_root,out_root,archive_path=None,warmup=2021,train_start=20
     result["actual_total"]=result.home_points+result.away_points
     models={}; summaries_out=[]; production={}
     for variant,best in selected.items():
-        F,cutoffs,latest=cache[(best["q"],best["carry"])]
-        cal_head=ScoreHead(variant,best["alpha"]).fit(F,Y,train)
-        cov=residual_covariance(Y[val,:,0],cal_head.predict(F[val]))
-        head=ScoreHead(variant,best["alpha"]).fit(F,Y,final_train)
-        mu=head.predict(F[te]); p=win_probability(mu,cov)
+        F,Fp,cutoffs,latest=cache[(best["q"],best["carry"])]
+        feats=Fp if variant in PLAYER_VARIANTS else F
+        cal_head=ScoreHead(variant,best["alpha"]).fit(feats,Y,train)
+        cov=residual_covariance(Y[val,:,0],cal_head.predict(feats[val]))
+        head=ScoreHead(variant,best["alpha"]).fit(feats,Y,final_train)
+        mu=head.predict(feats[te]); p=win_probability(mu,cov)
         result[f"{variant}_home_score"]=mu[:,0]; result[f"{variant}_away_score"]=mu[:,1]
         result[f"{variant}_home_margin"]=mu[:,0]-mu[:,1]; result[f"{variant}_total"]=mu.sum(axis=1)
         result[f"{variant}_p"]=p
         result["forecast_cutoff"]=cutoffs[te].astype(str).to_numpy()
         result["latest_result_available_at"]=[str(x) if x is not None else "" for x,yes in zip(latest,te) if yes]
         base={"schema_version":1,"variant":variant,"state_config":StateConfig(process_variance=best["q"],offseason_carry=best["carry"]).to_dict(),"metric_names":list(METRICS),"center":center.tolist(),"scale":scale.tolist(),"head":head.to_dict(),"score_covariance":cov.tolist(),"warmup_season":warmup,"train_start_season":train_start,"training_through_season":validation,"calibration_season":validation,"selection_season":validation,"source_hashes":{p.name:sha256(p) for p in paths},"input_note":"Retrospectively revised historical records; not immutable as-known statistics"}
+        if variant in PLAYER_VARIANTS:
+            base["player_layer"]={"lead_hours":48.0,"config":PlayerConfig().to_dict(),"feature_columns":["own_player_offense","opponent_player_defense"],"note":"Hierarchical PBP player ratings fit point-in-time per week; see players.py"}
         models[variant]=base
         write_model(out/"models"/variant/"heldout",base)
         m=metrics(result.home_win,p,mu[:,0]-mu[:,1],result.actual_home_margin,mu.sum(axis=1),result.actual_total,mu,Y[te,:,0])
@@ -112,7 +130,7 @@ def run_backtest(data_root,out_root,archive_path=None,warmup=2021,train_start=20
         calibration(result.home_win,p).to_csv(out/f"calibration_{variant}.csv",index=False)
         # Refit for later forecasting; never overwrite held-out predictions.
         prod=dict(base); prod["training_through_season"]=test
-        prod["head"]=ScoreHead(variant,best["alpha"]).fit(F,Y,games.season.between(train_start,test).to_numpy()).to_dict()
+        prod["head"]=ScoreHead(variant,best["alpha"]).fit(feats,Y,games.season.between(train_start,test).to_numpy()).to_dict()
         production[variant]=prod; write_model(out/"models"/variant/"production",prod)
     elo_p,elo_trials,elo_chosen=evaluate_elo(games,train,val,final_train,te,explicit)
     result["elo_p"]=elo_p

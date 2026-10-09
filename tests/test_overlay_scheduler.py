@@ -31,30 +31,36 @@ def _calendar(tmp_path, kickoffs):
 
 
 def test_scheduler_job_timing(tmp_path, monkeypatch):
-    monkeypatch.setenv("CFB_WEEKLY_DAY", "mon")
-    monkeypatch.setenv("CFB_WEEKLY_HOUR", "13")
-    monkeypatch.setenv("CFB_RESULTS_HOUR", "8")
-    now = datetime(2026, 10, 10, 20, 0, tzinfo=timezone.utc)  # a Saturday
+    monkeypatch.setenv("CFB_FORECAST_HOURS", "24")
+    monkeypatch.setenv("CFB_FORECAST_HOUR", "9")
+    monkeypatch.setenv("CFB_BACKTEST_DAY", "tue")
+    monkeypatch.setenv("CFB_BACKTEST_HOUR", "11")
+    now = datetime(2026, 10, 10, 20, 0, tzinfo=timezone.utc)  # a Saturday, in season
     cal = _calendar(tmp_path, [(now - timedelta(hours=1)).isoformat(), (now + timedelta(days=2)).isoformat()])
     jobs = {j.name: j for j in build_jobs()}
-    assert "live-results" not in jobs and "grade" not in jobs
-    today_8 = now.replace(hour=8, minute=0)
-    assert jobs["results"].due(now, {"results": {"last_started": (today_8 - timedelta(hours=1)).isoformat()}}, cal)
-    assert not jobs["results"].due(now, {"results": {"last_started": (today_8 + timedelta(minutes=5)).isoformat()}}, cal)
-    assert jobs["pregame"].due(now, {}, cal)
-    monday = datetime(2026, 10, 5, 13, 0, tzinfo=timezone.utc)
-    assert not jobs["weekly"].due(now, {"weekly": {"last_started": (monday + timedelta(minutes=1)).isoformat()}}, cal)
-    assert jobs["weekly"].due(now, {"weekly": {"last_started": (monday - timedelta(days=1)).isoformat()}}, cal)
+    assert set(jobs) == {"forecast", "backtest"}  # one ongoing pipeline + a weekly backtest
+    # forecast is due once every 24h; a run 25h ago is due, 1h ago is not
+    assert jobs["forecast"].due(now, {"forecast": {"last_started": (now - timedelta(hours=25)).isoformat()}}, cal)
+    assert not jobs["forecast"].due(now, {"forecast": {"last_started": (now - timedelta(hours=1)).isoformat()}}, cal)
+    # backtest only after its weekly Tuesday slot
+    last_tue = datetime(2026, 10, 6, 11, 0, tzinfo=timezone.utc)
+    assert not jobs["backtest"].due(now, {"backtest": {"last_started": (last_tue + timedelta(minutes=1)).isoformat()}}, cal)
+    assert jobs["backtest"].due(now, {"backtest": {"last_started": (last_tue - timedelta(days=1)).isoformat()}}, cal)
+    # off-season: nothing is due
+    off = _calendar(tmp_path, ["2026-03-01T00:00:00Z"])
+    assert not jobs["forecast"].due(now, {}, off)
+    assert not jobs["backtest"].due(now, {}, off)
 
 
 def test_scheduler_once_records_state(tmp_path, monkeypatch):
     data, artifacts = tmp_path / "data", tmp_path / "artifacts"
-    _calendar(tmp_path, ["2026-03-01T00:00:00Z"])  # off-season calendar: only weekly/data jobs eligible
+    now = datetime.now(timezone.utc)
+    _calendar(tmp_path, [(now + timedelta(days=3)).isoformat()])  # in-season calendar
     calls = []
     monkeypatch.setattr("cfb_forecast.pipeline.run", lambda action, ctx: calls.append(action) or {"status": "success"})
-    sched = Scheduler(data, artifacts, 2026, jobs=["data", "results"])
-    assert sched.tick() == ["data"]
+    sched = Scheduler(data, artifacts, 2026, jobs=["forecast"])
+    assert sched.tick() == ["forecast"]
     state = json.loads((artifacts / "scheduler" / "state.json").read_text())
-    assert state["data"]["last_status"] == "success" and calls == ["data"]
+    assert state["forecast"]["last_status"] == "success" and calls == ["forecast"]
     assert (artifacts / "scheduler" / "heartbeat").exists()
-    assert sched.tick() == []  # already ran in this daily slot
+    assert sched.tick() == []  # already ran this cycle

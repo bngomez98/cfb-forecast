@@ -30,7 +30,7 @@ from .logs import add_file, close_file, configure, get
 
 log = get("pipeline")
 
-ACTIONS = ("weekly", "results", "pregame", "backtest", "data", "sources")
+ACTIONS = ("forecast", "results", "sources", "backtest", "data")
 
 
 @dataclass
@@ -144,13 +144,24 @@ def stage_market(ctx):
     return {"store": str(store), "rows": int(len(rows))}
 
 
-def stage_forecast(ctx):
-    from .weekly import run_weekly_forecast
+def stage_players(ctx):
+    """Refresh the current season's hierarchical player ratings from play-by-play."""
+    from .players import build_aggregates
 
-    result, manifest = run_weekly_forecast(ctx.data, ctx.model, ctx.artifacts, ctx.season, ctx.week,
-                                           market_path=_market_path(ctx), draws=ctx.draws)
+    if ctx.sources.strip().lower() in ("none", "off", "0") and not ctx.refresh_data:
+        pass
+    written = build_aggregates(ctx.data, [ctx.season], refresh=ctx.refresh_data)
+    ctx.outputs["player_aggregates"] = str(ctx.data)
+    return {"season_files": [str(p) for p in written]}
+
+
+def stage_forecast(ctx):
+    from .weekly import run_daily_forecast
+
+    result, manifest = run_daily_forecast(ctx.data, ctx.model, ctx.artifacts, ctx.season,
+                                          market_path=_market_path(ctx), draws=ctx.draws)
     ctx.outputs["forecast"] = manifest["output"]
-    ctx.outputs["latest_weekly"] = str(ctx.artifacts / "latest-weekly")
+    ctx.outputs["latest"] = str(ctx.artifacts / "latest")
     return manifest
 
 
@@ -164,8 +175,8 @@ def stage_backtest(ctx):
 
 def stage_verify(ctx):
     expected = {
-        "forecast": ctx.artifacts / "latest-weekly" / "forecasts.csv",
-        "manifest": ctx.artifacts / "latest-weekly" / "weekly_manifest.json",
+        "forecast": ctx.artifacts / "latest" / "forecasts.csv",
+        "manifest": ctx.artifacts / "latest" / "forecast_run_manifest.json",
     }
     missing = {k: str(v) for k, v in expected.items() if not v.exists()}
     if missing:
@@ -185,20 +196,21 @@ PREFLIGHT = Stage("preflight", stage_preflight, True, "Validate data, artifact a
 RESULTS = Stage("results", stage_results, False, "Final scores of completed games from the ESPN scoreboard")
 SOURCES = Stage("sources", _sources_stage(None), False, "Collect external results, picks, lines and stats")
 SOURCE_RESULTS = Stage("sources", _sources_stage("results"), False, "Collect external result sources")
-SOURCE_PREGAME = Stage("sources", _sources_stage(("picks", "lines")), False, "Collect external picks and lines before kickoff")
 MARKET = Stage("market", stage_market, False, "Snapshot the SportsDataverse spread/total into market history")
+PLAYERS = Stage("players", stage_players, False, "Refresh current-season hierarchical player ratings from play-by-play")
 
-FORECAST = Stage("forecast", stage_forecast, True, "Forecast the next upcoming FBS week")
+FORECAST = Stage("forecast", stage_forecast, True, "Forecast every remaining upcoming FBS game from the current state")
 BACKTEST = Stage("backtest", stage_backtest, False, "Point-in-time backtest: re-forecast every completed week from its pre-kickoff state, compare with final scores")
 VERIFY = Stage("verify", stage_verify, True, "Check that the forecast outputs exist")
 
 PLANS = {
-    "weekly": (DATA, PREFLIGHT, MARKET, RESULTS, SOURCES, FORECAST, BACKTEST, VERIFY),
-    "pregame": (DATA, MARKET, SOURCE_PREGAME),
+    # One ongoing daily pipeline: refresh data and completed results, update player ratings,
+    # forecast the full remaining slate from the current state. No chronological ledger.
+    "forecast": (DATA, PREFLIGHT, PLAYERS, MARKET, RESULTS, SOURCES, FORECAST, VERIFY),
     "results": (DATA, RESULTS, SOURCE_RESULTS, Stage("check", stage_any_results, True, "Require results from at least one provider")),
     "sources": (DATA, Stage("sources", _sources_stage(None), True, SOURCES.description)),
-    "backtest": (DATA, PREFLIGHT, Stage("backtest", stage_backtest, True, BACKTEST.description)),
-    "data": (DATA,),
+    "backtest": (DATA, PREFLIGHT, PLAYERS, Stage("backtest", stage_backtest, True, BACKTEST.description)),
+    "data": (DATA, PLAYERS),
 }
 
 
@@ -273,8 +285,8 @@ def write_receipt(artifacts, receipt, started):
 def add_arguments(p):
     env = os.environ.get
     p.add_argument("action", choices=ACTIONS, help=(
-        "weekly: full run; results: final scores of completed games; pregame: capture external predictions and lines; "
-        "backtest: point-in-time season backtest; data: fetch inputs; sources: all external sites"))
+        "forecast: daily full-slate forecast (the ongoing pipeline); results: final scores of completed games; "
+        "sources: all external sites; backtest: point-in-time season backtest; data: fetch inputs"))
     p.add_argument("--season", type=int, default=int(env("CFB_FORECAST_SEASON", "2026")))
     p.add_argument("--week", type=int, default=None, help="Forecast or refresh one specific week")
     p.add_argument("--draws", type=int, default=int(env("CFB_FORECAST_DRAWS", "50000")))

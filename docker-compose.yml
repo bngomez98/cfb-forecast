@@ -1,7 +1,7 @@
 # CFB forecast stack.
 #
 #   docker compose up -d                           # scheduler (automation) + dashboard on http://localhost:8501
-#   docker compose run --rm pipeline               # full weekly pipeline (refresh -> sources -> forecast -> grade)
+#   docker compose run --rm pipeline               # the ongoing daily forecast pipeline
 #   docker compose run --rm sources                # collect external sites only
 #   docker compose run --rm cfb-forecast backtest  # any engine subcommand
 #   docker compose run --rm -v ./src:/app/src cfb-forecast ...   # run local source edits without rebuilding
@@ -47,15 +47,15 @@ services:
   pipeline:
     <<: *engine
     profiles: [cli]
-    command: ["pipeline", "weekly"]
+    command: ["pipeline", "forecast"]
 
   sources:
     <<: *engine
     profiles: [cli]
     command: ["pipeline", "sources"]
 
-  # Automation: completed-game results, pregame capture, the weekly pipeline and data
-  # refreshes from the game calendar (see src/cfb_forecast/scheduler.py).
+  # Automation: the ongoing daily forecast pipeline and a weekly backtest,
+  # scheduled from the game calendar (see src/cfb_forecast/scheduler.py).
   scheduler:
     <<: *engine
     restart: unless-stopped
@@ -70,11 +70,10 @@ services:
       CFB_SOURCES: ${CFB_SOURCES:-all}
       CFB_LOG_LEVEL: ${CFB_LOG_LEVEL:-INFO}
       CFB_LOG_DIR: /app/artifacts/logs
-      CFB_PREGAME_HOURS: ${CFB_PREGAME_HOURS:-6}
-      CFB_WEEKLY_DAY: ${CFB_WEEKLY_DAY:-mon}
-      CFB_WEEKLY_HOUR: ${CFB_WEEKLY_HOUR:-13}
-      CFB_RESULTS_HOUR: ${CFB_RESULTS_HOUR:-8}
-      CFB_DATA_HOUR: ${CFB_DATA_HOUR:-9}
+      CFB_FORECAST_HOURS: ${CFB_FORECAST_HOURS:-24}
+      CFB_FORECAST_HOUR: ${CFB_FORECAST_HOUR:-9}
+      CFB_BACKTEST_DAY: ${CFB_BACKTEST_DAY:-tue}
+      CFB_BACKTEST_HOUR: ${CFB_BACKTEST_HOUR:-11}
     healthcheck:
       test: ["CMD", "cfb-forecast", "healthcheck", "--artifacts", "/app/artifacts", "--max-age", "600"]
       interval: 60s

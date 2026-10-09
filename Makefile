@@ -6,8 +6,8 @@ export OPENBLAS_NUM_THREADS := 1
 export OMP_NUM_THREADS := 1
 
 .DEFAULT_GOAL := help
-.PHONY: help install lint test check reproduce weekly results pregame sources scheduler scheduler-status \
-        backtest-season dashboard docker-build docker-weekly up down logs clean
+.PHONY: help install lint test check reproduce results forecast sources scheduler scheduler-status \
+        backtest-season dashboard docker-build docker-forecast up down logs clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -26,14 +26,11 @@ check: lint test ## Lint and test
 reproduce: ## Reproduce the 2025 held-out evaluation from bundled inputs
 	cfb-forecast backtest --data data --out artifacts/reproduced --archive data/archive/matched_predictions.csv
 
-weekly: ## Full weekly pipeline: refresh data and results, forecast next week, point-in-time backtest
-	cfb-pipeline weekly --season $(SEASON) --draws $(DRAWS) --refresh-data
+forecast: ## Ongoing daily pipeline: refresh data/results/players, forecast every upcoming game
+	cfb-pipeline forecast --season $(SEASON) --draws $(DRAWS) --refresh-data
 
 results: ## Final scores of completed games from ESPN and result sites
 	cfb-pipeline results --season $(SEASON)
-
-pregame: ## Capture external predictions and lines before kickoff
-	cfb-pipeline pregame --season $(SEASON)
 
 sources: ## Collect every external source once
 	cfb-forecast sources-collect --season $(SEASON)
@@ -53,7 +50,7 @@ dashboard: ## Run the Streamlit dashboard locally
 docker-build: ## Build the engine and dashboard images
 	docker compose build
 
-docker-weekly: ## Run the weekly pipeline in Docker as the current user
+docker-forecast: ## Run the daily forecast pipeline in Docker as the current user
 	CFB_UID=$$(id -u) CFB_GID=$$(id -g) docker compose run --rm pipeline
 
 up: ## Start the scheduler (automation) and dashboard containers

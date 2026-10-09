@@ -51,9 +51,24 @@ def normalization(Y, mask):
 def feature_columns(variant):
     # Layout: offense(5), defense(5), offense-defense(5), products(5),
     # score-state variance, PBP variance, signed venue, early-season,
-    # offense pass-rush difference, defense pass-rush difference.
+    # offense pass-rush difference, defense pass-rush difference (indices 0-25).
+    # The player layer appends two columns: own player-offense rating (26) and
+    # opponent player-defense rating (27), both standardized, point-in-time.
     if variant == "score":
         return [0,5,10,20,22,23]
     if variant == "pbp":
         return list(range(26))
+    if variant == "pbp_player":
+        return list(range(28))
     raise ValueError(f"Unknown variant {variant}")
+
+
+PLAYER_VARIANTS = ("pbp_player",)
+
+
+def attach_player_features(F, game_ids, features_by_week):
+    """Concatenate the (n, 2, 2) player block onto the (n, 2, 26) state features."""
+    from .players import player_feature_matrix
+    import numpy as np
+    block = player_feature_matrix(game_ids, features_by_week)
+    return np.concatenate([F, block], axis=2)
