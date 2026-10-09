@@ -74,12 +74,49 @@ def normalize_schedule(df):
 def read_frame(path):
     return pd.read_parquet(path) if Path(path).suffix == ".parquet" else pd.read_csv(path)
 
+RESULTS_OVERLAY = "results_overlay.csv"
+
+
+def apply_results_overlay(raw, overlay):
+    """Fill final scores the schedule snapshot does not have yet from cross-checked live results.
+
+    Only games the schedule lists as unfinished (or without scores) are filled, and
+    ``completed_at`` is set to when the agreeing sources were observed, so the
+    result cannot enter any forecast cut off before that moment. Scores the schedule
+    already has are never overwritten.
+    """
+    if overlay.empty:
+        return raw
+    raw = raw.copy()
+    ov = overlay.drop_duplicates("game_id", keep="last").set_index("game_id")
+    ids = pd.to_numeric(raw.game_id, errors="coerce")
+    done = raw.completed.astype(str).str.lower().isin(["true", "1"])
+    scored = pd.to_numeric(raw.home_points, errors="coerce").notna() & pd.to_numeric(raw.away_points, errors="coerce").notna()
+    fill = ids.isin(ov.index) & ~(done & scored)
+    if "completed_at" not in raw:
+        raw["completed_at"] = pd.NA
+    for col in ("completed", "home_points", "away_points", "completed_at"):
+        raw[col] = raw[col].astype(object)
+    sel = ids[fill]
+    raw.loc[fill, "home_points"] = ov.loc[sel, "home_points"].to_numpy()
+    raw.loc[fill, "away_points"] = ov.loc[sel, "away_points"].to_numpy()
+    raw.loc[fill, "completed_at"] = ov.loc[sel, "completed_at"].to_numpy()
+    raw.loc[fill, "completed"] = True
+    raw["completed"] = raw.completed.astype(str)
+    return raw
+
+
 def load_data(root):
     root = Path(root)
     paths = sorted(root.glob("schedule_*.csv")) + sorted(root.glob("schedule_*.parquet"))
     if not paths:
         raise FileNotFoundError(f"No schedule files in {root}; run the fetch command")
-    schedules = normalize_schedule(pd.concat([read_frame(p) for p in paths], ignore_index=True))
+    raw = pd.concat([read_frame(p) for p in paths], ignore_index=True)
+    overlay_path = root / RESULTS_OVERLAY
+    if overlay_path.exists():
+        raw = apply_results_overlay(raw, pd.read_csv(overlay_path))
+        paths = paths + [overlay_path]
+    schedules = normalize_schedule(raw)
     paths_adv = sorted(root.glob("adv_team_*.parquet")) + sorted(root.glob("adv_team_*.csv"))
     adv = pd.concat([read_frame(p) for p in paths_adv], ignore_index=True) if paths_adv else pd.DataFrame(columns=ADV_FIELDS)
     require_columns(adv, ADV_FIELDS, "play-by-play summaries")

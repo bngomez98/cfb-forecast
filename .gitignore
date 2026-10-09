@@ -30,6 +30,9 @@ artifacts/pipeline/
 artifacts/latest-weekly/
 artifacts/results/
 
+# Raw external-source snapshots (re-interpretable with sources-collect --offline)
+data/sources/raw/
+
 # Large optional downloads
 data/pbp_*.parquet
 *.download

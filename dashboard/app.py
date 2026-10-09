@@ -99,13 +99,9 @@ def grade_forecast(predictions, schedule):
 st.title("CFB Forecast Dashboard")
 st.caption("Weekly predictions and historical results backtesting")
 
-forecast_path = LATEST / "forecasts.csv"
-if not forecast_path.exists():
-    st.error(f"No forecast found at {forecast_path}")
-    st.info("Run the weekly forecast first, then refresh this page.")
-    st.stop()
-
-page = st.sidebar.radio("View", ["Current forecast", "Historical backtest"])
+# The final forecast (model informed by market and external predictions) when it exists, else the model's own.
+forecast_path = LATEST / "final_forecasts.csv" if (LATEST / "final_forecasts.csv").exists() else LATEST / "forecasts.csv"
+page = st.sidebar.radio("View", ["Current forecast", "Historical backtest", "External sources"])
 schedule = load_schedule(str(DATA_ROOT))
 live_results = load_live_results(str(ARTIFACT_ROOT))
 if not live_results.empty:
@@ -159,7 +155,47 @@ if page == "Historical backtest":
         st.write("Completed results are joined by immutable game_id. Winner accuracy uses predicted home win probability >= 50%. Brier score grades the home-win probability. Score, margin, and total errors are mean absolute errors.")
     st.stop()
 
+if page == "External sources":
+    st.header("External sources")
+    sources_root = DATA_ROOT / "sources"
+    report = load_manifest(sources_root / "collections" / "latest.json")
+    if not report:
+        st.info("No collection yet. Run `cfb-forecast sources-collect --season <year>` or the weekly pipeline.")
+        st.stop()
+    st.caption(f"Last collection {report.get('started_at', '')} · season {report.get('season', '')}")
+    status = pd.DataFrame([{"Source": name, "Status": v.get("status"), "Kind": v.get("kind"), "Results": v.get("results", 0),
+                            "Picks": v.get("picks", 0), "Lines": v.get("lines", 0), "Team stats": v.get("team_stats", 0),
+                            "Detail": v.get("error", "")} for name, v in report.get("sources", {}).items()])
+    st.dataframe(status, use_container_width=True, hide_index=True)
+    crosscheck_path = sources_root / "results_crosscheck.csv"
+    if crosscheck_path.exists():
+        cons = load_csv(str(crosscheck_path))
+        conflicts = cons[(cons.sources_agree == False) | (cons.schedule_agrees == False)]  # noqa: E712
+        c1, c2 = st.columns(2)
+        c1.metric("Games with external finals", len(cons))
+        c2.metric("Score conflicts", len(conflicts))
+        if len(conflicts):
+            st.subheader("Conflicting scores")
+            st.dataframe(conflicts[["kickoff", "away_team", "home_team", "source_scores", "schedule_score"]], use_container_width=True, hide_index=True)
+    grades_path = sources_root / "picks_grades.csv"
+    if grades_path.exists():
+        st.subheader("Pick sources graded against final scores")
+        st.dataframe(load_csv(str(grades_path)), use_container_width=True, hide_index=True)
+    picks_path = sources_root / "picks.csv"
+    if picks_path.exists():
+        picks = load_csv(str(picks_path)).sort_values("retrieved_at").drop_duplicates(["source", "game_id"], keep="last")
+        upcoming = picks[pd.to_datetime(picks.kickoff, utc=True) > pd.Timestamp.now(tz="UTC")]
+        st.subheader("Latest external predictions for upcoming games")
+        st.dataframe(upcoming[["source", "kickoff", "away_team", "home_team", "pick_team", "pick_home_win_prob", "pick_away_score", "pick_home_score", "pick_home_spread"]],
+                     use_container_width=True, hide_index=True)
+    st.stop()
+
 # Current forecast view
+if not forecast_path.exists():
+    st.error(f"No forecast found at {forecast_path}")
+    st.info("Run the weekly forecast first, then refresh this page.")
+    st.stop()
+
 try:
     df = load_csv(str(forecast_path))
 except Exception as exc:
@@ -201,11 +237,18 @@ st.subheader("Projected games")
 if view.empty:
     st.info("No games match the selected filters.")
 else:
-    display = view[["kickoff", "away_team", "home_team", "expected_away_score", "expected_home_score", "projected_home_margin", "projected_total", "winner", "winner_probability", "margin_interval_80", "total_interval_80"]].copy()
-    display.columns = ["Kickoff", "Away", "Home", "Away score", "Home score", "Home margin", "Total", "Pick", "Pick probability", "Margin 80% interval", "Total 80% interval"]
+    columns = {"kickoff": "Kickoff", "away_team": "Away", "home_team": "Home", "expected_away_score": "Away score",
+               "expected_home_score": "Home score", "projected_home_margin": "Home margin", "projected_total": "Total",
+               "winner": "Pick", "winner_probability": "Pick probability"}
+    # Final forecasts also show the inputs: model margin, market margin, external margin.
+    columns.update({k: v for k, v in {"model_home_margin": "Model margin", "market_home_margin": "Market margin",
+                                       "external_home_margin": "External margin", "blend_inputs": "Inputs"}.items() if k in view})
+    columns.update({"margin_interval_80": "Model margin 80% interval", "total_interval_80": "Total 80% interval"})
+    display = view[list(columns)].rename(columns=columns)
     display["Pick probability"] = display["Pick probability"].map(lambda x: f"{x:.1%}")
-    for column in ["Away score", "Home score", "Home margin", "Total"]:
-        display[column] = display[column].map(lambda x: f"{x:.1f}")
+    for column in ["Away score", "Home score", "Home margin", "Total", "Model margin", "Market margin", "External margin"]:
+        if column in display:
+            display[column] = display[column].map(lambda x: "—" if pd.isna(x) else f"{x:.1f}")
     st.dataframe(display, use_container_width=True, hide_index=True)
 st.subheader("Win probability")
 if not view.empty:

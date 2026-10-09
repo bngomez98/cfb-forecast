@@ -25,6 +25,8 @@ data/pbp_*.parquet
 artifacts/pipeline
 artifacts/results
 artifacts/latest-weekly
+artifacts/logs
+data/sources/raw
 
 # Local configuration
 .env

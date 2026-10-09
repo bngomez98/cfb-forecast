@@ -1,11 +1,19 @@
 # CFB forecast stack.
 #
-#   docker compose up -d dashboard                 # dashboard on http://localhost:8501
-#   docker compose run --rm pipeline               # full weekly pipeline (refresh -> forecast -> grade)
+#   docker compose up -d                           # scheduler (automation) + dashboard on http://localhost:8501
+#   docker compose run --rm pipeline               # full weekly pipeline (refresh -> sources -> forecast -> grade)
+#   docker compose run --rm sources                # collect external sites only
 #   docker compose run --rm cfb-forecast backtest  # any engine subcommand
+#   docker compose run --rm -v ./src:/app/src cfb-forecast ...   # run local source edits without rebuilding
 #   docker compose --profile public up -d          # dashboard behind Caddy with automatic HTTPS
 #
 # Defaults are listed in .env.example; copy it to .env to override them.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
 
 x-engine: &engine
   image: ${CFB_IMAGE:-cfb-forecast:local}
@@ -14,6 +22,7 @@ x-engine: &engine
     dockerfile: Dockerfile
   # Run as the host user so files written to the bind mounts stay editable.
   user: "${CFB_UID:-1000}:${CFB_GID:-1000}"
+  logging: *logging
   environment:
     HOME: /tmp
     CFB_DATA_DIR: /app/data
@@ -22,6 +31,11 @@ x-engine: &engine
     CFB_FORECAST_DRAWS: ${CFB_FORECAST_DRAWS:-50000}
     CFB_BACKTEST_LEAD_HOURS: ${CFB_BACKTEST_LEAD_HOURS:-48}
     CFB_REFRESH_DATA: ${CFB_REFRESH_DATA:-1}
+    CFB_SOURCES: ${CFB_SOURCES:-all}
+    CFB_LOG_LEVEL: ${CFB_LOG_LEVEL:-INFO}
+    CFB_LOG_DIR: /app/artifacts/logs
+    CFB_MARKET_MAX_WEIGHT: ${CFB_MARKET_MAX_WEIGHT:-0.35}
+    CFB_EXTERNAL_FULL_SOURCES: ${CFB_EXTERNAL_FULL_SOURCES:-3}
   volumes:
     - ${CFB_DATA_DIR:-./data}:/app/data
     - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts
@@ -37,12 +51,49 @@ services:
     profiles: [cli]
     command: ["pipeline", "weekly"]
 
+  sources:
+    <<: *engine
+    profiles: [cli]
+    command: ["pipeline", "sources"]
+
+  # Automation: runs live results, pregame capture + re-blend, the weekly pipeline,
+  # grading and data refreshes from the game calendar (see src/cfb_forecast/scheduler.py).
+  scheduler:
+    <<: *engine
+    restart: unless-stopped
+    command: ["scheduler"]
+    environment:
+      HOME: /tmp
+      CFB_DATA_DIR: /app/data
+      CFB_ARTIFACTS_DIR: /app/artifacts
+      CFB_FORECAST_SEASON: ${CFB_FORECAST_SEASON:-2026}
+      CFB_FORECAST_DRAWS: ${CFB_FORECAST_DRAWS:-50000}
+      CFB_BACKTEST_LEAD_HOURS: ${CFB_BACKTEST_LEAD_HOURS:-48}
+      CFB_SOURCES: ${CFB_SOURCES:-all}
+      CFB_LOG_LEVEL: ${CFB_LOG_LEVEL:-INFO}
+      CFB_LOG_DIR: /app/artifacts/logs
+      CFB_MARKET_MAX_WEIGHT: ${CFB_MARKET_MAX_WEIGHT:-0.35}
+      CFB_EXTERNAL_FULL_SOURCES: ${CFB_EXTERNAL_FULL_SOURCES:-3}
+      CFB_LIVE_MINUTES: ${CFB_LIVE_MINUTES:-15}
+      CFB_PREGAME_HOURS: ${CFB_PREGAME_HOURS:-6}
+      CFB_WEEKLY_DAY: ${CFB_WEEKLY_DAY:-mon}
+      CFB_WEEKLY_HOUR: ${CFB_WEEKLY_HOUR:-13}
+      CFB_GRADE_HOUR: ${CFB_GRADE_HOUR:-10}
+      CFB_DATA_HOUR: ${CFB_DATA_HOUR:-9}
+    healthcheck:
+      test: ["CMD", "cfb-forecast", "healthcheck", "--artifacts", "/app/artifacts", "--max-age", "600"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
   dashboard:
     image: ${CFB_DASHBOARD_IMAGE:-cfb-forecast-dashboard:local}
     build:
       context: .
       dockerfile: dashboard/Dockerfile
     restart: unless-stopped
+    logging: *logging
     environment:
       CFB_DATA_DIR: /app/data
       CFB_ARTIFACTS_DIR: /app/artifacts
@@ -62,6 +113,7 @@ services:
     image: caddy:2-alpine
     profiles: [public]
     restart: unless-stopped
+    logging: *logging
     environment:
       CFB_DOMAIN: ${CFB_DOMAIN:-localhost}
     ports:

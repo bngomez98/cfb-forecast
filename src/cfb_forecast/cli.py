@@ -75,9 +75,65 @@ def main():
     sb.add_argument("--draws",type=int,default=50000); sb.add_argument("--lead-hours",type=float,default=48.0)
     pf=sub.add_parser("preflight",help="Validate mounted data and artifact paths")
     pf.add_argument("--data",default="data"); pf.add_argument("--artifacts",default="artifacts"); pf.add_argument("--season",type=int,default=None)
+    sub.add_parser("sources-list",help="List the registered external sources")
+    sc=sub.add_parser("sources-collect",help="Fetch external sources, interpret them and publish reconciled outputs")
+    sc.add_argument("--data",default="data"); sc.add_argument("--artifacts",default="artifacts"); sc.add_argument("--season",type=int,required=True)
+    sc.add_argument("--source",nargs="+",default=None,help="Source names (default: all)"); sc.add_argument("--tag",default=None,choices=["results","picks","lines","stats"])
+    sc.add_argument("--week",type=int,default=None); sc.add_argument("--offline",action="store_true",help="Re-interpret the latest stored snapshots instead of fetching")
+    sc.add_argument("--market",default=None,help="Market history store (default <data>/market_history.csv)")
+    si=sub.add_parser("sources-import",help="Interpret a saved page, export or PDF as a source snapshot")
+    si.add_argument("--file",required=True); si.add_argument("--source",required=True); si.add_argument("--season",type=int,required=True)
+    si.add_argument("--data",default="data"); si.add_argument("--artifacts",default="artifacts"); si.add_argument("--market",default=None)
+    si.add_argument("--observed-at",default=None,help="When the content was published/captured (UTC offset required); default now")
+    sg=sub.add_parser("sources-grade",help="Grade collected picks against final scores, next to the model")
+    sg.add_argument("--data",default="data"); sg.add_argument("--artifacts",default="artifacts"); sg.add_argument("--season",type=int,required=True)
+    bf=sub.add_parser("blend-fit",help="Fit final-forecast weights (model, market, external) on held-out games")
+    bf.add_argument("--predictions",default="artifacts/backtest/predictions.csv"); bf.add_argument("--market",default="data/market_history.csv")
+    bf.add_argument("--archive",default="data/archive/matched_predictions.csv"); bf.add_argument("--out",default="artifacts/backtest/blend/blend.json")
+    bf.add_argument("--market-max-weight",type=float,default=None,help="Cap on the market weight (default CFB_MARKET_MAX_WEIGHT or 0.35)")
+    ba=sub.add_parser("blend-apply",help="Write final_forecasts.csv and report.md for a forecast directory")
+    ba.add_argument("--forecast",default="artifacts/latest-weekly"); ba.add_argument("--data",default="data")
+    ba.add_argument("--blend",default="artifacts/backtest/blend/blend.json"); ba.add_argument("--market",default="data/market_history.csv")
+    hc=sub.add_parser("healthcheck",help="Exit 0 if the scheduler heartbeat is fresh (container health)")
+    hc.add_argument("--artifacts",default="artifacts"); hc.add_argument("--max-age",type=int,default=600)
+    from .scheduler import add_arguments as scheduler_arguments
+    scheduler_arguments(sub.add_parser("scheduler",help="Run pipeline jobs automatically from the game calendar"))
     from .pipeline import add_arguments as pipeline_arguments
     pipeline_arguments(sub.add_parser("pipeline",help="Run an end-to-end pipeline: weekly, results, backtest or data"))
     args=parser.parse_args()
+    from .logs import configure
+    configure()
+    if args.command=="sources-list":
+        from .sources import list_sources
+        print(list_sources().to_string(index=False)); return
+    if args.command=="sources-collect":
+        from .sources import collect
+        report=collect(args.data,args.season,args.artifacts,args.source,args.tag,args.week,args.offline,args.market)
+        rows=[{"source":k,**{f:v.get(f) for f in ("status","reason","results","picks","lines","team_stats")}} for k,v in report["sources"].items()]
+        print(pd.DataFrame(rows).fillna("").to_string(index=False))
+        print({k:v for k,v in report.items() if k not in ("sources",)}); return
+    if args.command=="sources-import":
+        from .sources import import_file
+        print(pd.Series(import_file(args.file,args.source,args.data,args.season,args.artifacts,args.observed_at,args.market)).to_string()); return
+    if args.command=="sources-grade":
+        from .sources import grade_picks
+        graded=grade_picks(args.data,args.season,args.artifacts)
+        print(graded.to_string(index=False) if len(graded) else "No collected picks have final results yet"); return
+    if args.command=="blend-fit":
+        from .blend import fit_blend
+        import json
+        spec=fit_blend(args.predictions,args.market,args.archive,args.out,args.market_max_weight)
+        print(json.dumps({k:spec[k] for k in ("weights","sigma","market_max_weight","cross_validated")},indent=2)); return
+    if args.command=="blend-apply":
+        from .blend import apply_blend
+        out=apply_blend(args.forecast,args.data,args.blend,args.market)
+        print(out[["away_team","home_team","expected_away_score","expected_home_score","home_win_probability","model_home_margin","market_home_margin","external_home_margin","projected_home_margin"]].to_string(index=False)); return
+    if args.command=="healthcheck":
+        from .scheduler import healthcheck
+        raise SystemExit(healthcheck(args.artifacts,args.max_age))
+    if args.command=="scheduler":
+        from .scheduler import run_from_args as scheduler_run
+        raise SystemExit(scheduler_run(args))
     if args.command=="pipeline":
         from .pipeline import run_from_args
         raise SystemExit(run_from_args(args))

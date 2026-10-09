@@ -9,7 +9,8 @@ container image and in GitHub Actions:
 
 Stages are either required (a failure stops the run with a nonzero exit code)
 or optional (a failure is recorded in the run receipt and the run continues).
-Every run writes ``<artifacts>/pipeline/latest.json`` plus a timestamped copy.
+Every run writes ``<artifacts>/pipeline/latest.json`` plus a timestamped copy,
+and a log file in ``CFB_LOG_DIR`` (default ``<artifacts>/logs``).
 """
 from __future__ import annotations
 
@@ -25,8 +26,11 @@ from pathlib import Path
 from typing import Callable
 
 from . import __version__
+from .logs import add_file, close_file, configure, get
 
-ACTIONS = ("weekly", "results", "backtest", "data")
+log = get("pipeline")
+
+ACTIONS = ("weekly", "results", "pregame", "grade", "backtest", "data", "sources")
 
 
 @dataclass
@@ -39,6 +43,8 @@ class Context:
     lead_hours: float = 48.0
     week: int | None = None
     refresh_data: bool = False
+    sources: str = "all"
+    log_dir: Path | None = None
     outputs: dict = field(default_factory=dict)
 
     @classmethod
@@ -53,6 +59,8 @@ class Context:
             lead_hours=float(args.lead_hours),
             week=args.week,
             refresh_data=bool(args.refresh_data),
+            sources=args.sources,
+            log_dir=Path(args.log_dir) if args.log_dir else artifacts / "logs",
         )
 
 
@@ -105,13 +113,72 @@ def stage_results(ctx):
     return {"rows": int(len(results)), "final": int(results.is_final.sum()) if len(results) else 0, "output": str(out)}
 
 
+def _sources_stage(tag):
+    def stage(ctx):
+        from .sources import collect
+
+        if ctx.sources.strip().lower() in ("", "none", "off", "0"):
+            return {"action": "disabled"}
+        names = None if ctx.sources.strip().lower() == "all" else [n.strip() for n in ctx.sources.split(",") if n.strip()]
+        report = collect(ctx.data, ctx.season, ctx.artifacts, names=names, tag=tag, week=ctx.week)
+        statuses = {k: v["status"] for k, v in report["sources"].items()}
+        ok = [k for k, v in statuses.items() if v == "ok"]
+        if not ok:
+            raise RuntimeError(f"no external source produced records: {statuses}")
+        ctx.outputs["sources"] = str(ctx.data / "sources")
+        return {"ok": ok, "statuses": statuses, **{k: v for k, v in report.items() if k not in ("sources",)}}
+    return stage
+
+
+def _market_path(ctx):
+    path = ctx.data / "market_history.csv"
+    return path if path.exists() and path.stat().st_size else None
+
+
+def stage_market(ctx):
+    """Point-in-time SportsDataverse spread/total snapshot into the market history."""
+    from .market import capture_sportsdataverse_snapshot
+
+    store = ctx.data / "market_history.csv"
+    rows = capture_sportsdataverse_snapshot(ctx.season, store)
+    return {"store": str(store), "rows": int(len(rows))}
+
+
 def stage_forecast(ctx):
     from .weekly import run_weekly_forecast
 
-    result, manifest = run_weekly_forecast(ctx.data, ctx.model, ctx.artifacts, ctx.season, ctx.week, draws=ctx.draws)
+    result, manifest = run_weekly_forecast(ctx.data, ctx.model, ctx.artifacts, ctx.season, ctx.week,
+                                           market_path=_market_path(ctx), draws=ctx.draws)
     ctx.outputs["forecast"] = manifest["output"]
     ctx.outputs["latest_weekly"] = str(ctx.artifacts / "latest-weekly")
     return manifest
+
+
+def stage_blend(ctx):
+    """Final forecast: model informed by market and external predictions (market weight capped)."""
+    from .blend import DEFAULT_PATH, apply_blend
+
+    blend_path = Path(os.environ.get("CFB_BLEND_PATH") or ctx.artifacts / "backtest" / "blend" / "blend.json")
+    targets = [Path(p) for p in (ctx.outputs.get("forecast"), ctx.artifacts / "latest-weekly") if p]
+    targets = [p for p in dict.fromkeys(targets) if (p / "forecasts.csv").exists()]
+    if not targets:
+        raise FileNotFoundError("No forecast to blend; run the weekly forecast first")
+    summary = {}
+    for target in targets:
+        out = apply_blend(target, ctx.data, blend_path if blend_path.exists() else DEFAULT_PATH, _market_path(ctx))
+        summary = {"games": int(len(out)), "with_market": int(out.market_home_margin.notna().sum()),
+                   "with_external": int(out.external_home_margin.notna().sum()),
+                   "final": str(target / "final_forecasts.csv"), "report": str(target / "report.md")}
+    return summary
+
+
+def stage_grade(ctx):
+    from .sources import grade_picks
+
+    if not (ctx.data / "sources" / "picks.csv").exists():
+        return {"action": "no-picks-collected"}
+    graded = grade_picks(ctx.data, ctx.season, ctx.artifacts)
+    return {"sources_graded": int(len(graded))}
 
 
 def stage_backtest(ctx):
@@ -133,16 +200,33 @@ def stage_verify(ctx):
     return {k: str(v) for k, v in expected.items()}
 
 
+def stage_any_results(ctx):
+    got = [k for k in ("results", "sources") if k in ctx.outputs]
+    if not got:
+        raise RuntimeError("Neither ESPN nor any external result source returned data")
+    return {"from": got}
+
+
 DATA = Stage("data", stage_data, True, "Download or refresh season schedule and advanced-team inputs")
 PREFLIGHT = Stage("preflight", stage_preflight, True, "Validate data, artifact and model paths")
 RESULTS = Stage("results", stage_results, False, "Pull live scores from the ESPN public scoreboard")
+SOURCES = Stage("sources", _sources_stage(None), False, "Collect external results, picks, lines and stats")
+SOURCE_RESULTS = Stage("sources", _sources_stage("results"), False, "Collect external result sources")
+SOURCE_PREGAME = Stage("sources", _sources_stage(("picks", "lines")), False, "Collect external picks and lines before kickoff")
+MARKET = Stage("market", stage_market, False, "Snapshot the SportsDataverse spread/total into market history")
+BLEND = Stage("blend", stage_blend, False, "Final forecast: model informed by market and external predictions; write report.md")
+GRADE = Stage("grade", stage_grade, False, "Grade external pick sources against final scores")
+
 FORECAST = Stage("forecast", stage_forecast, True, "Forecast the next upcoming FBS week")
 BACKTEST = Stage("backtest", stage_backtest, False, "Re-forecast and grade every completed week this season")
 VERIFY = Stage("verify", stage_verify, True, "Check that the forecast outputs exist")
 
 PLANS = {
-    "weekly": (DATA, PREFLIGHT, RESULTS, FORECAST, BACKTEST, VERIFY),
-    "results": (DATA, Stage("results", stage_results, True, RESULTS.description)),
+    "weekly": (DATA, PREFLIGHT, MARKET, RESULTS, SOURCES, FORECAST, BLEND, BACKTEST, GRADE, VERIFY),
+    "pregame": (DATA, MARKET, SOURCE_PREGAME, BLEND),
+    "grade": (DATA, Stage("grade", stage_grade, True, GRADE.description)),
+    "results": (DATA, RESULTS, SOURCE_RESULTS, Stage("check", stage_any_results, True, "Require results from at least one provider")),
+    "sources": (DATA, Stage("sources", _sources_stage(None), True, SOURCES.description)),
     "backtest": (DATA, PREFLIGHT, Stage("backtest", stage_backtest, True, BACKTEST.description)),
     "data": (DATA,),
 }
@@ -153,6 +237,8 @@ def _now():
 
 
 def run(action, ctx):
+    configure()
+    log_file = add_file(ctx.log_dir, action) if ctx.log_dir else None
     started = _now()
     receipt = {
         "action": action,
@@ -167,11 +253,13 @@ def run(action, ctx):
         "data": str(ctx.data),
         "artifacts": str(ctx.artifacts),
         "model": str(ctx.model),
+        "sources": ctx.sources,
+        "log_file": str(log_file) if log_file else None,
         "stages": [],
     }
     status = "success"
     for stage in PLANS[action]:
-        print(f"\n==> [{stage.name}] {stage.description}", flush=True)
+        log.info("==> [%s] %s", stage.name, stage.description)
         t0 = time.perf_counter()
         entry = {"stage": stage.name, "required": stage.required}
         try:
@@ -180,21 +268,25 @@ def run(action, ctx):
         except Exception as exc:
             entry["status"] = "failed"
             entry["error"] = f"{type(exc).__name__}: {exc}"
-            traceback.print_exc()
+            if stage.required:
+                log.error("[%s] %s\n%s", stage.name, entry["error"], traceback.format_exc().rstrip())
+            else:
+                log.warning("[%s] optional stage failed: %s", stage.name, entry["error"])
             if stage.required:
                 status = "failed"
             elif status == "success":
                 status = "degraded"
         entry["seconds"] = round(time.perf_counter() - t0, 2)
         receipt["stages"].append(entry)
-        print(f"<== [{stage.name}] {entry['status']} in {entry['seconds']}s", flush=True)
+        log.info("<== [%s] %s in %ss", stage.name, entry["status"], entry["seconds"])
         if status == "failed":
             break
     receipt["status"] = status
     receipt["finished_at"] = _now().isoformat()
     receipt["outputs"] = ctx.outputs
     path = write_receipt(ctx.artifacts, receipt, started)
-    print(f"\nPipeline {action}: {status}. Receipt: {path}", flush=True)
+    log.info("Pipeline %s: %s. Receipt: %s%s", action, status, path, f" Log: {log_file}" if log_file else "")
+    close_file()
     return receipt
 
 
@@ -210,7 +302,9 @@ def write_receipt(artifacts, receipt, started):
 
 def add_arguments(p):
     env = os.environ.get
-    p.add_argument("action", choices=ACTIONS, help="weekly: full run; results: live scores; backtest: grade season; data: fetch inputs")
+    p.add_argument("action", choices=ACTIONS, help=(
+        "weekly: full run; results: live scores; pregame: capture picks/lines and re-blend the latest forecast; "
+        "grade: grade external picks; backtest: grade season; data: fetch inputs; sources: all external sites"))
     p.add_argument("--season", type=int, default=int(env("CFB_FORECAST_SEASON", "2026")))
     p.add_argument("--week", type=int, default=None, help="Forecast or refresh one specific week")
     p.add_argument("--draws", type=int, default=int(env("CFB_FORECAST_DRAWS", "50000")))
@@ -218,6 +312,9 @@ def add_arguments(p):
     p.add_argument("--data", default=env("CFB_DATA_DIR", "data"))
     p.add_argument("--artifacts", default=env("CFB_ARTIFACTS_DIR", "artifacts"))
     p.add_argument("--model", default=env("CFB_MODEL_DIR"), help="Defaults to <artifacts>/backtest/model")
+    p.add_argument("--sources", default=env("CFB_SOURCES", "all"),
+                   help="External sources to collect: 'all', 'none' or a comma-separated list (see sources-list)")
+    p.add_argument("--log-dir", default=env("CFB_LOG_DIR"), help="Defaults to <artifacts>/logs")
     p.add_argument("--refresh-data", action="store_true", default=env("CFB_REFRESH_DATA", "0") == "1",
                    help="Re-download the season inputs even when cached copies exist")
     return p
