@@ -17,6 +17,7 @@ from cfb_forecast.rosters import (
     fetch_current_roster,
     fetch_current_rosters,
     fetch_historical_rosters,
+    fetch_historical_rosters_span,
     summarize_captures,
 )
 
@@ -219,3 +220,86 @@ def test_fetch_historical_rosters_sentinel_on_download_failure(monkeypatch, tmp_
     capture = fetch_historical_rosters(2024, cache_dir=tmp_path / "rosters")
     assert capture.status == STATUS_NETWORK_ERROR
     assert "github unreachable" in (capture.note or "")
+
+
+def test_fetch_historical_rosters_span_covers_each_season(monkeypatch, tmp_path):
+    seasons_requested: list[int] = []
+
+    def fake_download(url, target, timeout=60.0):
+        # Extract season from URL (e.g. cfb_rosters_2021.parquet).
+        for token in url.split("_"):
+            if token.endswith(".parquet"):
+                seasons_requested.append(int(token.split(".")[0]))
+                break
+        Path(target).parent.mkdir(parents=True, exist_ok=True)
+        frame = pd.DataFrame(
+            [
+                {
+                    "season": seasons_requested[-1],
+                    "team_id": 194,
+                    "athlete_id": f"X-{seasons_requested[-1]}",
+                    "full_name": "Rolling Player",
+                    "position": "QB",
+                    "jersey": "7",
+                    "year_class": "Senior",
+                    "height": 75,
+                    "weight": 215,
+                }
+            ]
+        )
+        frame.to_parquet(target)
+
+    monkeypatch.setattr(rosters_module, "_download_file", fake_download)
+    captures = fetch_historical_rosters_span(
+        2021, 2024, cache_dir=tmp_path / "rosters"
+    )
+    assert [capture.season for capture in captures] == [2021, 2022, 2023, 2024]
+    assert all(capture.status == STATUS_CAPTURED for capture in captures)
+    assert seasons_requested == [2021, 2022, 2023, 2024]
+
+
+def test_fetch_historical_rosters_span_rejects_inverted_range(tmp_path):
+    try:
+        fetch_historical_rosters_span(2024, 2021, cache_dir=tmp_path / "rosters")
+    except ValueError as exc:
+        assert "end_season" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("expected ValueError for inverted range")
+
+
+def test_fetch_historical_rosters_span_continues_past_single_failure(
+    monkeypatch, tmp_path
+):
+    calls: list[int] = []
+
+    def half_fails(url, target, timeout=60.0):
+        season = int(url.rsplit("_", 1)[-1].split(".")[0])
+        calls.append(season)
+        if season == 2022:
+            raise OSError("gh down")
+        Path(target).parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(
+            [
+                {
+                    "season": season,
+                    "team_id": 194,
+                    "athlete_id": "A",
+                    "full_name": "A Name",
+                    "position": "QB",
+                    "jersey": "1",
+                    "year_class": "Senior",
+                    "height": 75,
+                    "weight": 215,
+                }
+            ]
+        ).to_parquet(target)
+
+    monkeypatch.setattr(rosters_module, "_download_file", half_fails)
+    captures = fetch_historical_rosters_span(
+        2021, 2023, cache_dir=tmp_path / "rosters"
+    )
+    statuses = {capture.season: capture.status for capture in captures}
+    assert statuses[2021] == STATUS_CAPTURED
+    assert statuses[2022] == STATUS_NETWORK_ERROR
+    assert statuses[2023] == STATUS_CAPTURED
+    assert calls == [2021, 2022, 2023]

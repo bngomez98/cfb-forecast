@@ -309,6 +309,46 @@ def _normalize_sportsdataverse_frame(
     return rows
 
 
+def fetch_historical_rosters_span(
+    start_season: int,
+    end_season: int,
+    *,
+    cache_dir=None,
+    observed_at=None,
+    timeout: float = 60.0,
+) -> list[RosterCapture]:
+    """Fetch historical rosters for every season in ``[start_season, end_season]``.
+
+    Seasons are fetched in chronological order. A failure on one season
+    does not stop the others: each returns its own capture (``captured``
+    or a sentinel status), and the caller can see per-season status in the
+    returned list. Repeat calls reuse the cache; pass a fresh
+    ``cache_dir`` to force redownload.
+    """
+    start = int(start_season)
+    end = int(end_season)
+    if end < start:
+        raise ValueError(
+            f"end_season ({end}) must be >= start_season ({start})"
+        )
+    captures: list[RosterCapture] = []
+    for season in range(start, end + 1):
+        capture = fetch_historical_rosters(
+            season,
+            cache_dir=cache_dir,
+            observed_at=observed_at,
+            timeout=timeout,
+        )
+        captures.append(capture)
+    log.info(
+        "historical_rosters_span: start=%d end=%d captures=%d",
+        start,
+        end,
+        len(captures),
+    )
+    return captures
+
+
 def summarize_captures(captures: list[RosterCapture]) -> dict:
     counts: dict[str, int] = {}
     for capture in captures:
@@ -326,6 +366,7 @@ __all__ = [
     "fetch_current_roster",
     "fetch_current_rosters",
     "fetch_historical_rosters",
+    "fetch_historical_rosters_span",
     "summarize_captures",
     "STATUS_CAPTURED",
     "STATUS_EMPTY",

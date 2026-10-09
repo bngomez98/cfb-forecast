@@ -132,6 +132,41 @@ def main():
         action="store_true",
         help="Include FBS-vs-FCS games when computing PPG (default: FBS-only)",
     )
+    cnw = sub.add_parser(
+        "capture-news",
+        help="Capture ESPN's public college-football news feed and label injury/roster items",
+    )
+    cnw.add_argument(
+        "--team-ids",
+        nargs="*",
+        type=int,
+        default=None,
+        help="Optional list of team IDs; omit to capture the general feed",
+    )
+    cnw.add_argument("--out", required=True)
+    cnw.add_argument("--injury-out", default=None,
+                     help="Optional path for an injury-only CSV filtered from the capture")
+    cnw.add_argument("--observed-at", default=None)
+    cnw.add_argument("--timeout", type=float, default=15.0)
+    chrs = sub.add_parser(
+        "capture-historical-rosters-span",
+        help="Download SportsDataverse rosters for every season in a range",
+    )
+    chrs.add_argument("--start-season", type=int, required=True)
+    chrs.add_argument("--end-season", type=int, required=True)
+    chrs.add_argument("--out", required=True)
+    chrs.add_argument("--cache-dir", default="data/rosters")
+    chrs.add_argument("--timeout", type=float, default=60.0)
+    pp = sub.add_parser(
+        "player-ppg",
+        help="Compute per-player season-to-date PPG from a player-game stats parquet or CSV",
+    )
+    pp.add_argument("--player-games", required=True,
+                    help="Path to a player-game stats parquet or CSV with scoring columns")
+    pp.add_argument("--as-of", required=True)
+    pp.add_argument("--season", type=int, default=None)
+    pp.add_argument("--out", required=True)
+    pp.add_argument("--min-games", type=int, default=1)
     args=parser.parse_args()
     if args.command=="fetch":
         from .data import fetch as run
@@ -357,6 +392,131 @@ def main():
             print(f"wrote {len(enriched)} enriched forecast rows to {out}/forecasts_with_ppg.csv")
         print(ppg.head(20).to_string(index=False))
         print(f"wrote PPG for {len(ppg)} teams to {out}/season_ppg.csv")
+    elif args.command == "capture-news":
+        from .capture_log import CAPTURE_LOG_FILENAME, append_capture
+        from .news import (
+            fetch_news,
+            fetch_news_for_teams,
+            filter_injury_items,
+            summarize_captures,
+        )
+
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        if args.team_ids:
+            captures = fetch_news_for_teams(
+                args.team_ids,
+                observed_at=args.observed_at,
+                timeout=args.timeout,
+            )
+        else:
+            captures = [
+                fetch_news(
+                    observed_at=args.observed_at,
+                    timeout=args.timeout,
+                )
+            ]
+        frames = [capture.to_frame() for capture in captures]
+        combined = (
+            pd.concat(frames, ignore_index=True)
+            if any(not frame.empty for frame in frames)
+            else frames[0]
+        )
+        combined.to_csv(out / "news.csv", index=False)
+        log_path = out / CAPTURE_LOG_FILENAME
+        for capture in captures:
+            append_capture(
+                log_path,
+                source="news.espn.cfb",
+                status=capture.status,
+                observed_at=capture.observed_at,
+                request_url=capture.request_url,
+                extra={
+                    "team_id": capture.team_id,
+                    "items": capture.count,
+                    "injury_items": capture.injury_count,
+                    "roster_change_items": capture.roster_change_count,
+                },
+            )
+        if args.injury_out:
+            injury_frame = filter_injury_items(captures)
+            injury_frame.to_csv(args.injury_out, index=False)
+            print(f"wrote {len(injury_frame)} injury-flagged items to {args.injury_out}")
+        print(pd.Series(summarize_captures(captures)).to_string())
+        print(f"wrote {len(combined)} news rows to {out}/news.csv")
+    elif args.command == "capture-historical-rosters-span":
+        from .capture_log import CAPTURE_LOG_FILENAME, append_capture
+        from .rosters import fetch_historical_rosters_span, summarize_captures
+
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        captures = fetch_historical_rosters_span(
+            args.start_season,
+            args.end_season,
+            cache_dir=args.cache_dir,
+            timeout=args.timeout,
+        )
+        frames = [capture.to_frame() for capture in captures]
+        combined = (
+            pd.concat(frames, ignore_index=True)
+            if any(not frame.empty for frame in frames)
+            else frames[0]
+        )
+        combined.to_csv(out / "rosters_historical_span.csv", index=False)
+        log_path = out / CAPTURE_LOG_FILENAME
+        for capture in captures:
+            append_capture(
+                log_path,
+                source="rosters.sportsdataverse.historical.span",
+                status=capture.status,
+                observed_at=capture.observed_at,
+                request_url=capture.request_url,
+                extra={"season": capture.season, "player_count": capture.count},
+            )
+        print(pd.Series(summarize_captures(captures)).to_string())
+        print(
+            f"wrote {len(combined)} roster rows across seasons "
+            f"{args.start_season}-{args.end_season} to {out}/rosters_historical_span.csv"
+        )
+    elif args.command == "player-ppg":
+        from .capture_log import CAPTURE_LOG_FILENAME, append_capture
+        from .player_ppg import compute_player_ppg, summarize_player_ppg
+
+        source = Path(args.player_games)
+        if source.suffix.lower() == ".parquet":
+            player_games = pd.read_parquet(source)
+        else:
+            player_games = pd.read_csv(source)
+        result = compute_player_ppg(
+            player_games,
+            as_of=args.as_of,
+            season=args.season,
+            min_games=args.min_games,
+        )
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        result.to_csv(out / "player_ppg.csv", index=False)
+        append_capture(
+            out / CAPTURE_LOG_FILENAME,
+            source="player_ppg.local",
+            status="captured" if len(result) else "no_player_rows_before_cutoff",
+            observed_at=args.as_of,
+            extra={
+                "season": args.season,
+                "players": int(len(result)),
+                "min_games": args.min_games,
+                "source_file": str(source),
+            },
+        )
+        summary = summarize_player_ppg(result)
+        print(f"players: {summary['players']}, mean PPG: {summary['mean_ppg']}")
+        for row in summary["top_scorers"][:10]:
+            print(
+                f"  {row.get('player_name') or row['player_id']} "
+                f"(team {row.get('team_id')}): "
+                f"{row['ppg_scored']:.2f} across {row['games_played_to_date']} games"
+            )
+        print(f"wrote PPG for {len(result)} players to {out}/player_ppg.csv")
     elif args.command == "capture-nfl":
         from .capture_log import CAPTURE_LOG_FILENAME, append_capture
         from .nfl import fetch_nfl_scoreboard
