@@ -10,18 +10,17 @@ Jobs (all times UTC, overridable with environment variables):
 =============  ======================================================================  ==========
 job            when it runs                                                            action
 =============  ======================================================================  ==========
-live-results   every CFB_LIVE_MINUTES (15) while any FBS game is between 15 minutes    results
-               before kickoff and 5 hours after
+results        daily at CFB_RESULTS_HOUR (8): final scores of completed games from      results
+               ESPN and the result sites (cross-checked into the ratings)
 pregame        every CFB_PREGAME_HOURS (6) while a game kicks off within 7 days,       pregame
                and again within the 3 hours before each game day's first kickoff:
-               captures picks and lines, then re-blends the latest forecast
+               captures external predictions and lines (reference / market history)
 weekly         CFB_WEEKLY_DAY (mon) at CFB_WEEKLY_HOUR (13)                            weekly
-grade          daily at CFB_GRADE_HOUR (10) during the season                          grade
 data           daily at CFB_DATA_HOUR (9) (refreshes the calendar)                    data
 =============  ======================================================================  ==========
 
-Outside the season (no FBS game within 21 days either side) only ``weekly`` and
-``data`` keep their schedule, so the calendar notices when the next season appears.
+There is no in-game polling. Outside the season (no FBS game within 21 days either
+side) only ``weekly`` and ``data`` keep their schedule, so the calendar notices when the next season appears.
 State, a heartbeat and a single-instance lock live in ``<artifacts>/scheduler/``.
 """
 from __future__ import annotations
@@ -84,9 +83,6 @@ class Calendar:
     def in_season(self, now):
         return self.any_between(now - timedelta(days=21), now + timedelta(days=21))
 
-    def live(self, now):
-        return self.any_between(now - timedelta(hours=5), now + timedelta(minutes=15))
-
     def first_kickoff_today_within(self, now, hours):
         upcoming = self.kickoffs[(self.kickoffs >= now) & (self.kickoffs <= now + timedelta(hours=hours))]
         return not upcoming.empty
@@ -116,15 +112,14 @@ def _ran_after(state, name, moment):
 
 
 def build_jobs():
-    live_every = timedelta(minutes=env_int("CFB_LIVE_MINUTES", 15))
     pregame_every = timedelta(hours=env_int("CFB_PREGAME_HOURS", 6))
     weekly_day = DAYS[os.environ.get("CFB_WEEKLY_DAY", "mon")[:3].lower()]
     weekly_hour = env_int("CFB_WEEKLY_HOUR", 13)
-    grade_hour = env_int("CFB_GRADE_HOUR", 10)
+    results_hour = env_int("CFB_RESULTS_HOUR", 8)
     data_hour = env_int("CFB_DATA_HOUR", 9)
 
-    def live(now, st, cal):
-        return cal.live(now) and _since(st, "live-results", now) >= live_every - timedelta(seconds=30)
+    def results(now, st, cal):
+        return cal.in_season(now) and not _ran_after(st, "results", _daily_slot(now, results_hour))
 
     def pregame(now, st, cal):
         if not cal.any_between(now, now + timedelta(days=7)):
@@ -138,18 +133,15 @@ def build_jobs():
             slot -= timedelta(days=1)
         return not _ran_after(st, "weekly", slot)
 
-    def grade(now, st, cal):
-        return cal.in_season(now) and not _ran_after(st, "grade", _daily_slot(now, grade_hour))
 
     def data(now, st, cal):
         return not _ran_after(st, "data", _daily_slot(now, data_hour))
 
     return [
         Job("data", "data", data, "Refresh season schedule and box scores"),
-        Job("live-results", "results", live, "Live scores from ESPN and external result sources"),
-        Job("pregame", "pregame", pregame, "Capture picks and lines; re-blend the latest forecast"),
+        Job("results", "results", results, "Final scores of completed games from ESPN and result sites"),
+        Job("pregame", "pregame", pregame, "Capture external predictions and lines before kickoff"),
         Job("weekly", "weekly", weekly, "Full weekly pipeline"),
-        Job("grade", "grade", grade, "Grade external pick sources against final scores"),
     ]
 
 
@@ -252,7 +244,7 @@ class Scheduler:
             s = state.get(j.name, {})
             rows.append({"job": j.name, "action": j.action, "due_now": j.name in due, "last_started": s.get("last_started"),
                          "last_status": s.get("last_status"), "runs": s.get("runs", 0)})
-        return {"season": self.season, "in_season": self.calendar.in_season(now), "games_live": self.calendar.live(now), "jobs": rows}
+        return {"season": self.season, "in_season": self.calendar.in_season(now), "jobs": rows}
 
     def _lock(self):
         import fcntl

@@ -30,7 +30,7 @@ from .logs import add_file, close_file, configure, get
 
 log = get("pipeline")
 
-ACTIONS = ("weekly", "results", "pregame", "grade", "backtest", "data", "sources")
+ACTIONS = ("weekly", "results", "pregame", "backtest", "data", "sources")
 
 
 @dataclass
@@ -154,33 +154,6 @@ def stage_forecast(ctx):
     return manifest
 
 
-def stage_blend(ctx):
-    """Final forecast: model informed by market and external predictions (market weight capped)."""
-    from .blend import DEFAULT_PATH, apply_blend
-
-    blend_path = Path(os.environ.get("CFB_BLEND_PATH") or ctx.artifacts / "backtest" / "blend" / "blend.json")
-    targets = [Path(p) for p in (ctx.outputs.get("forecast"), ctx.artifacts / "latest-weekly") if p]
-    targets = [p for p in dict.fromkeys(targets) if (p / "forecasts.csv").exists()]
-    if not targets:
-        raise FileNotFoundError("No forecast to blend; run the weekly forecast first")
-    summary = {}
-    for target in targets:
-        out = apply_blend(target, ctx.data, blend_path if blend_path.exists() else DEFAULT_PATH, _market_path(ctx))
-        summary = {"games": int(len(out)), "with_market": int(out.market_home_margin.notna().sum()),
-                   "with_external": int(out.external_home_margin.notna().sum()),
-                   "final": str(target / "final_forecasts.csv"), "report": str(target / "report.md")}
-    return summary
-
-
-def stage_grade(ctx):
-    from .sources import grade_picks
-
-    if not (ctx.data / "sources" / "picks.csv").exists():
-        return {"action": "no-picks-collected"}
-    graded = grade_picks(ctx.data, ctx.season, ctx.artifacts)
-    return {"sources_graded": int(len(graded))}
-
-
 def stage_backtest(ctx):
     from .season_backtest import run_season_backtest
 
@@ -209,22 +182,19 @@ def stage_any_results(ctx):
 
 DATA = Stage("data", stage_data, True, "Download or refresh season schedule and advanced-team inputs")
 PREFLIGHT = Stage("preflight", stage_preflight, True, "Validate data, artifact and model paths")
-RESULTS = Stage("results", stage_results, False, "Pull live scores from the ESPN public scoreboard")
+RESULTS = Stage("results", stage_results, False, "Final scores of completed games from the ESPN scoreboard")
 SOURCES = Stage("sources", _sources_stage(None), False, "Collect external results, picks, lines and stats")
 SOURCE_RESULTS = Stage("sources", _sources_stage("results"), False, "Collect external result sources")
 SOURCE_PREGAME = Stage("sources", _sources_stage(("picks", "lines")), False, "Collect external picks and lines before kickoff")
 MARKET = Stage("market", stage_market, False, "Snapshot the SportsDataverse spread/total into market history")
-BLEND = Stage("blend", stage_blend, False, "Final forecast: model informed by market and external predictions; write report.md")
-GRADE = Stage("grade", stage_grade, False, "Grade external pick sources against final scores")
 
 FORECAST = Stage("forecast", stage_forecast, True, "Forecast the next upcoming FBS week")
-BACKTEST = Stage("backtest", stage_backtest, False, "Re-forecast and grade every completed week this season")
+BACKTEST = Stage("backtest", stage_backtest, False, "Point-in-time backtest: re-forecast every completed week from its pre-kickoff state, compare with final scores")
 VERIFY = Stage("verify", stage_verify, True, "Check that the forecast outputs exist")
 
 PLANS = {
-    "weekly": (DATA, PREFLIGHT, MARKET, RESULTS, SOURCES, FORECAST, BLEND, BACKTEST, GRADE, VERIFY),
-    "pregame": (DATA, MARKET, SOURCE_PREGAME, BLEND),
-    "grade": (DATA, Stage("grade", stage_grade, True, GRADE.description)),
+    "weekly": (DATA, PREFLIGHT, MARKET, RESULTS, SOURCES, FORECAST, BACKTEST, VERIFY),
+    "pregame": (DATA, MARKET, SOURCE_PREGAME),
     "results": (DATA, RESULTS, SOURCE_RESULTS, Stage("check", stage_any_results, True, "Require results from at least one provider")),
     "sources": (DATA, Stage("sources", _sources_stage(None), True, SOURCES.description)),
     "backtest": (DATA, PREFLIGHT, Stage("backtest", stage_backtest, True, BACKTEST.description)),
@@ -303,8 +273,8 @@ def write_receipt(artifacts, receipt, started):
 def add_arguments(p):
     env = os.environ.get
     p.add_argument("action", choices=ACTIONS, help=(
-        "weekly: full run; results: live scores; pregame: capture picks/lines and re-blend the latest forecast; "
-        "grade: grade external picks; backtest: grade season; data: fetch inputs; sources: all external sites"))
+        "weekly: full run; results: final scores of completed games; pregame: capture external predictions and lines; "
+        "backtest: point-in-time season backtest; data: fetch inputs; sources: all external sites"))
     p.add_argument("--season", type=int, default=int(env("CFB_FORECAST_SEASON", "2026")))
     p.add_argument("--week", type=int, default=None, help="Forecast or refresh one specific week")
     p.add_argument("--draws", type=int, default=int(env("CFB_FORECAST_DRAWS", "50000")))

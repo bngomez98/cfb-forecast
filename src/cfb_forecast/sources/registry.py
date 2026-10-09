@@ -3,7 +3,7 @@
 ``kind`` decides how a page is interpreted:
 
 * ``results``    final scores (cross-checked against ESPN and each other)
-* ``picks``      published predictions (graded like the model, never used as model inputs)
+* ``picks``      published predictions (reference only; never model inputs)
 * ``lines``      betting lines, stamped with the retrieval time and appended to market history
 * ``team_stats`` season team statistics tables
 * ``auto``       results, picks and lines are all looked for

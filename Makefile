@@ -6,7 +6,7 @@ export OPENBLAS_NUM_THREADS := 1
 export OMP_NUM_THREADS := 1
 
 .DEFAULT_GOAL := help
-.PHONY: help install lint test check reproduce weekly results pregame sources blend-fit scheduler scheduler-status \
+.PHONY: help install lint test check reproduce weekly results pregame sources scheduler scheduler-status \
         backtest-season dashboard docker-build docker-weekly up down logs clean
 
 help: ## Show this help
@@ -26,20 +26,17 @@ check: lint test ## Lint and test
 reproduce: ## Reproduce the 2025 held-out evaluation from bundled inputs
 	cfb-forecast backtest --data data --out artifacts/reproduced --archive data/archive/matched_predictions.csv
 
-weekly: ## Full weekly pipeline: refresh data, live scores, forecast, grade season
+weekly: ## Full weekly pipeline: refresh data and results, forecast next week, point-in-time backtest
 	cfb-pipeline weekly --season $(SEASON) --draws $(DRAWS) --refresh-data
 
-results: ## Live scores from ESPN and external result sources
+results: ## Final scores of completed games from ESPN and result sites
 	cfb-pipeline results --season $(SEASON)
 
-pregame: ## Capture external picks and lines, then re-blend the latest forecast
+pregame: ## Capture external predictions and lines before kickoff
 	cfb-pipeline pregame --season $(SEASON)
 
 sources: ## Collect every external source once
 	cfb-forecast sources-collect --season $(SEASON)
-
-blend-fit: ## Refit final-forecast weights on the held-out games
-	cfb-forecast blend-fit
 
 scheduler: ## Run the automation loop in the foreground
 	cfb-forecast scheduler
@@ -47,7 +44,7 @@ scheduler: ## Run the automation loop in the foreground
 scheduler-status: ## Show each automated job's last run and whether it is due
 	cfb-forecast scheduler --status
 
-backtest-season: ## Re-forecast and grade every completed week of SEASON
+backtest-season: ## Point-in-time backtest of every completed week of SEASON
 	cfb-pipeline backtest --season $(SEASON) --draws $(DRAWS)
 
 dashboard: ## Run the Streamlit dashboard locally

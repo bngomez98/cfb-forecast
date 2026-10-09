@@ -7,8 +7,6 @@ Outputs (under ``<data>/sources/``):
 * ``team_stats/<source>.csv``: team stat tables
 * ``results_crosscheck.csv``: per game, the latest score from each source, whether
   sources agree with each other and with the schedule
-* ``picks_grades.csv``: accuracy, Brier score and score error per pick source, next to
-  the model's own forecasts for the same games
 * ``collections/<timestamp>.json`` and ``collections/latest.json``: per-source status
 
 Agreed final scores are also written to ``<artifacts>/results/sources/results.csv``
@@ -21,7 +19,6 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from ..logs import get
@@ -147,7 +144,7 @@ def current_week(book):
 
 
 def _final_observations(data_root, artifacts_root, season):
-    """Every final-score sighting: external sources plus ESPN live-results snapshots."""
+    """Every final-score sighting: external result sources plus ESPN scoreboard snapshots."""
     frames = []
     path = Path(data_root) / "sources" / "results.csv"
     if path.exists():
@@ -279,60 +276,6 @@ def _lines_to_market(lines, store_path):
     before = len(read_market_history(store_path)) if Path(store_path).exists() else 0
     after = len(append_market_history(store_path, frame))
     return int(after - before)
-
-
-def _model_forecasts(artifacts_root):
-    frames = []
-    for path in sorted(Path(artifacts_root).glob("weekly/*/forecasts.csv")):
-        f = pd.read_csv(path, usecols=lambda c: c in {"game_id", "as_of", "kickoff", "home_win_probability", "expected_home_score", "expected_away_score"})
-        frames.append(f)
-    if not frames:
-        return pd.DataFrame()
-    f = pd.concat(frames, ignore_index=True)
-    f["as_of"] = pd.to_datetime(f.as_of, utc=True, format="mixed")
-    f["kickoff"] = pd.to_datetime(f.kickoff, utc=True, format="mixed")
-    f = f[f.as_of < f.kickoff]
-    return f.sort_values("as_of").drop_duplicates("game_id", keep="last")
-
-
-def grade_picks(data_root, season, artifacts_root="artifacts"):
-    """Grade every pick source (latest pregame pick per game) and the model on the same games."""
-    from ..data import normalize_schedule
-
-    path = Path(data_root) / "sources" / "picks.csv"
-    if not path.exists():
-        raise FileNotFoundError(f"No picks collected yet ({path})")
-    picks = pd.read_csv(path)
-    picks = picks[picks.season == int(season)].copy()
-    picks["retrieved_at"] = pd.to_datetime(picks.retrieved_at, utc=True, format="mixed")
-    picks["kickoff"] = pd.to_datetime(picks.kickoff, utc=True, format="mixed")
-    picks = picks[picks.retrieved_at < picks.kickoff].sort_values("retrieved_at").drop_duplicates(["source", "game_id"], keep="last")
-    sched = normalize_schedule(pd.read_csv(Path(data_root) / f"schedule_{int(season)}.csv", low_memory=False))
-    finals = sched[sched.result_usable][["game_id", "home_points", "away_points"]]
-    g = picks.merge(finals, on="game_id", how="inner")
-    if g.empty:
-        return pd.DataFrame()
-    g["home_won"] = (g.home_points > g.away_points).astype(int)
-    model = _model_forecasts(artifacts_root)
-    rows = []
-    for src, s in g.groupby("source"):
-        has_pick = s.pick_team.notna()
-        correct = (s.pick_team == np.where(s.home_won == 1, s.home_team, s.away_team))[has_pick]
-        prob = s.pick_home_win_prob.dropna()
-        brier = ((s.loc[prob.index, "pick_home_win_prob"] - s.loc[prob.index, "home_won"]) ** 2).mean() if len(prob) else np.nan
-        scored = s.dropna(subset=["pick_home_score", "pick_away_score"])
-        mae = ((scored.pick_home_score - scored.home_points).abs() + (scored.pick_away_score - scored.away_points).abs()).mean() / 2 if len(scored) else np.nan
-        row = {"source": src, "season": int(season), "games": int(len(s)), "picks": int(has_pick.sum()),
-               "winner_accuracy": float(correct.mean()) if len(correct) else np.nan, "brier": brier, "score_mae": mae}
-        if not model.empty:
-            m = s[["game_id", "home_won", "home_points", "away_points"]].merge(model, on="game_id")
-            row["model_games"] = int(len(m))
-            row["model_winner_accuracy"] = float(((m.home_win_probability >= 0.5).astype(int) == m.home_won).mean()) if len(m) else np.nan
-            row["model_brier"] = float(((m.home_win_probability - m.home_won) ** 2).mean()) if len(m) else np.nan
-        rows.append(row)
-    out = pd.DataFrame(rows)
-    out.to_csv(Path(data_root) / "sources" / "picks_grades.csv", index=False)
-    return out
 
 
 def _write_report(data_root, report, started):

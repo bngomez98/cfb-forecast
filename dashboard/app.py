@@ -36,7 +36,7 @@ def load_schedule(root: str):
     return schedule.drop_duplicates("game_id")
 
 @st.cache_data(ttl=300)
-def load_live_results(root: str):
+def load_scoreboard_results(root: str):
     paths = sorted(Path(root).glob("results/*/results.csv"))
     if not paths:
         return pd.DataFrame()
@@ -99,14 +99,13 @@ def grade_forecast(predictions, schedule):
 st.title("CFB Forecast Dashboard")
 st.caption("Weekly predictions and historical results backtesting")
 
-# The final forecast (model informed by market and external predictions) when it exists, else the model's own.
-forecast_path = LATEST / "final_forecasts.csv" if (LATEST / "final_forecasts.csv").exists() else LATEST / "forecasts.csv"
+forecast_path = LATEST / "forecasts.csv"
 page = st.sidebar.radio("View", ["Current forecast", "Historical backtest", "External sources"])
 schedule = load_schedule(str(DATA_ROOT))
-live_results = load_live_results(str(ARTIFACT_ROOT))
-if not live_results.empty:
-    live_results["completed"] = live_results["is_final"]
-    schedule = pd.concat([schedule, live_results[["game_id", "completed", "home_points", "away_points"]]], ignore_index=True).drop_duplicates("game_id", keep="last")
+scoreboard_results = load_scoreboard_results(str(ARTIFACT_ROOT))
+if not scoreboard_results.empty:
+    scoreboard_results["completed"] = scoreboard_results["is_final"]
+    schedule = pd.concat([schedule, scoreboard_results[["game_id", "completed", "home_points", "away_points"]]], ignore_index=True).drop_duplicates("game_id", keep="last")
 
 if page == "Historical backtest":
     st.header("Historical backtest against actual results")
@@ -177,15 +176,11 @@ if page == "External sources":
         if len(conflicts):
             st.subheader("Conflicting scores")
             st.dataframe(conflicts[["kickoff", "away_team", "home_team", "source_scores", "schedule_score"]], use_container_width=True, hide_index=True)
-    grades_path = sources_root / "picks_grades.csv"
-    if grades_path.exists():
-        st.subheader("Pick sources graded against final scores")
-        st.dataframe(load_csv(str(grades_path)), use_container_width=True, hide_index=True)
     picks_path = sources_root / "picks.csv"
     if picks_path.exists():
         picks = load_csv(str(picks_path)).sort_values("retrieved_at").drop_duplicates(["source", "game_id"], keep="last")
         upcoming = picks[pd.to_datetime(picks.kickoff, utc=True) > pd.Timestamp.now(tz="UTC")]
-        st.subheader("Latest external predictions for upcoming games")
+        st.subheader("External predictions for upcoming games (reference only)")
         st.dataframe(upcoming[["source", "kickoff", "away_team", "home_team", "pick_team", "pick_home_win_prob", "pick_away_score", "pick_home_score", "pick_home_spread"]],
                      use_container_width=True, hide_index=True)
     st.stop()
@@ -240,13 +235,10 @@ else:
     columns = {"kickoff": "Kickoff", "away_team": "Away", "home_team": "Home", "expected_away_score": "Away score",
                "expected_home_score": "Home score", "projected_home_margin": "Home margin", "projected_total": "Total",
                "winner": "Pick", "winner_probability": "Pick probability"}
-    # Final forecasts also show the inputs: model margin, market margin, external margin.
-    columns.update({k: v for k, v in {"model_home_margin": "Model margin", "market_home_margin": "Market margin",
-                                       "external_home_margin": "External margin", "blend_inputs": "Inputs"}.items() if k in view})
-    columns.update({"margin_interval_80": "Model margin 80% interval", "total_interval_80": "Total 80% interval"})
+    columns.update({"margin_interval_80": "Margin 80% interval", "total_interval_80": "Total 80% interval"})
     display = view[list(columns)].rename(columns=columns)
     display["Pick probability"] = display["Pick probability"].map(lambda x: f"{x:.1%}")
-    for column in ["Away score", "Home score", "Home margin", "Total", "Model margin", "Market margin", "External margin"]:
+    for column in ["Away score", "Home score", "Home margin", "Total"]:
         if column in display:
             display[column] = display[column].map(lambda x: "—" if pd.isna(x) else f"{x:.1f}")
     st.dataframe(display, use_container_width=True, hide_index=True)
