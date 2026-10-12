@@ -99,6 +99,46 @@ Tests use small explicit fixtures to check timing, model isolation, source archi
 
 For Docker Compose with Linux bind mounts, match the forecasting container to the host user so it can write runtime files:
 
+## Weekly controls and backtesting contract
+
+The application is organized around a weekly Sunday pregame run. The selected week is forecast from the prior season and all current-season games whose final result was available before the forecast cutoff. The default control is the earlier of 09:00 local venue time on Sunday or 24 hours before kickoff. A forecast is never allowed to consume its own final score, a later market quote, or a later player/weather report.
+
+### Weekly controls
+
+- **Season and week:** controls the FBS schedule slice shown to the user.
+- **Pregame cutoff:** freezes the information set used by every game on the slate.
+- **Training seasons:** prior season plus eligible completed games from the selected season.
+- **Market timestamp:** only spreads and totals observed before the cutoff are eligible; missing prices remain missing.
+- **Result availability:** only final scores with an availability timestamp before the cutoff update team states.
+- **Data audit:** duplicate game IDs, invalid scores, non-FBS matchups, and incomplete records are quarantined rather than repaired with invented values.
+
+### Point-in-time backtesting contract
+
+Each prediction is one immutable row at game level: `game_id`, `kickoff_utc`, `cutoff_utc`, home/away team IDs, the pregame feature state, the observed spread and timestamp when available, the prediction, and the final outcome. The required leakage checks are `cutoff_utc < kickoff_utc`, no training result has `result_available_at >= cutoff_utc`, and no market observation has `observed_at > cutoff_utc`.
+
+The evaluation reports winner log loss and Brier score, plus margin MAE, spread cover accuracy, spread MAE, calibration by probability bin, and sample counts. These are separate from betting decisions: a spread comparison is reported only when a real spread and price were captured. There is no backfilled line, fabricated player state, synthetic schedule, or simulated record in the data layer.
+
+### System architecture
+
+```mermaid
+flowchart LR
+  A[SportsDataverse / ESPN-derived FBS schedules] --> B[Ingestion and source manifest]
+  C[Team summaries and play-by-play fields] --> B
+  D[Weather and player-state snapshots when timestamped] --> B
+  B --> E[Validation and quarantine]
+  E --> F[Point-in-time feature builder]
+  F --> G[Dynamic offense and defense states]
+  G --> H[Football score forecast]
+  H --> I[Gaussian margin and Poisson score check]
+  I --> J[Spread and total comparison]
+  H --> K[Immutable forecast ledger]
+  K --> L[Weekly scoring and walk-forward backtest]
+  J --> M[Forecast dashboard]
+  L --> M
+```
+
+The TypeScript preview uses the same contracts through `lib/forecast-engine.ts` and `app/api/forecast/route.ts`. The Python package remains the reproducible research and training implementation; the web route is an honest live-data adapter, not a replacement for the historical package or a source of simulated values.
+
 ```bash
 mkdir -p data artifacts
 export CFB_UID=$(id -u) CFB_GID=$(id -g)
