@@ -366,10 +366,17 @@ def test_sunday_collects_inputs_before_validation_and_inference_and_preserves_ru
     monkeypatch.setattr(service, "capture_prices", prices)
     monkeypatch.setattr(service, "validate_runs", validate)
     monkeypatch.setattr(service, "forecast", infer)
+    import cfb_forecast.learning as learning
+    import cfb_forecast.database as database
+    def train(*args):
+        events.append("learn")
+        return {"status": "retained", "model_path": str(model)}
+    monkeypatch.setattr(learning, "learn", train)
+    monkeypatch.setattr(database, "persist_completed_run", lambda *args: events.append("persist"))
     report = service.sunday_run(
         tmp_path / "data", tmp_path / "artifacts", 2026, model_root=model, refresh=False
     )
-    assert events == ["inputs", "prices", "validate", "forecast"]
+    assert events == ["inputs", "prices", "validate", "learn", "forecast", "persist"]
     prediction = tmp_path / "artifacts/runs" / report["run_id"] / "forecasts.csv"
     before = sha256(prediction)
     assert report["input_hashes"]["features.csv"]
@@ -378,7 +385,7 @@ def test_sunday_collects_inputs_before_validation_and_inference_and_preserves_ru
     )
     assert repeated["status"] == "already_completed"
     assert sha256(prediction) == before
-    assert len(events) == 4
+    assert len(events) == 6
 
 
 def test_strength_ratings_do_not_use_future_final_results():

@@ -57,6 +57,10 @@ def forecast(
     if end <= at:
         raise ValueError("Forecast window must end after as-of time")
     model = load_model(model_root)
+    if model.get("adaptive_training_cutoff") and timestamp(model["adaptive_training_cutoff"]) > at:
+        raise ValueError("Adaptive model was trained after the requested forecast cutoff")
+    if model.get("adaptive_latest_result") and timestamp(model["adaptive_latest_result"]) >= at:
+        raise ValueError("Adaptive model includes results at or after forecast cutoff")
     # A fitted head containing the forecast season would be retrospective leakage.
     if model["training_through_season"] >= season:
         raise ValueError("Model training must end before the forecast season")

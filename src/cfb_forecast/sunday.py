@@ -338,6 +338,11 @@ def sunday_run(
         model_meta = json.loads((model_path / "model.json").read_text())
         if model_meta["training_through_season"] >= season:
             raise ValueError("Model training must end before the forecast season")
+        from .learning import learn
+        database = resolve_path(os.environ.get("CFB_DATABASE", root / "cfb_forecast.sqlite3"))
+        learning = learn(data, model_path, root / "learning", database, at)
+        model_path = Path(learning["model_path"])
+        (work / "learning_report.json").write_text(json.dumps(learning, indent=2))
         if games.empty:
             receipt = {"status": "no_upcoming_fbs_games", "run_id": run_id, "season": season, "as_of": at.isoformat(), "games": 0, "validation": validation_summary, "model_sha256": sha256(model_path / "model.json"), "source_hashes": {p.name: sha256(p) for p in paths}}
             (work / "run_manifest.json").write_text(json.dumps(receipt, indent=2))
@@ -425,6 +430,7 @@ def sunday_run(
             "source_hashes": {p.name: sha256(p) for p in paths},
             "validation": validation_summary,
             "context_model_selection": context_report,
+            "learning": learning,
             "inputs_collected_before_forecast": True,
             "input_hashes": {
                 p.relative_to(work / "inputs").as_posix(): sha256(p)
@@ -437,6 +443,8 @@ def sunday_run(
             raise ValueError(
                 "A target game started during calculation; rerun with the remaining slate"
             )
+        from .database import persist_completed_run
+        persist_completed_run(database, model_path, records, receipt, schedules, at)
         journal.finish()
         shutil.copy2(model_path / "model.json", work / "model.json")
         (work / "run_manifest.json").write_text(json.dumps(receipt, indent=2))

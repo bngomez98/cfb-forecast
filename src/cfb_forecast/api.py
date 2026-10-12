@@ -57,7 +57,7 @@ def ready():
     if not model.exists():
         raise HTTPException(status_code=503, detail="Established model artifact unavailable")
     try:
-        connect(DATABASE_PATH)
+        connect(DATABASE_PATH).close()
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}") from exc
     return {"status": "ready", "model": str(model), "database": str(DATABASE_PATH)}
@@ -87,11 +87,26 @@ def model_info():
 
 @app.post("/api/forecasts")
 def create_forecasts(request: ForecastRequest):
-    model_path = Path(request.model_path) if request.model_path else MODEL_ROOT
+    from uuid import uuid4
+    from .data import timestamp
+    if request.model_path is not None or request.market_path is not None:
+        raise HTTPException(status_code=400, detail="Server controls model and market artifact paths")
+    try:
+        at, through = timestamp(request.as_of), timestamp(request.through)
+        if through <= at or through - at > pd.Timedelta(days=14):
+            raise ValueError("Forecast window must be positive and no longer than 14 days")
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid forecast time window") from exc
+    model_path = MODEL_ROOT
+    latest = ARTIFACT_ROOT / "latest" / "learning_report.json"
+    if latest.exists():
+        report = json.loads(latest.read_text())
+        if report.get("as_of") and timestamp(report["as_of"]) <= at:
+            model_path = Path(report["model_path"])
     model = _model_manifest(model_path)
     if model.get("training_through_season", request.season) >= request.season:
         raise HTTPException(status_code=400, detail="Established model must be trained before forecast season")
-    output = ARTIFACT_ROOT / "api-forecasts" / f"{request.season}-{request.as_of.replace(':', '').replace('+', '')}"
+    output = ARTIFACT_ROOT / "api-forecasts" / uuid4().hex
     try:
         frame = forecast(
             DATA_ROOT,
@@ -106,16 +121,49 @@ def create_forecasts(request: ForecastRequest):
     except (FileNotFoundError, ValueError, KeyError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     manifest = {"request": request.model_dump(), "model": model}
-    conn = connect(DATABASE_PATH)
-    model_id = register_model(conn, model_path.name, str(model_path), manifest)
-    insert_forecasts(conn, model_id, frame.to_dict(orient="records"))
+    from contextlib import closing
+    from .data import sha256
+    with closing(connect(DATABASE_PATH)) as conn:
+        model_id = register_model(conn, sha256(model_path / "model.json"), str(model_path), manifest)
+        insert_forecasts(conn, model_id, _records(frame))
     return {"model_id": model_id, "count": len(frame), "forecasts": _records(frame)}
 
 
 @app.get("/api/forecasts")
 def get_forecasts(season: int | None = Query(default=None)):
-    conn = connect(DATABASE_PATH)
-    return {"forecasts": [dict(row) for row in list_forecasts(conn, season)]}
+    from contextlib import closing
+    with closing(connect(DATABASE_PATH)) as conn:
+        return {"forecasts": [dict(row) for row in list_forecasts(conn, season)]}
+
+
+@app.get("/api/learning")
+def learning_status():
+    from contextlib import closing
+    from .learning import SCHEMA
+    with closing(connect(DATABASE_PATH)) as conn:
+        conn.executescript(SCHEMA)
+        rows = conn.execute("SELECT report_json FROM learning_versions ORDER BY created_at DESC LIMIT 20").fetchall()
+        return {"versions": [json.loads(row[0]) for row in rows]}
+
+
+@app.get("/api/pipeline")
+def pipeline_status():
+    root = ARTIFACT_ROOT / "latest"
+    if not (root / "run_manifest.json").exists():
+        raise HTTPException(status_code=404, detail="No completed pipeline run")
+    return {"manifest": json.loads((root / "run_manifest.json").read_text()), "learning": json.loads((root / "learning_report.json").read_text()) if (root / "learning_report.json").exists() else None}
+
+
+@app.get("/api/watchdog")
+def watchdog_status():
+    from contextlib import closing
+    from .data_watchdog import WATCHDOG_SCHEMA
+    with closing(connect(DATABASE_PATH)) as conn:
+        conn.executescript(WATCHDOG_SCHEMA)
+        row = conn.execute("SELECT details_json FROM watchdog_events WHERE event_type='check' ORDER BY id DESC LIMIT 1").fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="No watchdog check recorded")
+        return json.loads(row[0])
 
 
 def run() -> None:
