@@ -8,3 +8,11 @@ __pycache__
 venv
 env
 *.download
+data
+artifacts
+runtime
+work
+.env
+.aws
+.codex
+.agents

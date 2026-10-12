@@ -1,0 +1,59 @@
+"""Direct Gaussian forecast calculations; no generated score samples."""
+
+import numpy as np
+from scipy.stats import norm
+
+from .simulate import checked_covariance, win_probability
+
+
+def score_summary(means, covariance, **market):
+    mu = np.asarray(means, float)
+    cov = checked_covariance(covariance)
+    margin, total = float(mu[0] - mu[1]), float(mu.sum())
+    margin_sd = float(np.sqrt(cov[0, 0] + cov[1, 1] - 2 * cov[0, 1]))
+    total_sd = float(np.sqrt(cov[0, 0] + cov[1, 1] + 2 * cov[0, 1]))
+    z = norm.ppf(0.9)
+    result = {
+        "expected_home_score": float(mu[0]),
+        "expected_away_score": float(mu[1]),
+        "projected_home_margin": margin,
+        "projected_total": total,
+        "home_win_probability": float(win_probability(mu, cov)),
+        "margin_interval_80": [margin - z * margin_sd, margin + z * margin_sd],
+        "total_interval_80": [total - z * total_sd, total + z * total_sd],
+        "distribution_method": "analytic_gaussian",
+        "margin_standard_deviation": margin_sd,
+        "total_standard_deviation": total_sd,
+    }
+    spread = market.get("home_spread")
+    if spread is not None:
+        threshold = -float(spread)
+        integer = float(threshold).is_integer()
+        lower, upper = (
+            (threshold - 0.5, threshold + 0.5) if integer else (threshold, threshold)
+        )
+        home = float(norm.sf((upper - margin) / margin_sd))
+        away = float(norm.cdf((lower - margin) / margin_sd))
+        result.update(
+            home_cover_probability=home,
+            away_cover_probability=away,
+            spread_push_probability=1 - home - away,
+        )
+        for side, prob, loss in [("home", home, away), ("away", away, home)]:
+            price = market.get(f"{side}_decimal")
+            if price is not None:
+                result[f"{side}_spread_expected_net_per_unit"] = (
+                    prob * (price - 1) - loss
+                )
+    line = market.get("total_line")
+    if line is not None:
+        integer = float(line).is_integer()
+        lower, upper = (line - 0.5, line + 0.5) if integer else (line, line)
+        over = float(norm.sf((upper - total) / total_sd))
+        under = float(norm.cdf((lower - total) / total_sd))
+        result.update(
+            over_probability=over,
+            under_probability=under,
+            total_push_probability=1 - over - under,
+        )
+    return result

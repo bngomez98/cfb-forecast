@@ -1,0 +1,73 @@
+name: Sunday FBS forecasts
+
+on:
+  schedule:
+    # 10 AM America/Chicago across DST. The service ignores the other UTC hour.
+    - cron: '0 15,16 * * 0'
+  workflow_dispatch:
+    inputs:
+      season:
+        description: FBS season
+        default: '2026'
+        required: true
+
+concurrency:
+  group: sunday-fbs-${{ inputs.season || '2026' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  forecast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SEASON: ${{ inputs.season || '2026' }}
+      GH_TOKEN: ${{ github.token }}
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install and test
+        run: |
+          python -m pip install -e '.[test]'
+          python -m pytest -q
+      - name: Restore previous predictions, model, and downloaded sources
+        run: |
+          mkdir -p runtime
+          ARTIFACT_ID=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" --jq "[.artifacts[] | select(.name == \"cfb-runtime-$SEASON\" and .expired == false)][0].id // empty")
+          if [ -n "$ARTIFACT_ID" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > /tmp/cfb-runtime.zip
+            unzip -q /tmp/cfb-runtime.zip -d runtime
+          fi
+      - name: Collect inputs, validate last week, and calculate this week
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = schedule ]; then
+            python -m cfb_forecast sunday-run --data runtime/data --artifacts runtime/artifacts --season "$SEASON" --scheduled
+          else
+            python -m cfb_forecast sunday-run --data runtime/data --artifacts runtime/artifacts --season "$SEASON"
+          fi
+      - name: Save runtime for next Sunday's validation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfb-runtime-${{ env.SEASON }}
+          path: runtime/
+          retention-days: 90
+          include-hidden-files: false
+          if-no-files-found: error
+      - name: Publish forecast and validation report as downloadable artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfb-desk-${{ env.SEASON }}
+          path: runtime/artifacts/latest/
+          retention-days: 90

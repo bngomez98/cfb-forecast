@@ -44,6 +44,14 @@ def freeze_holdout(forecast_dir, data_root, model_root, holdout_root, batch_id=N
         p=data/name
         if not p.exists() or sha256(p)!=expected:
             raise ValueError(f"Source hash mismatch for {name}")
+    market_hash=manifest.get("market_sha256")
+    market_file=manifest.get("market_file")
+    if market_hash:
+        if not market_file or Path(market_file).name != market_file:
+            raise ValueError("Forecast must archive its market snapshot before freezing")
+        market_copy=src/market_file
+        if not market_copy.exists() or sha256(market_copy)!=market_hash:
+            raise ValueError("Forecast market snapshot no longer matches manifest")
     batch_id=batch_id or f"prospective_{freeze_at.strftime('%Y%m%dT%H%M%SZ')}"
     dst=root/batch_id
     if dst.exists():
@@ -58,12 +66,8 @@ def freeze_holdout(forecast_dir, data_root, model_root, holdout_root, batch_id=N
         shutil.copy2(data/name,dst/"inputs"/"data"/name)
     if (data/"source_manifest.json").exists(): shutil.copy2(data/"source_manifest.json",dst/"inputs"/"data"/"source_manifest.json")
     # If market input was used, preserve it too.
-    market_hash=manifest.get("market_sha256")
-    market_file=manifest.get("market_file")
     if market_hash and market_file:
         market_copy=src/market_file
-        if not market_copy.exists() or sha256(market_copy)!=market_hash:
-            raise ValueError("Forecast market snapshot no longer matches manifest")
         shutil.copy2(market_copy,dst/"inputs"/market_file)
     hashes=_hash_tree(dst)
     receipt={

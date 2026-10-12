@@ -1,6 +1,0 @@
-comparison,games,blocks,delta_log_loss,ci95_low,ci95_high,bootstrap_draws,seed,note
-pbp_p minus score_p,808,22,0.0028981387747653905,-0.003999157844339223,0.01054531007140899,3000,20261002,Season-week blocks omit some cross-week repeated-team dependence and model-selection uncertainty
-score_p minus elo_p,808,22,-0.037317306348950426,-0.06390335201246033,-0.013673381079732386,3000,20261002,Season-week blocks omit some cross-week repeated-team dependence and model-selection uncertainty
-pbp_p minus elo_p,808,22,-0.03441916757418504,-0.06496094450264076,-0.005631007227435053,3000,20261002,Season-week blocks omit some cross-week repeated-team dependence and model-selection uncertainty
-score_p minus archive_p,763,19,0.01450418304410858,0.00385114267688864,0.02468929271707084,3000,20261002,Season-week blocks omit some cross-week repeated-team dependence and model-selection uncertainty
-pbp_p minus archive_p,763,19,0.01790655050142062,0.007607903963802101,0.027808627562575752,3000,20261002,Season-week blocks omit some cross-week repeated-team dependence and model-selection uncertainty
