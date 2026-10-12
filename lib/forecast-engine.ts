@@ -13,5 +13,21 @@ export function kellyFraction(p:number,decimalOdds:number){const b=decimalOdds-1
 export function forecastGame(g:ForecastGame,fitted:ReturnType<typeof fitDynamicRatings>,cutoff:string):Forecast{const h=fitted.ratings.get(g.home.id)??{offense:0,defense:0,games:0},a=fitted.ratings.get(g.away.id)??{offense:0,defense:0,games:0};const margin=clamp(2.4+h.offense-a.defense-a.offense+h.defense,-50,50);const total=clamp(2*fitted.mean+h.offense+a.offense-h.defense-a.defense,20,100);const uncertainty=1+.45/Math.sqrt(1+h.games+a.games),marginSd=13.6*uncertainty,totalSd=12.8*uncertainty;const homeExpectedPoints=clamp((total+margin)/2,1,90),awayExpectedPoints=clamp((total-margin)/2,1,90);const homeWin=logistic(margin/6.5),over=g.marketTotal==null?null:1-normalCdf((g.marketTotal-total)/totalSd),cover=g.spread==null?null:1-normalCdf((-g.spread-margin)/marginSd);return{...g,homeWin,awayWin:1-homeWin,margin,total,homeExpectedPoints,awayExpectedPoints,marginSd,totalSd,over,cover,kelly:cover==null?null:kellyFraction(cover,1.909),poissonHomeWin:poissonWinProbability(homeExpectedPoints,awayExpectedPoints),model:"PIT dynamic opponent-adjusted strength · Gaussian margin · Poisson score layer",cutoff}}
 export function summarizeRatings(f:ReturnType<typeof fitDynamicRatings>){return[...f.ratings.entries()].map(([id,r])=>({id,...r,net:r.offense-r.defense})).sort((a,b)=>b.net-a.net)}
 export function pointInTimeBacktest(games:ForecastGame[]){const rows=games.filter(g=>g.status==="post"&&g.home.score!=null&&g.away.score!=null).sort((a,b)=>new Date(a.date).getTime()-new Date(b.date).getTime()).map(g=>{const cutoff=new Date(new Date(g.date).setHours(0,0,0,0)).toISOString(),fit=fitDynamicRatings(games,cutoff),f=forecastGame(g,fit,cutoff),y=g.home.score!>g.away.score!?1:0,p=clamp(f.homeWin,.001,.999);return{week:g.week,date:g.date,game:g.home.abbreviation+"–"+g.away.abbreviation,actualMargin:g.home.score!-g.away.score!,predictedMargin:f.margin,spread:g.spread,cover:f.cover,winLogLoss:-(y*Math.log(p)+(1-y)*Math.log(1-p)),winner:(p>=.5)===Boolean(y)}});const n=rows.length;return{games:n,accuracy:n?rows.filter(r=>r.winner).length/n:0,logLoss:n?rows.reduce((s,r)=>s+r.winLogLoss,0)/n:0,spreadGames:rows.filter(r=>r.cover!=null).length,spreadMae:rows.filter(r=>r.spread!=null).length?rows.filter(r=>r.spread!=null).reduce((s,r)=>s+Math.abs(r.predictedMargin+r.spread!),0)/rows.filter(r=>r.spread!=null).length:0,rows:rows.slice(-24)}}
-export function buildForecasts(games:ForecastGame[],cutoff:string){const fitted=fitDynamicRatings(games,cutoff);return{forecasts:games.map(g=>forecastGame(g,fitted,cutoff)),ratings:summarizeRatings(fitted),fittedGames:fitted.games,backtest:pointInTimeBacktest(games)}}
+export const WEEKLY_CONTROLS = {
+  forecastCutoff: "Sunday 09:00 local venue time, or 24 hours before kickoff when earlier",
+  eligibleResults: "Completed games with a recorded final score and result timestamp before the cutoff",
+  trainingWindow: "Prior season plus current-season games available before each cutoff",
+  marketRule: "Use only a spread/total observed at or before the forecast cutoff; never backfill a missing line",
+  missingData: "Exclude the missing feature from the update and retain uncertainty; never fabricate a player, weather, or line value",
+} as const
+
+export const BACKTEST_DATA_CONTRACT = {
+  grain: "one row per FBS-v-FBS game prediction",
+  required: ["game_id", "kickoff_utc", "cutoff_utc", "home_team_id", "away_team_id", "home_score", "away_score"],
+  optional: ["home_spread", "spread_observed_at", "total", "weather_observed_at", "player_state_observed_at"],
+  leakageChecks: ["cutoff_utc < kickoff_utc", "result_available_at <= cutoff_utc is false for every training game", "market_observed_at <= cutoff_utc"],
+  metrics: ["winner log loss", "Brier score", "margin MAE", "spread cover accuracy", "spread MAE", "calibration by probability bin"],
+} as const
+
+export function buildForecasts(games:ForecastGame[],cutoff:string){const fitted=fitDynamicRatings(games,cutoff);return{forecasts:games.map(g=>forecastGame(g,fitted,cutoff)),ratings:summarizeRatings(fitted),fittedGames:fitted.games,backtest:pointInTimeBacktest(games),controls:WEEKLY_CONTROLS,dataContract:BACKTEST_DATA_CONTRACT}}
 export function backtestSummary(){return{games:0,accuracy:0,logLoss:0,brier:0,model:"Point-in-time dynamic strength"}}

@@ -4,7 +4,10 @@ import { buildForecasts, type ForecastGame } from "@/lib/forecast-engine"
 export const revalidate = 300
 const ESPN = "https://site.api.espn.com/apis/site/v2/sports/football/college-football"
 const SOURCES = [
-  { name: "ESPN / SportsDataverse feed", url: ESPN, role: "schedule, scores, rankings, odds" },
+  { name: "ESPN / SportsDataverse feed", url: ESPN, role: "live schedule, scores, rankings, odds" },
+  { name: "cfbfastR data registry", url: "https://github.com/sportsdataverse/cfbfastR-cfb-data/blob/main/models/REGISTRY.md", role: "historical model and data definitions" },
+  { name: "CFBfastr", url: "https://cfbfastr.sportsdataverse.org", role: "college football data package reference" },
+  { name: "CFB.TXT", url: "https://cfbtxt.com", role: "results and schedule cross-check" },
   { name: "CollegeFootballData", url: "https://collegefootballdata.com", role: "FBS schedules and team statistics" },
   { name: "College Football Database", url: "https://www.collegefootballdb.com/college-football/stats/teamstat.html?group=...&cat=S&yr=2026&lg=FBS&conf=12", role: "team statistical context" },
   { name: "CollegeFootball.gg", url: "https://collegefootball.gg/tools", role: "public football tools" },
@@ -45,11 +48,13 @@ function normalizeEvent(event: any): ForecastGame | null {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const season = searchParams.get("season") ?? "2026"
-  const week = searchParams.get("week") ?? "4"
+  const week = searchParams.get("week") ?? "7"
   const cutoff = new Date().toISOString()
   try {
-    const responses = await Promise.all([1, 2, 3, 4, 5, 6].map(async (weekNumber) => {
-      const response = await fetch(`${ESPN}/scoreboard?dates=${season}&week=${weekNumber}&seasontype=2&limit=300`, { next: { revalidate: 300 } })
+    const seasons = [Number(season) - 1, Number(season)]
+    const requests = seasons.flatMap((year) => Array.from({ length: 15 }, (_, index) => ({ year, week: index + 1 })))
+    const responses = await Promise.all(requests.map(async ({ year, week: weekNumber }) => {
+      const response = await fetch(`${ESPN}/scoreboard?dates=${year}&week=${weekNumber}&seasontype=2&limit=300`, { next: { revalidate: 300 } })
       if (!response.ok) throw new Error(`ESPN returned ${response.status}`)
       return response.json()
     }))
@@ -57,7 +62,7 @@ export async function GET(request: Request) {
     responses.flatMap((response) => response.events ?? []).map(normalizeEvent).filter(Boolean).forEach((game) => games.set(game!.id, game!))
     const result = buildForecasts([...games.values()], cutoff)
     const sourceStatusResults = await Promise.all(SOURCES.map(sourceStatus))
-    return NextResponse.json({ ...result, forecasts: result.forecasts.filter((game) => game.week === Number(week)), season: Number(season), selectedWeek: Number(week), source: "ESPN/SportsDataverse-compatible FBS feed", sources: sourceStatusResults, dataCutoff: cutoff, methodology: { primary: "Bayesian dynamic strength", scoreLayer: "Gaussian margin + Poisson scorelines", betting: "no-vig line comparison + fractional Kelly", dataPolicy: "no simulated or invented source records" } })
+    return NextResponse.json({ ...result, forecasts: result.forecasts.filter((game) => game.week === Number(week) && game.date.startsWith(`${season}-`)), season: Number(season), selectedWeek: Number(week), trainingSeasons: seasons, source: "ESPN/SportsDataverse-compatible FBS feed", sources: sourceStatusResults, dataCutoff: cutoff, methodology: { primary: "Point-in-time opponent-adjusted offense and defense", scoreLayer: "Gaussian margin with Poisson score check", betting: "Recorded spread comparison and fractional Kelly only when a real price exists", dataPolicy: "No simulated schedules, scores, player states, weather, or betting lines", weeklyControls: result.controls, backtestContract: result.dataContract } })
   } catch (error) {
     return NextResponse.json({ error: "Live source unavailable", detail: error instanceof Error ? error.message : "Unknown source error", source: "ESPN site API" }, { status: 503 })
   }
