@@ -35,3 +35,5 @@ data/
 *.log
 *.pyc
 *.egg-info/
+
+.venv/
