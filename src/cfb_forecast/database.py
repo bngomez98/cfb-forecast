@@ -1,4 +1,4 @@
-"""SQLite persistence for forecasts and established model metadata."""
+"""SQLite schema and persistence for forecast runs, games, sources, and models."""
 from __future__ import annotations
 
 import json
@@ -7,6 +7,19 @@ from pathlib import Path
 from typing import Iterable
 
 SCHEMA = """
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS runs (
+    id INTEGER PRIMARY KEY,
+    run_key TEXT NOT NULL UNIQUE,
+    season INTEGER NOT NULL,
+    started_at TEXT,
+    completed_at TEXT,
+    status TEXT NOT NULL DEFAULT 'completed',
+    manifest_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS models (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
@@ -16,8 +29,21 @@ CREATE TABLE IF NOT EXISTS models (
     created_at TEXT NOT NULL,
     manifest_json TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS sources (
+    id INTEGER PRIMARY KEY,
+    run_id INTEGER REFERENCES runs(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL,
+    url TEXT,
+    retrieved_at TEXT,
+    sha256 TEXT,
+    status TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}'
+);
+
 CREATE TABLE IF NOT EXISTS forecasts (
     id INTEGER PRIMARY KEY,
+    run_id INTEGER REFERENCES runs(id) ON DELETE CASCADE,
     model_id INTEGER NOT NULL REFERENCES models(id),
     game_id INTEGER NOT NULL,
     season INTEGER NOT NULL,
@@ -39,7 +65,25 @@ CREATE TABLE IF NOT EXISTS forecasts (
     payload_json TEXT NOT NULL,
     UNIQUE(model_id, game_id, as_of)
 );
-CREATE INDEX IF NOT EXISTS idx_forecasts_season ON forecasts(season);
+
+CREATE TABLE IF NOT EXISTS results (
+    id INTEGER PRIMARY KEY,
+    game_id INTEGER NOT NULL,
+    season INTEGER NOT NULL,
+    home_points REAL,
+    away_points REAL,
+    completed INTEGER NOT NULL DEFAULT 0,
+    result_available_at TEXT,
+    source TEXT,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    UNIQUE(game_id, season)
+);
+
+CREATE INDEX IF NOT EXISTS idx_runs_season ON runs(season);
+CREATE INDEX IF NOT EXISTS idx_sources_run ON sources(run_id);
+CREATE INDEX IF NOT EXISTS idx_forecasts_season_kickoff ON forecasts(season, kickoff);
+CREATE INDEX IF NOT EXISTS idx_forecasts_game ON forecasts(game_id);
+CREATE INDEX IF NOT EXISTS idx_results_season ON results(season);
 """
 
 
@@ -48,8 +92,31 @@ def connect(path: str | Path) -> sqlite3.Connection:
     p.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(p)
     conn.row_factory = sqlite3.Row
-    conn.executescript(SCHEMA)
+    conn.execute("PRAGMA foreign_keys = ON")
+    schema_path = Path(__file__).resolve().parents[2] / "sql" / "schema.sql"
+    conn.executescript(schema_path.read_text() if schema_path.exists() else SCHEMA)
     return conn
+
+
+def initialize(path: str | Path) -> Path:
+    conn = connect(path)
+    conn.close()
+    return Path(path)
+
+
+def register_run(conn, run_key: str, season: int, manifest: dict) -> int:
+    conn.execute(
+        """INSERT INTO runs(run_key, season, started_at, completed_at, status, manifest_json)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(run_key) DO UPDATE SET
+             completed_at=excluded.completed_at,
+             status=excluded.status,
+             manifest_json=excluded.manifest_json""",
+        (run_key, int(season), manifest.get("started_at"), manifest.get("completed_at"),
+         manifest.get("status", "completed"), json.dumps(manifest)),
+    )
+    conn.commit()
+    return int(conn.execute("SELECT id FROM runs WHERE run_key=?", (run_key,)).fetchone()[0])
 
 
 def register_model(conn, name: str, path: str, manifest: dict) -> int:
@@ -66,28 +133,43 @@ def register_model(conn, name: str, path: str, manifest: dict) -> int:
     return int(conn.execute("SELECT id FROM models WHERE name=?", (name,)).fetchone()[0])
 
 
-def insert_forecasts(conn, model_id: int, rows: Iterable[dict]) -> int:
+def insert_forecasts(conn, model_id: int, rows: Iterable[dict], run_id: int | None = None) -> int:
     count = 0
     for row in rows:
-        conn.execute(
+        cursor = conn.execute(
             """INSERT OR IGNORE INTO forecasts(
-            model_id,game_id,season,home_team,away_team,kickoff,as_of,
+            run_id,model_id,game_id,season,home_team,away_team,kickoff,as_of,
             expected_home_score,expected_away_score,projected_home_margin,
             projected_total,home_win_probability,market_home_probability_no_vig,
             best_bet_side,best_bet_edge,best_bet_ev_per_unit,recommended_stake_fraction,
-            bet_status,payload_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (model_id, int(row["game_id"]), int(row["season"]), row["home_team"], row["away_team"],
+            bet_status,payload_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (run_id, model_id, int(row["game_id"]), int(row["season"]), row["home_team"], row["away_team"],
              row["kickoff"], row["as_of"], float(row["expected_home_score"]), float(row["expected_away_score"]),
              float(row["projected_home_margin"]), float(row["projected_total"]), float(row["home_win_probability"]),
              row.get("market_home_probability_no_vig"), row.get("best_bet_side"), row.get("best_bet_edge"),
              row.get("best_bet_ev_per_unit"), row.get("recommended_stake_fraction"), row.get("bet_status"), json.dumps(row)),
         )
-        count += 1
+        count += max(cursor.rowcount, 0)
     conn.commit()
     return count
 
 
-def list_forecasts(conn, season: int | None = None):
+
+def list_forecasts(conn: sqlite3.Connection, season: int | None = None):
     if season is None:
         return conn.execute("SELECT * FROM forecasts ORDER BY kickoff").fetchall()
     return conn.execute("SELECT * FROM forecasts WHERE season=? ORDER BY kickoff", (int(season),)).fetchall()
+
+
+def main() -> int:
+    import argparse
+    parser = argparse.ArgumentParser(description="Initialize the CFB Forecast SQLite database")
+    parser.add_argument("--database", default="artifacts/cfb_forecast.sqlite")
+    args = parser.parse_args()
+    initialize(args.database)
+    print(args.database)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -4,7 +4,18 @@ __pycache__/
 *.egg-info/
 build/
 dist/
-.venv/
+# R package and local R state
+.Rproj.user/
+renv/library/
+renv/staging/
+.Rhistory
+.RData
+.Ruserdata
+
+# Generated SQLite runtime database
+*.sqlite
+*.sqlite3
+*.db
 venv/
 .DS_Store
 *.log

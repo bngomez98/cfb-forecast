@@ -15,6 +15,7 @@ test = ["pytest>=8"]
 [project.scripts]
 cfb-forecast = "cfb_forecast.cli:main"
 cfb-pipeline = "cfb_forecast.pipeline_cli:main"
+cfb-data-watchdog = "cfb_forecast.data_watchdog:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
