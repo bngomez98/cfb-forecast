@@ -11,7 +11,7 @@ const margin = (value: number | null) => value == null ? '—' : `${value > 0 ? 
 const dateLabel = (value: string) => new Date(value).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 
 export default function Home() {
-  const [week, setWeek] = useState('7')
+  const [week, setWeek] = useState('all')
   const [tab, setTab] = useState('Upcoming games')
   const [query, setQuery] = useState('')
   const [data, setData] = useState<Data | null>(null)
@@ -38,14 +38,14 @@ export default function Home() {
     <header className="topbar">
       <div className="brand"><div className="brand-mark">FBS</div><div><strong>CFB PREDICTIONS</strong><small>COLLEGE FOOTBALL · PREKICK ANALYSIS</small></div></div>
       <div className="divider" />
-      <label className="sr-only" htmlFor="week">Week</label><select id="week" value={week} onChange={(event) => setWeek(event.target.value)}>{Array.from({ length: 15 }, (_, index) => <option key={index + 1} value={index + 1}>Week {index + 1}</option>)}</select>
+      <label className="sr-only" htmlFor="week">Schedule range</label><select id="week" value={week} onChange={(event) => setWeek(event.target.value)}><option value="all">Full season</option>{Array.from({ length: 15 }, (_, index) => <option key={index + 1} value={index + 1}>Week {index + 1}</option>)}</select>
       <span className="live-chip"><i />{loading ? 'UPDATING' : 'LIVE FBS FEED'}</span><div className="top-spacer" />
-      <div className="header-kpi"><b>{data?.fittedGames ?? '—'}</b><span>GAMES FITTED</span></div><div className="header-kpi"><b>{data?.forecasts.length ?? '—'}</b><span>WEEK {week} GAMES</span></div>
+      <div className="header-kpi"><b>{data?.fittedGames ?? '—'}</b><span>GAMES FITTED</span></div><div className="header-kpi"><b>{data?.forecasts.length ?? '—'}</b><span>{week === 'all' ? 'SEASON GAMES' : `WEEK ${week} GAMES`}</span></div>
       <button className="refresh" onClick={load} disabled={loading}>{loading ? 'Updating' : 'Refresh'}</button>
     </header>
     <nav className="tabs" aria-label="Forecast views">{['Upcoming games', 'Team ratings', 'Point-in-time validation', 'Method & sources'].map((item) => <button key={item} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{item}</button>)}</nav>
     <div className="content">
-      <section className="hero-row"><div><p className="eyebrow">2026 SEASON · WEEK {week.padStart(2, '0')}</p><h1>{tab}</h1><p className="lede">Opponent-adjusted team strength, score distributions, and market comparisons built only from information available before kickoff.</p></div><div className="cutoff"><span>DATA CUTOFF</span><b>{data ? new Date(data.dataCutoff).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}</b><small>Forecasts update from live source records</small></div></section>
+      <section className="hero-row"><div><p className="eyebrow">2026 SEASON · {week === 'all' ? 'FULL SCHEDULE' : `WEEK ${week.padStart(2, '0')}`}</p><h1>{tab}</h1><p className="lede">Opponent-adjusted team strength, score distributions, and market comparisons built only from information available before kickoff.</p></div><div className="cutoff"><span>DATA CUTOFF</span><b>{data ? new Date(data.dataCutoff).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}</b><small>Forecasts update from live source records</small></div></section>
       {error && <div className="error-panel"><b>Live data unavailable</b><span>{error}</span><button onClick={load}>Try again</button></div>}
       {tab === 'Upcoming games' && <><div className="source-strip"><div><small>PRIMARY SOURCE</small><strong>{data?.source ?? 'Waiting for live FBS records'}</strong><small>Missing odds and features remain unavailable; no records are substituted.</small></div><div className="source-list">{data?.sources?.map((source, index) => <span key={`${source.name}-${index}`} className={`source-pill ${source.status !== 'reachable' ? 'muted-source' : ''}`} title={`${source.role} · ${source.status}`}><i />{source.name.split(' /')[0]}</span>)}</div></div><div className="toolbar"><div className="section-label"><span className="live-dot" />{games.length} scheduled games</div><input aria-label="Search teams" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by team name" /></div><section className="game-grid">{loading && !data ? <LoadingCards /> : games.map((game) => <GameCard key={game.id} game={game} />)}{!loading && games.length === 0 && <div className="empty">No live games match this week or search.</div>}</section></>
       }
