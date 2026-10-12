@@ -5,9 +5,19 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from zoneinfo import ZoneInfo
 import json
-import fcntl
+import json
 import os
 import shutil
+import sys
+
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import fcntl
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import fcntl
 
 import pandas as pd
 
@@ -210,9 +220,16 @@ def sunday_run(
     work = root / "work" / run_id
     work.mkdir(parents=True, exist_ok=True)
     lock = root / ".run.lock"
-    fd = os.open(lock, os.O_CREAT | os.O_RDWR, 0o600)
+    fd = os.open(lock, os.O_CREAT | os.O_RDWR)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if sys.platform == "win32":
+            try:
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            except OSError:
+                os.close(fd)
+                raise RuntimeError(f"Another run is active; check {lock}") from None
+        else:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         os.close(fd)
         raise RuntimeError(f"Another run is active; check {lock}") from None
@@ -415,5 +432,12 @@ def sunday_run(
         latest_tmp.rename(latest)
         return receipt
     finally:
-        fcntl.flock(fd, fcntl.LOCK_UN)
+        if sys.platform == "win32":
+            try:
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            except OSError:
+                pass
+        else:
+            fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
