@@ -14,6 +14,31 @@ services:
     volumes:
       - ${CFB_DATA_DIR:-./data}:/app/data
       - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts
+
+  cfb-api:
+    user: "${CFB_UID:-10001}:${CFB_GID:-10001}"
+    image: ${CFB_IMAGE:-cfb-forecast:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      CFB_DATA_DIR: /app/data
+      CFB_ARTIFACTS_DIR: /app/artifacts
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "${CFB_API_PORT:-8080}:8080"
+    volumes:
+      - ${CFB_DATA_DIR:-./data}:/app/data:ro
+      - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts:ro
+    command: ["serve", "--host", "0.0.0.0", "--port", "8080", "--data", "/app/data", "--artifacts", "/app/artifacts"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   cfb-dashboard:
     build:
       context: .
