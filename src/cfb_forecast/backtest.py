@@ -84,7 +84,7 @@ def run_backtest(data_root,out_root,archive_path=None,warmup=2021,train_start=20
                     p=win_probability(val_mu,sigma)
                     scores=metrics((Y[val,0,0]>Y[val,1,0]).astype(int),p)
                     trials.append({"variant":variant,"q":q,"carry":carry,"alpha":alpha,**scores})
-            print(f"computed chronological features q={q} carry={carry}",flush=True)
+            print(f"computed prior-result features q={q} carry={carry}",flush=True)
     pd.DataFrame(trials).to_csv(out/"validation_trials.csv",index=False)
     selected={v:min((r for r in trials if r["variant"]==v),key=lambda r:r["log_loss"]) for v in ("score","pbp")}
     chosen_variant=min(selected,key=lambda v:selected[v]["log_loss"])

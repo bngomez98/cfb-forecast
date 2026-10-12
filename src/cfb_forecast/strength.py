@@ -22,7 +22,8 @@ def strength_margin(
         & schedules.result_usable
         & (schedules.result_available_at < at)
     ]
-    teams = sorted(set(schedules.home_id) | set(schedules.away_id))
+    population = schedules[schedules.fbs_game]
+    teams = sorted(set(population.home_id) | set(population.away_id))
     index = {int(team): i for i, team in enumerate(teams)}
     x = np.zeros((len(past), len(teams)))
     if len(past):
