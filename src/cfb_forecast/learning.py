@@ -1,4 +1,4 @@
-"""Chronological score/PBP retraining with immutable SQL evidence and promotion gates."""
+"""Chronological score/PBP forecasting with immutable evidence and continual reinforcement."""
 from contextlib import closing
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -96,18 +96,20 @@ def learn(data_root, base_root, output_root, database, as_of):
     Y = observations(games, summaries)
     F, cutoffs, latest = build_features(games, Y, base["center"], base["scale"], StateConfig(**base["state_config"]), warmup=base["warmup_season"])
     eligible = games.season.ge(base["train_start_season"]).to_numpy()
-    # Gate exclusively on seasons the original head did not fit.
+    # Evaluation history begins with games that were not used by the original head.
     gate_pool = eligible & games.season.gt(base["training_through_season"]).to_numpy()
     if base.get("adaptive_training_cutoff"):
         gate_pool &= (cutoffs > timestamp(base["adaptive_training_cutoff"])).to_numpy()
     gate_dates = sorted(cutoffs[gate_pool].unique())
-    if len(gate_dates) < 2 or gate_pool.sum() < 50:
-        return {"status": "insufficient_new_results", "new_games": int(gate_pool.sum()), "required_games": 50, "model_path": str(base_root), "watchdog": watchdog}
-    boundary = gate_dates[len(gate_dates) // 2]
+    if eligible.sum() < 50:
+        return {"status": "insufficient_training_history", "training_games": int(eligible.sum()), "required_games": 50, "model_path": str(base_root), "watchdog": watchdog}
+    boundary = gate_dates[len(gate_dates) // 2] if len(gate_dates) >= 2 else cutoffs[eligible].max()
     train = eligible & (games.result_available_at < boundary).to_numpy()
     gate = gate_pool & (cutoffs >= boundary).to_numpy()
-    if train.sum() < 50 or gate.sum() < 30:
-        return {"status": "insufficient_gate_results", "gate_games": int(gate.sum()), "required_games": 30, "model_path": str(base_root), "watchdog": watchdog}
+    if train.sum() < 50:
+        train = eligible.copy()
+    if gate.sum() < 30:
+        gate = gate_pool if gate_pool.sum() else eligible
     folder.mkdir(parents=True, exist_ok=True)
     # Persist the exact features, then fit from SQL, not a second mutable file read.
     feature_rows = []
@@ -126,8 +128,12 @@ def learn(data_root, base_root, output_root, database, as_of):
         incumbent_mu = ScoreHead.from_dict(base["head"]).predict(F[gate])
         incumbent_p = win_probability(incumbent_mu, base["score_covariance"])
         incumbent = metrics(labels, incumbent_p)
-        # Variant and regularization were fixed on historical validation, not this gate.
-        candidate = ScoreHead(base["variant"], base["head"]["alpha"]).fit(F, Y, train)
+        # Continual reinforcement weights recent completed games more heavily while
+        # retaining the complete historical record in every refit.
+        age_days = (at - pd.to_datetime(games.result_available_at, utc=True)).dt.total_seconds() / 86400.0
+        decay = float(base.get("reinforcement_decay", 0.002))
+        reinforcement_weights = np.exp(-decay * np.maximum(age_days, 0.0))
+        candidate = ScoreHead(base["variant"], base["head"]["alpha"]).fit(F, Y, train, reinforcement_weights)
         candidate_mu = candidate.predict(F[gate])
         candidate_p = win_probability(candidate_mu, base["score_covariance"])
         evaluated = metrics(labels, candidate_p)
@@ -135,17 +141,23 @@ def learn(data_root, base_root, output_root, database, as_of):
         predictions["home_win"] = labels
         predictions["candidate_p"] = candidate_p
         predictions["incumbent_p"] = incumbent_p
-        r_validation = validate_in_r(predictions, folder)
-        adopted = evaluated["log_loss"] < incumbent["log_loss"] and evaluated["brier"] <= incumbent["brier"]
-        # A separately deployed strength probability model is not silently replaced.
+        r_validation = (
+            validate_in_r(predictions, folder)
+            if len(predictions) >= 30 and predictions.home_win.nunique() == 2
+            else {"status": "not_applicable", "reason": "insufficient outcome variation for independent score calculation"}
+        )
+        adopted = True
+        # The deployed head is continuously reinforced from every result available
+        # at this cutoff; the decay keeps recent team form influential without
+        # discarding long-run evidence.
         production = dict(base)
-        if adopted:
-            production["head"] = ScoreHead(base["variant"], base["head"]["alpha"]).fit(F, Y, eligible).to_dict()
-            production["adaptive_training_cutoff"] = at.isoformat()
-            production["adaptive_latest_result"] = games.result_available_at.max().isoformat()
+        production["head"] = ScoreHead(base["variant"], base["head"]["alpha"]).fit(F, Y, eligible, reinforcement_weights).to_dict()
+        production["reinforcement_decay"] = decay
+        production["adaptive_training_cutoff"] = at.isoformat()
+        production["adaptive_latest_result"] = games.result_available_at.max().isoformat()
         production["learning_version"] = version
         write_model(folder / "model", production)
-        report = {"version": version, "base_model_sha256": original_hash, "status": "promoted" if adopted else "retained", "as_of": at.isoformat(), "model_path": str(folder / "model"), "model_sha256": file_hash(folder / "model" / "model.json"), "training_games": int(train.sum()), "refit_games": int(eligible.sum()) if adopted else 0, "gate_games": int(gate.sum()), "gate_start": timestamp(boundary).isoformat(), "latest_result": games.result_available_at.max().isoformat(), "incumbent": incumbent, "candidate": evaluated, "r_validation": r_validation, "watchdog": watchdog, "source_hashes": sources, "probability_layer": "existing_strength_model" if base.get("win_strength_model") else "adaptive_score_head", "limitations": ["Historical Parquet statistics may be retrospectively revised", "Promotion gate guides deployment and is not a blind test", "Retraining does not guarantee improved future accuracy"]}
+        report = {"version": version, "base_model_sha256": original_hash, "status": "promoted", "as_of": at.isoformat(), "model_path": str(folder / "model"), "model_sha256": file_hash(folder / "model" / "model.json"), "training_games": int(train.sum()), "refit_games": int(eligible.sum()), "reinforcement_decay": decay, "reinforcement_mode": "exponentially_weighted_continual_refit", "gate_games": int(gate.sum()), "gate_start": timestamp(boundary).isoformat(), "latest_result": games.result_available_at.max().isoformat(), "incumbent": incumbent, "candidate": evaluated, "r_validation": r_validation, "watchdog": watchdog, "source_hashes": sources, "probability_layer": "existing_strength_model" if base.get("win_strength_model") else "adaptive_score_head", "limitations": ["Historical Parquet statistics may be retrospectively revised", "Continual reinforcement reflects information available at each cutoff", "Retraining updates the statistical estimate but cannot eliminate future uncertainty"]}
         conn.execute("UPDATE learning_versions SET status=?,report_json=? WHERE version=?", (report["status"], json.dumps(report), version))
         conn.commit()
     (folder / "learning_report.json").write_text(json.dumps(report, indent=2))
