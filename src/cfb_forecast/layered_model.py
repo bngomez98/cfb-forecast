@@ -53,11 +53,13 @@ class LayeredBayesModel:
         return float(mean), float(1.0 / precision)
 
     def fit(self, games, feature_frame=None):
-        required = {"home_id", "away_id", "home_points", "away_points", "season", "result_available_at"}
+        required = {"home_id", "away_id", "home_points", "away_points", "season", "result_available_at", "result_usable"}
         missing = required - set(games.columns)
         if missing:
             raise ValueError(f"Layered model missing columns: {sorted(missing)}")
         usable = games[games.result_usable].copy().sort_values("result_available_at")
+        if usable.empty:
+            raise ValueError("Layered model requires completed prior outcomes")
         self.training_through_season = int(usable.season.max()) if len(usable) else None
         self.teams = sorted(set(usable.home_id.astype(int)) | set(usable.away_id.astype(int)))
         off_obs = {team: [] for team in self.teams}

@@ -85,6 +85,15 @@ def load_data(root):
     paths_adv = sorted(root.glob("adv_team_*.parquet")) + sorted(root.glob("adv_team_*.csv"))
     adv = pd.concat([read_frame(p) for p in paths_adv], ignore_index=True) if paths_adv else pd.DataFrame(columns=ADV_FIELDS)
     require_columns(adv, ADV_FIELDS, "play-by-play summaries")
+    for column in ("game_id", "pos_team_id"):
+        adv[column] = pd.to_numeric(adv[column], errors="raise").astype("int64")
+    for column in ADV_FIELDS[2:]:
+        adv[column] = pd.to_numeric(adv[column], errors="raise")
+        if np.isinf(adv[column].to_numpy(dtype=float)).any():
+            raise ValueError(f"Nonfinite advanced statistic: {column}")
+    known = adv.merge(schedules[["game_id", "home_id", "away_id"]], on="game_id", how="inner", validate="many_to_one")
+    if (~(known.pos_team_id.eq(known.home_id) | known.pos_team_id.eq(known.away_id))).any():
+        raise ValueError("Advanced statistics team does not belong to the scheduled game")
     if adv.duplicated(["game_id", "pos_team_id"]).any():
         raise ValueError("Duplicate (game_id, pos_team_id) PBP summary rows")
     return schedules, adv, paths + paths_adv

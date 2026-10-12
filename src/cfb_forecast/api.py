@@ -14,10 +14,12 @@ from pydantic import BaseModel, Field
 from .database import connect, insert_forecasts, list_forecasts, register_model
 from .forecast import forecast
 
-DATA_ROOT = Path(os.getenv("CFB_DATA_DIR", "/app/data"))
-ARTIFACT_ROOT = Path(os.getenv("CFB_ARTIFACTS_DIR", "/app/artifacts"))
-MODEL_ROOT = Path(os.getenv("CFB_MODEL_DIR", str(ARTIFACT_ROOT / "backtest" / "model")))
-DATABASE_PATH = Path(os.getenv("CFB_DATABASE", str(ARTIFACT_ROOT / "cfb_forecast.sqlite3")))
+from .paths import data_root, artifacts_root, model_root, resolve_path
+
+DATA_ROOT = data_root()
+ARTIFACT_ROOT = artifacts_root()
+MODEL_ROOT = model_root()
+DATABASE_PATH = resolve_path(os.getenv("CFB_DATABASE", str(ARTIFACT_ROOT / "cfb_forecast.sqlite3")))
 
 app = FastAPI(title="CFB Win Probability Forecasting API", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])

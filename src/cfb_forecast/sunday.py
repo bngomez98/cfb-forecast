@@ -5,15 +5,10 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from zoneinfo import ZoneInfo
 import json
-import json
 import os
 import shutil
 import sys
 
-if sys.platform == "win32":
-    import msvcrt
-else:
-    import fcntl
 if sys.platform == "win32":
     import msvcrt
 else:
@@ -194,9 +189,19 @@ def capture_prices(games, input_root, store):
     return len(snapshots)
 
 
+def publish_latest(root, final):
+    latest, temporary = root / "latest", root / ".latest-new"
+    if temporary.exists():
+        shutil.rmtree(temporary)
+    shutil.copytree(final, temporary)
+    if latest.exists():
+        shutil.rmtree(latest)
+    temporary.rename(latest)
+
+
 def sunday_run(
-    data_root="data",
-    artifacts_root="artifacts",
+    data_root=None,
+    artifacts_root=None,
     season=2026,
     model_root=None,
     timezone_name="America/Chicago",
@@ -208,7 +213,9 @@ def sunday_run(
     local = started.to_pydatetime().astimezone(ZoneInfo(timezone_name))
     if scheduled and (local.weekday() != 6 or local.hour != 10):
         return {"status": "outside_sunday_schedule", "local_time": local.isoformat()}
-    root, data = Path(artifacts_root), Path(data_root)
+    from .paths import artifacts_root as default_artifacts, data_root as default_data, resolve_path
+    root = resolve_path(artifacts_root) if artifacts_root is not None else default_artifacts()
+    data = resolve_path(data_root) if data_root is not None else default_data()
     root.mkdir(parents=True, exist_ok=True)
     runs = root / "runs"
     runs.mkdir(exist_ok=True)
@@ -233,7 +240,10 @@ def sunday_run(
     except BlockingIOError:
         os.close(fd)
         raise RuntimeError(f"Another run is active; check {lock}") from None
+    from .pipeline_status import PipelineJournal
+    journal = PipelineJournal(work / "pipeline.json")
     try:
+        journal.stage("sources")
         if refresh:
             # Cached historical seasons are retained; the current season always refreshes.
             fetch(data, list(range(2021, season)))
@@ -246,6 +256,7 @@ def sunday_run(
                 "A source marks future games completed; refusing those outcomes"
             )
         games = select_slate(schedules, season, now, timezone_name)
+        journal.stage("context")
         # External game inputs are collected before feature/model calculations.
         context_features, _ = (
             collect_game_inputs(games, season, work / "inputs")
@@ -255,6 +266,7 @@ def sunday_run(
         store = data / "market_history.csv"
         prices = capture_prices(games, work / "inputs", store) if len(games) else 0
         at = timestamp(utc_now())
+        journal.stage("validation")
         validated, validation_summary = validate_runs(runs, schedules, at)
         (work / "previous_week_validation.json").write_text(
             json.dumps(validation_summary, indent=2)
@@ -289,18 +301,10 @@ def sunday_run(
         (work / "context_model_selection.json").write_text(
             json.dumps(context_report, indent=2)
         )
-        if games.empty:
-            receipt = {
-                "status": "no_upcoming_fbs_games",
-                "run_id": run_id,
-                "season": season,
-                "as_of": at.isoformat(),
-                "validation": validation_summary,
-            }
-            (work / "run_manifest.json").write_text(json.dumps(receipt, indent=2))
-            shutil.move(str(work), final)
-            return receipt
-        model_path = Path(model_root) if model_root else root / "training" / "model"
+        journal.stage("training")
+        model_path = resolve_path(model_root) if model_root else resolve_path(os.environ.get("CFB_MODEL_DIR", root / "training" / "model"))
+        if model_root is not None and not (model_path / "model.json").exists():
+            raise FileNotFoundError(f"Requested model does not exist: {model_path}")
         if not (model_path / "model.json").exists():
             run_backtest(
                 data,
@@ -331,7 +335,19 @@ def sunday_run(
             (model_path.parent / "winner_model_selection.json").write_text(
                 json.dumps(selection, indent=2)
             )
+        model_meta = json.loads((model_path / "model.json").read_text())
+        if model_meta["training_through_season"] >= season:
+            raise ValueError("Model training must end before the forecast season")
+        if games.empty:
+            receipt = {"status": "no_upcoming_fbs_games", "run_id": run_id, "season": season, "as_of": at.isoformat(), "games": 0, "validation": validation_summary, "model_sha256": sha256(model_path / "model.json"), "source_hashes": {p.name: sha256(p) for p in paths}}
+            (work / "run_manifest.json").write_text(json.dumps(receipt, indent=2))
+            journal.stage("publication")
+            journal.finish(no_games=True)
+            shutil.move(str(work), final)
+            publish_latest(root, final)
+            return receipt
         at = timestamp(utc_now())
+        journal.stage("probability")
         predictions = forecast(
             data,
             model_path,
@@ -358,6 +374,7 @@ def sunday_run(
             (work / "context_model.json").write_text(json.dumps(context_spec, indent=2))
         # Incomplete lineup/injury information affects eligibility, not an invented probability adjustment.
         predictions["inputs_complete"] = ordered.inputs_complete.to_numpy()
+        journal.stage("decisions")
         decisions = []
         for row in predictions.to_dict("records"):
             h, a = row.get("home_ml_decimal"), row.get("away_ml_decimal")
@@ -379,6 +396,7 @@ def sunday_run(
         if exposure > 0.05:
             predictions.hypothetical_bankroll_fraction *= 0.05 / exposure
         predictions["slate_exposure_cap"] = 0.05
+        journal.stage("publication")
         predictions.to_csv(work / "forecasts.csv", index=False)
         records = (
             predictions.astype(object)
@@ -419,18 +437,16 @@ def sunday_run(
             raise ValueError(
                 "A target game started during calculation; rerun with the remaining slate"
             )
+        journal.finish()
         shutil.copy2(model_path / "model.json", work / "model.json")
         (work / "run_manifest.json").write_text(json.dumps(receipt, indent=2))
         shutil.move(str(work), final)
-        latest = root / "latest"
-        latest_tmp = root / ".latest-new"
-        if latest_tmp.exists():
-            shutil.rmtree(latest_tmp)
-        shutil.copytree(final, latest_tmp)
-        if latest.exists():
-            shutil.rmtree(latest)
-        latest_tmp.rename(latest)
+        publish_latest(root, final)
         return receipt
+    except Exception as error:
+        if work.exists():
+            journal.fail(error)
+        raise
     finally:
         if sys.platform == "win32":
             try:
