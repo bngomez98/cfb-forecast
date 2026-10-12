@@ -9,14 +9,13 @@ import pandas as pd
 from .config import StateConfig
 from .data import load_data, timestamp, sha256
 from .features import observations
-from .ratings import DynamicRatings
+from .ratings import DynamicRatings, build_features
 from .model import load_model, ScoreHead
 from .simulate import simulate_scores
 from .distribution import probability_tables
 from .market import market_at_cutoff, market_history_summary, read_market_history
 from .availability import availability_snapshot
 from .analytic import score_summary
-from .probability import forecast_probability
 from .decision import moneyline_diagnostics
 from .strength import strength_probability
 
@@ -122,13 +121,21 @@ def forecast(
             for r in targets.itertuples(index=False)
         ]
     )
-    mu = ScoreHead.from_dict(model["head"]).predict(F)
-    market = read_market_history(market_path) if market_path else None
-    strength_p = (
-        strength_probability(schedules, targets, at, model["win_strength_model"])
-        if model.get("win_strength_model")
-        else None
+    historical_F, _, _ = build_features(
+        past, Y, model["center"], model["scale"],
+        StateConfig(**model["state_config"]), warmup=model["warmup_season"]
     )
+    fit_mask = np.isfinite(historical_F).all(axis=(1, 2)) & np.isfinite(Y).all(axis=(1, 2))
+    if int(fit_mask.sum()) < 50:
+        raise ValueError("At least 50 completed historical games are required for a live score-head fit")
+    age_days = (at - pd.to_datetime(past.result_available_at, utc=True)).dt.total_seconds().to_numpy() / 86400.0
+    decay = float(model.get("reinforcement_decay", 0.002))
+    live_head = ScoreHead(model["variant"], model["head"]["alpha"]).fit(
+        historical_F, Y, fit_mask, np.exp(-decay * np.maximum(age_days, 0.0))
+    )
+    mu = live_head.predict(F)
+    market = read_market_history(market_path) if market_path else None
+    strength_p = None
     rows = []
     joint = []
     margins = []
@@ -176,9 +183,7 @@ def forecast(
             if strength_p is not None
             else model["variant"] + "_score_head"
         )
-        sim["home_win_probability"] = forecast_probability(
-            sim["raw_home_win_probability"], model, season
-        )
+        sim["home_win_probability"] = float(sim["raw_home_win_probability"])
         sim.update(
             moneyline_diagnostics(
                 sim["home_win_probability"],
@@ -205,7 +210,7 @@ def forecast(
                 "prior_fbs_games": len(past),
                 "model_variant": model["variant"],
                 "head_training_through_season": model["training_through_season"],
-                "prediction_method": "dynamic Gaussian state + regularized score head + prior-season residual covariance",
+                "prediction_method": "live dynamic Bayesian hierarchical ratings + recency-weighted score head + posterior score covariance",
                 **sim,
                 **m,
                 **hist,
@@ -409,9 +414,7 @@ def advance_forecast_snapshot(
             if strength_p is not None
             else model["variant"] + "_score_head"
         )
-        sim["home_win_probability"] = forecast_probability(
-            sim["raw_home_win_probability"], model, season
-        )
+        sim["home_win_probability"] = float(sim["raw_home_win_probability"])
         sim.update(
             moneyline_diagnostics(
                 sim["home_win_probability"],

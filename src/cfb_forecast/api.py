@@ -97,12 +97,9 @@ def create_forecasts(request: ForecastRequest):
             raise ValueError("Forecast window must be positive and no longer than 14 days")
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail="Invalid forecast time window") from exc
+    # Forecasts are fitted live from historical observations on every request.
+    # The configured model path supplies priors and state hyperparameters only.
     model_path = MODEL_ROOT
-    latest = ARTIFACT_ROOT / "latest" / "learning_report.json"
-    if latest.exists():
-        report = json.loads(latest.read_text())
-        if report.get("as_of") and timestamp(report["as_of"]) <= at:
-            model_path = Path(report["model_path"])
     model = _model_manifest(model_path)
     if model.get("training_through_season", request.season) >= request.season:
         raise HTTPException(status_code=400, detail="Established model must be trained before forecast season")
