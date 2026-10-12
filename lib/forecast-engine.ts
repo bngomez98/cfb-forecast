@@ -2,7 +2,7 @@ export type Team = { id: string; name: string; abbreviation: string; score: numb
 export type ForecastGame = { id: string; date: string; week: number; status: string; home: Team; away: Team; venue: string; spread: number | null; marketTotal: number | null; source: string }
 export type Forecast = ForecastGame & { homeWin: number; awayWin: number; margin: number; total: number; homeExpectedPoints: number; awayExpectedPoints: number; marginSd: number; totalSd: number; over: number | null; cover: number | null; kelly: number | null; poissonHomeWin: number; model: string; cutoff: string }
 
-type Rating = { offense: number; defense: number; games: number }
+type Rating = { offense: number; defense: number; games: number; name?: string; abbreviation?: string }
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x))
 const logistic = (x: number) => 1 / (1 + Math.exp(-x))
 const erf = (x: number) => { const sign = x < 0 ? -1 : 1; x = Math.abs(x); const t = 1 / (1 + 0.3275911 * x); const y = 1 - (((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t) * Math.exp(-x * x); return sign * y }
@@ -15,9 +15,13 @@ export function americanToProb(odds: number | null) {
 
 export function fitDynamicRatings(games: ForecastGame[]) {
   const ratings = new Map<string, Rating>()
-  const get = (id: string) => { if (!ratings.has(id)) ratings.set(id, { offense: 0, defense: 0, games: 0 }); return ratings.get(id)! }
+  const get = (id: string, team?: Team) => {
+    if (!ratings.has(id)) ratings.set(id, { offense: 0, defense: 0, games: 0, name: team?.name, abbreviation: team?.abbreviation })
+    return ratings.get(id)!
+  }
   const completed = games.filter(g => g.status === "post" && g.home.score != null && g.away.score != null)
-  for (const game of completed) { get(game.home.id); get(game.away.id) }
+  for (const game of completed) { get(game.home.id, game.home); get(game.away.id, game.away) }
+  for (const game of games) { get(game.home.id, game.home); get(game.away.id, game.away) }
   const mean = completed.length ? completed.flatMap(g => [g.home.score!, g.away.score!]).reduce((a, b) => a + b, 0) / (completed.length * 2) : 28
   for (let pass = 0; pass < 35; pass++) for (const game of completed) {
     const h = get(game.home.id), a = get(game.away.id), hfa = 2.4
