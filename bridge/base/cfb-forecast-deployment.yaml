@@ -1,0 +1,54 @@
+#! cfb-forecast-deployment.yaml
+# Generated code, do not edit
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: cfb-forecast
+    namespace: cfb-forecast
+    labels:
+        com.docker.compose.project: cfb_forecast
+        com.docker.compose.service: cfb-forecast
+spec:
+    replicas: 1
+    selector:
+        matchLabels:
+            com.docker.compose.project: cfb_forecast
+            com.docker.compose.service: cfb-forecast
+    strategy:
+        type: Recreate
+    template:
+        metadata:
+            labels:
+                com.docker.compose.project: cfb_forecast
+                com.docker.compose.service: cfb-forecast
+                com.docker.compose.network.default: "true"
+        spec:
+            containers:
+                - name: cfb-forecast
+                  image: cfb-forecast:local
+                  imagePullPolicy: IfNotPresent
+                  args:
+                    - --help
+                  env:
+                    - name: MKL_NUM_THREADS
+                      value: "1"
+                    - name: OMP_NUM_THREADS
+                      value: "1"
+                    - name: OPENBLAS_NUM_THREADS
+                      value: "1"
+                    - name: PYTHONDONTWRITEBYTECODE
+                      value: "1"
+                    - name: PYTHONUNBUFFERED
+                      value: "1"
+                  volumeMounts:
+                    - name: app-data
+                      mountPath: /app/data
+                    - name: app-artifacts
+                      mountPath: /app/artifacts
+            volumes:
+                - name: app-data
+                  hostPath:
+                    path: C:\Users\brian\Downloads\cfb_forecast\cfb_forecast\data
+                - name: app-artifacts
+                  hostPath:
+                    path: C:\Users\brian\Downloads\cfb_forecast\cfb_forecast\artifacts

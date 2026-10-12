@@ -7,7 +7,7 @@ name = "cfb-forecast"
 version = "0.4.0"
 description = "Real-data Sunday FBS forecasts, betting diagnostics, and weekly validation"
 requires-python = ">=3.11"
-dependencies = ["numpy>=1.26", "pandas>=2.2", "scipy>=1.12", "scikit-learn>=1.4", "pyarrow>=15"]
+dependencies = ["numpy>=1.26", "pandas>=2.2,<3", "scipy>=1.12", "scikit-learn>=1.4", "pyarrow>=15,<26"]
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
@@ -22,3 +22,4 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+addopts = ["--basetemp=.pytest_tmp"]

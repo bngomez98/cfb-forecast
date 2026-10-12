@@ -45,7 +45,7 @@ def normalize_schedule(df):
         df[c] = booleans(df[c], c)
     for c in ("game_id", "home_id", "away_id", "season", "week"):
         df[c] = pd.to_numeric(df[c], errors="raise").astype("int64")
-    df["start_date"] = pd.to_datetime(df.start_date, utc=True, errors="raise", format="mixed")
+    df["start_date"] = pd.to_datetime(df.start_date, utc=True, format="ISO8601", errors="raise")
     if df.game_id.duplicated().any():
         raise ValueError("Duplicate game IDs in schedule; refusing ambiguous outcomes")
     if (df.home_id == df.away_id).any():
@@ -67,7 +67,7 @@ def normalize_schedule(df):
     # Unknown actual final whistle is conservatively proxied at kickoff + 8h.
     df["result_available_at"] = df.start_date + pd.Timedelta(hours=8)
     if "completed_at" in df:
-        actual = pd.to_datetime(df.completed_at, utc=True, errors="coerce", format="mixed")
+        actual = pd.to_datetime(df.completed_at, utc=True, format="ISO8601", errors="coerce")
         df["result_available_at"] = actual.fillna(df.result_available_at)
     if (df.result_available_at <= df.start_date).any():
         raise ValueError("Result availability must be later than kickoff")
