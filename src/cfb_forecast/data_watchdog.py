@@ -15,7 +15,6 @@ from .database import connect
 DEFAULT_PATTERNS = (
     "schedule_*.csv",
     "adv_team_*.parquet",
-    "pbp_*.parquet",
     "source_manifest.json",
 )
 
@@ -138,11 +137,14 @@ def watch(data_root: str | Path, database: str | Path, interval: float) -> None:
 
 def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Monitor CFB forecast datasets for missing or changed files")
-    parser.add_argument("--data", default="data")
-    parser.add_argument("--database", default="artifacts/cfb_forecast.sqlite")
+    from .paths import data_root, artifacts_root
+    parser.add_argument("--data", default=str(data_root()))
+    parser.add_argument("--database", default=str(artifacts_root() / "cfb_forecast.sqlite3"))
     parser.add_argument("--watch", action="store_true")
     parser.add_argument("--interval", type=float, default=300.0)
     args = parser.parse_args(argv)
+    if args.interval <= 0:
+        parser.error("--interval must be positive")
     if args.watch:
         watch(args.data, args.database, args.interval)
     else:

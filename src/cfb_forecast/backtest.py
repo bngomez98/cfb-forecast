@@ -62,6 +62,8 @@ def run_backtest(data_root,out_root,archive_path=None,warmup=2021,train_start=20
     for year in range(warmup,test+1):
         if not (games.season==year).any():
             raise ValueError(f"No completed FBS-v-FBS games for required season {year}")
+    from .training_audit import save_training_audit
+    save_training_audit(out, games, summaries, paths, warmup, train_start, validation, test)
     Y=observations(games,summaries); center,scale=normalization(Y,games.season.eq(warmup).to_numpy())
     train=games.season.between(train_start,validation-1).to_numpy()
     val=games.season.eq(validation).to_numpy(); te=games.season.eq(test).to_numpy()

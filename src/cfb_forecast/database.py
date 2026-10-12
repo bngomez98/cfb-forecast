@@ -90,7 +90,8 @@ CREATE INDEX IF NOT EXISTS idx_results_season ON results(season);
 def connect(path: str | Path) -> sqlite3.Connection:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(p)
+    conn = sqlite3.connect(p, timeout=60)
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     schema_path = Path(__file__).resolve().parents[2] / "sql" / "schema.sql"
@@ -159,6 +160,25 @@ def list_forecasts(conn: sqlite3.Connection, season: int | None = None):
     if season is None:
         return conn.execute("SELECT * FROM forecasts ORDER BY kickoff").fetchall()
     return conn.execute("SELECT * FROM forecasts WHERE season=? ORDER BY kickoff", (int(season),)).fetchall()
+
+
+def persist_completed_run(database, model_path, records, receipt, schedules, at):
+    from contextlib import closing
+    from .data import sha256
+    with closing(connect(database)) as conn:
+        run_id = register_run(conn, receipt["run_id"], receipt["season"], receipt)
+        model_id = register_model(conn, sha256(Path(model_path) / "model.json"), str(model_path), receipt.get("learning", {}))
+        insert_forecasts(conn, model_id, records, run_id)
+        completed = schedules[schedules.result_usable & (schedules.result_available_at < at)]
+        conn.executemany("""INSERT INTO results(game_id,season,home_points,away_points,completed,result_available_at,source)
+            VALUES(?,?,?,?,1,?,?) ON CONFLICT(game_id,season) DO UPDATE SET
+            home_points=excluded.home_points,away_points=excluded.away_points,
+            result_available_at=excluded.result_available_at,completed=1,source=excluded.source""",
+            [(int(r.game_id), int(r.season), float(r.home_points), float(r.away_points), r.result_available_at.isoformat(), "validated_schedule") for r in completed.itertuples(index=False)])
+        conn.execute("DELETE FROM sources WHERE run_id=?", (run_id,))
+        conn.executemany("INSERT INTO sources(run_id,provider,sha256,status,metadata_json) VALUES(?,?,?,?,?)",
+            [(run_id, name, digest, "snapshotted", json.dumps({"as_of": receipt["as_of"]})) for name, digest in receipt["source_hashes"].items()])
+        conn.commit()
 
 
 def main() -> int:

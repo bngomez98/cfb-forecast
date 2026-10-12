@@ -2,16 +2,12 @@
 
 from pathlib import Path
 import json
-import os
-
 import pandas as pd
 import streamlit as st
+from cfb_forecast.paths import artifacts_root
+from desk import shell, overview, render_pipeline, historical, sources, training_root
 
-ROOT = Path(
-    os.environ.get(
-        "CFB_ARTIFACTS_DIR", str(Path(__file__).resolve().parents[1] / "artifacts")
-    )
-)
+ROOT = artifacts_root()
 
 
 def read_json(path, default=None):
@@ -32,30 +28,25 @@ def table(path):
 
 
 def main():
-    st.set_page_config(
-        page_title="FieldQuant | FBS Forecast Desk", page_icon="🏈", layout="wide"
-    )
-    st.title("FieldQuant · FBS Forecast Desk")
-    st.caption("2026 season · Sunday forecasts and validation · America/Chicago")
     latest = ROOT / "latest"
     manifest = read_json(latest / "run_manifest.json", {})
-    if not (latest / "forecasts.csv").exists():
-        st.info(
-            "No completed forecast run is available. Run the Sunday service to collect real game inputs and calculate predictions."
-        )
-        st.code("python -m cfb_forecast sunday-run --season 2026")
+    page = shell(ROOT, manifest)
+    if page == "Overview":
+        overview(ROOT, manifest)
         return
-    forecasts = table(latest / "forecasts.csv")
-    pages = [
-        "Forecast desk",
-        "Weekly validation",
-        "Game inputs",
-        "Model research",
-        "Sources",
-    ]
-    page = st.sidebar.radio("View", pages)
-    st.sidebar.caption(f"Run: {manifest.get('run_id', 'unknown')}")
-    st.sidebar.write(f"Calculated: {manifest.get('as_of', 'unknown')}")
+    if page == "Calculation pipeline":
+        render_pipeline(ROOT)
+        return
+    if page == "Historical training":
+        historical()
+        return
+    if page == "Sources":
+        sources(ROOT, latest)
+        return
+    forecasts = table(latest / "forecasts.csv") if (latest / "forecasts.csv").exists() else pd.DataFrame()
+    if page in {"Forecast desk", "Game inputs"} and forecasts.empty:
+        st.info("No upcoming forecasts in the latest completed run. Historical training, source receipts and pipeline evidence remain available in the sidebar.")
+        return
     if page == "Forecast desk":
         st.subheader("Upcoming FBS games")
         selected = st.multiselect(
@@ -222,25 +213,13 @@ def main():
     elif page == "Model research":
         st.subheader("Model selection and measured validation")
         st.json(read_json(latest / "context_model_selection.json", {}))
-        st.json(read_json(ROOT / "training" / "winner_model_selection.json", {}))
-        path = ROOT / "training" / "metrics.csv"
+        st.json(read_json(training_root() / "winner_model_selection.json", {}))
+        path = training_root() / "metrics.csv"
         if path.exists():
             st.dataframe(table(path), hide_index=True, width="stretch")
         st.caption(
             "Historical comparisons guide later deployment. Calibration and robustness experiments write separate candidates and do not silently replace the current model."
         )
-    else:
-        st.subheader("Source availability")
-        for receipt in read_json(latest / "inputs" / "provider_status.json", []):
-            st.write(f"{receipt['provider']}: {receipt['status']}")
-            st.write(receipt["url"])
-            if receipt.get("error"):
-                st.caption(receipt["error"])
-            if receipt.get("tables"):
-                with st.expander("Retrieved source tables"):
-                    st.json(receipt["tables"])
-        with st.expander("Run manifest"):
-            st.json(manifest)
 
 
 if __name__ == "__main__":
