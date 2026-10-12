@@ -49,6 +49,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const season = searchParams.get("season") ?? "2026"
   const week = searchParams.get("week") ?? "7"
+  const fullSeason = week === "all"
   const cutoff = new Date().toISOString()
   try {
     const seasons = [Number(season) - 1, Number(season)]
@@ -62,7 +63,7 @@ export async function GET(request: Request) {
     responses.flatMap((response) => response.events ?? []).map(normalizeEvent).filter(Boolean).forEach((game) => games.set(game!.id, game!))
     const result = buildForecasts([...games.values()], cutoff)
     const sourceStatusResults = await Promise.all(SOURCES.map(sourceStatus))
-    return NextResponse.json({ ...result, forecasts: result.forecasts.filter((game) => game.week === Number(week) && game.date.startsWith(`${season}-`)), season: Number(season), selectedWeek: Number(week), trainingSeasons: seasons, source: "ESPN/SportsDataverse-compatible FBS feed", sources: sourceStatusResults, dataCutoff: cutoff, methodology: { primary: "Point-in-time opponent-adjusted offense and defense", scoreLayer: "Gaussian margin with Poisson score check", betting: "Recorded spread comparison and fractional Kelly only when a real price exists", dataPolicy: "No simulated schedules, scores, player states, weather, or betting lines", weeklyControls: result.controls, backtestContract: result.dataContract } })
+    return NextResponse.json({ ...result, forecasts: result.forecasts.filter((game) => game.date.startsWith(`${season}-`) && (fullSeason || game.week === Number(week))), season: Number(season), selectedWeek: fullSeason ? null : Number(week), trainingSeasons: seasons, source: "ESPN/SportsDataverse-compatible FBS feed", sources: sourceStatusResults, dataCutoff: cutoff, methodology: { primary: "Point-in-time opponent-adjusted offense and defense", scoreLayer: "Gaussian margin with Poisson score check", betting: "Recorded spread comparison and fractional Kelly only when a real price exists", dataPolicy: "No simulated schedules, scores, player states, weather, or betting lines", weeklyControls: result.controls, backtestContract: result.dataContract } })
   } catch (error) {
     return NextResponse.json({ error: "Live source unavailable", detail: error instanceof Error ? error.message : "Unknown source error", source: "ESPN site API" }, { status: 503 })
   }
