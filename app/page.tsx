@@ -36,7 +36,7 @@ export default function Home() {
 
   return <main className="terminal-shell">
     <header className="topbar">
-      <div className="brand"><div className="brand-mark">FBS</div><div><strong>FORECAST DESK</strong><small>COLLEGE FOOTBALL · POINT-IN-TIME ANALYSIS</small></div></div>
+      <div className="brand"><div className="brand-mark">FBS</div><div><strong>CFB PREDICTIONS</strong><small>COLLEGE FOOTBALL · PREKICK ANALYSIS</small></div></div>
       <div className="divider" />
       <label className="sr-only" htmlFor="week">Week</label><select id="week" value={week} onChange={(event) => setWeek(event.target.value)}>{Array.from({ length: 15 }, (_, index) => <option key={index + 1} value={index + 1}>Week {index + 1}</option>)}</select>
       <span className="live-chip"><i />{loading ? 'UPDATING' : 'LIVE FBS FEED'}</span><div className="top-spacer" />
