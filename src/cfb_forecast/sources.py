@@ -14,6 +14,24 @@ import pandas as pd
 
 ESPN = "https://site.api.espn.com/apis/site/v2/sports/football/college-football"
 
+SOURCE_REGISTRY = {
+    "cfbfastR": "https://cfbfastr.sportsdataverse.org/",
+    "cfbfastR_models": "https://github.com/sportsdataverse/cfbfastR-cfb-data/blob/main/models/REGISTRY.md",
+    "radsportsanalytics": "https://radsportsanalytics.com/blog/introduction-to-cfb-analytics/",
+    "cfbtrack": "https://cfbtrack.com/",
+    "mrtimo_schedule": "https://mrtimo.github.io/cfb-games/games-{season}.html",
+    "cfbd_key": "https://collegefootballdata.com/key",
+    "cfbd_ratings": "https://api.collegefootballdata.com/ratings/core",
+    "cfbtxt_validation": "https://cfbtxt.com/schedule/",
+    "fanduel_comparison": "https://www.fanduel.com/research/ncaaf",
+    "football_db": "https://www.footballdb.com/college-football/stats/teamstat.html?yr={season}&lg=FBS",
+}
+
+
+def source_registry(season):
+    """Return the named source configuration used by collection and weekly review."""
+    return {name: url.format(season=int(season)) for name, url in SOURCE_REGISTRY.items()}
+
 
 def utc_now():
     return datetime.now(timezone.utc).isoformat()
@@ -442,4 +460,5 @@ def collect_game_inputs(games, season, root, workers=6):
     (root / "game_inputs.json").write_text(json.dumps(documents, indent=2))
     pd.DataFrame(rows).to_csv(root / "features.csv", index=False)
     (root / "provider_status.json").write_text(json.dumps(providers, indent=2))
+    (root / "source_registry.json").write_text(json.dumps(source_registry(season), indent=2))
     return pd.DataFrame(rows), documents
