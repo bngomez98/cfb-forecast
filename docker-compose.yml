@@ -1,5 +1,6 @@
 services:
   cfb-forecast:
+    user: "${CFB_UID:-10001}:${CFB_GID:-10001}"
     image: ${CFB_IMAGE:-cfb-forecast:local}
     build:
       context: .

@@ -1,4 +1,5 @@
 """Weekly forecast orchestration for upcoming FBS games."""
+
 from pathlib import Path
 from datetime import datetime, timezone
 import shutil
@@ -35,9 +36,11 @@ def run_weekly_forecast(
         week = int(games.sort_values("start_date").iloc[0].week)
     else:
         week = int(week)
-        games = games[games.week == week].copy()
+    games = games[games.week == week].copy()
     if games.empty:
-        raise ValueError(f"No upcoming FBS games found for season {season}, week {week}")
+        raise ValueError(
+            f"No upcoming FBS games found for season {season}, week {week}"
+        )
 
     first_kickoff = games.start_date.min()
     last_kickoff = games.start_date.max()
@@ -65,7 +68,9 @@ def run_weekly_forecast(
         "games": int(len(result)),
         "output": str(destination),
     }
-    pd.DataFrame([manifest]).to_json(destination / "weekly_manifest.json", orient="records", indent=2)
+    pd.DataFrame([manifest]).to_json(
+        destination / "weekly_manifest.json", orient="records", indent=2
+    )
 
     latest = out_root / "latest-weekly"
     if latest.exists():

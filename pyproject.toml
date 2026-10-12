@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cfb-forecast"
-version = "0.3.1"
-description = "Reproducible college football forecasting and chronological evaluation"
+version = "0.4.0"
+description = "Real-data Sunday FBS forecasts, betting diagnostics, and weekly validation"
 requires-python = ">=3.11"
 dependencies = ["numpy>=1.26", "pandas>=2.2", "scipy>=1.12", "scikit-learn>=1.4", "pyarrow>=15"]
 

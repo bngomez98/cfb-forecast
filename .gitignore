@@ -9,3 +9,8 @@ artifacts/weekly/
 artifacts/latest-weekly/
 artifacts/results/
 data/pbp_*.parquet
+/data/
+/artifacts/
+/runtime/
+/dist/
+/build/

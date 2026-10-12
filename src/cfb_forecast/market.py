@@ -17,7 +17,7 @@ def normalize_market_history(frame, default_provider="unspecified", source=None)
     require_columns(frame, ["game_id", "observed_at"], "market snapshots")
     f = frame.copy()
     f["game_id"] = pd.to_numeric(f.game_id, errors="raise").astype("int64")
-    f["observed_at"] = pd.to_datetime(f.observed_at, utc=True, errors="raise")
+    f["observed_at"] = pd.to_datetime(f.observed_at, utc=True, errors="raise", format="mixed")
     if "provider" not in f:
         f["provider"] = default_provider
     f["provider"] = f.provider.fillna(default_provider).astype(str).str.strip()
