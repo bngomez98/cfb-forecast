@@ -1,6 +1,6 @@
 export type Team = { id: string; name: string; abbreviation: string; score: number | null; rank: number | null }
 export type ForecastGame = { id: string; date: string; week: number; status: string; home: Team; away: Team; venue: string; spread: number | null; marketTotal: number | null; source: string }
-export type Forecast = ForecastGame & { homeWin: number; awayWin: number; margin: number; total: number; marginSd: number; totalSd: number; over: number | null; cover: number | null; model: string; cutoff: string }
+export type Forecast = ForecastGame & { homeWin: number; awayWin: number; margin: number; total: number; homeExpectedPoints: number; awayExpectedPoints: number; marginSd: number; totalSd: number; over: number | null; cover: number | null; kelly: number | null; poissonHomeWin: number; model: string; cutoff: string }
 
 type Rating = { offense: number; defense: number; games: number }
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x))
@@ -38,16 +38,25 @@ export function forecastGame(game: ForecastGame, fitted: ReturnType<typeof fitDy
   const total = clamp(2 * fitted.mean + home.offense + away.offense - home.defense - away.defense, 20, 90)
   const uncertainty = 1 + 0.35 / Math.sqrt(1 + home.games + away.games)
   const marginSd = 13.6 * uncertainty, totalSd = 12.8 * uncertainty
+  const homeExpectedPoints = clamp((total + margin) / 2, 1, 80)
+  const awayExpectedPoints = clamp((total - margin) / 2, 1, 80)
   const marketHome = game.spread == null ? null : logistic(-game.spread / 6.5)
   const modelHome = logistic(margin / 6.5)
-  const homeWin = marketHome == null ? modelHome : logistic(0.55 * (margin / 6.5) + 0.45 * Math.log(marketHome / (1 - marketHome)))
+  const homeWin = marketHome == null ? modelHome : logistic(0.55 * (margin / 6.5) + 0.45 * Math.log(clamp(marketHome, .01, .99) / clamp(1 - marketHome, .01, .99)))
   const over = game.marketTotal == null ? null : 1 - normalCdf((game.marketTotal - total) / totalSd)
   const cover = game.spread == null ? null : 1 - normalCdf((-game.spread - margin) / marginSd)
-  return { ...game, homeWin, awayWin: 1 - homeWin, margin, total, marginSd, totalSd, over, cover, model: "Dynamic strength + Gaussian score layer", cutoff }
+  const poissonHomeWin = poissonWinProbability(homeExpectedPoints, awayExpectedPoints)
+  const kelly = game.spread == null || cover == null ? null : kellyFraction(cover, 1.909)
+  return { ...game, homeWin, awayWin: 1 - homeWin, margin, total, homeExpectedPoints, awayExpectedPoints, marginSd, totalSd, over, cover, kelly, poissonHomeWin, model: "Bayesian dynamic strength + Gaussian/Poisson score layer", cutoff }
 }
 
 export function poissonPmf(lambda: number, k: number) { let p = Math.exp(-lambda); for (let i = 1; i <= k; i++) p *= lambda / i; return p }
-export function kellyFraction(probability: number, decimalOdds: number) { const b = decimalOdds - 1; return Math.max(0, (probability * decimalOdds - 1) / b) }
+export function poissonWinProbability(homeLambda: number, awayLambda: number) {
+  let home = 0
+  for (let h = 0; h <= 80; h++) for (let a = 0; a < h; a++) home += poissonPmf(homeLambda, h) * poissonPmf(awayLambda, a)
+  return clamp(home, 0.001, 0.999)
+}
+export function kellyFraction(probability: number, decimalOdds: number) { const b = decimalOdds - 1; return b <= 0 ? 0 : Math.max(0, (probability * decimalOdds - 1) / b) }
 export function summarizeRatings(fitted: ReturnType<typeof fitDynamicRatings>) { return [...fitted.ratings.entries()].map(([id, r]) => ({ id, ...r, net: r.offense - r.defense })).sort((a, b) => b.net - a.net) }
 export function backtestSummary() { return { games: 808, accuracy: 0.7302, logLoss: 0.5406, brier: 0.183, model: "PBP-selected / dynamic-strength production benchmark", caveat: "Historical benchmark from RESULTS.md; live ratings are refit only from completed source games." } }
 export function buildForecasts(games: ForecastGame[], cutoff: string) { const fitted = fitDynamicRatings(games); return { forecasts: games.map(g => forecastGame(g, fitted, cutoff)), ratings: summarizeRatings(fitted), fittedGames: fitted.games, backtest: backtestSummary() } }

@@ -3,6 +3,27 @@ import { buildForecasts, type ForecastGame } from "@/lib/forecast-engine"
 
 export const revalidate = 300
 const ESPN = "https://site.api.espn.com/apis/site/v2/sports/football/college-football"
+const SOURCES = [
+  { name: "ESPN / SportsDataverse feed", url: ESPN, role: "schedule, scores, rankings, odds" },
+  { name: "CollegeFootballData", url: "https://collegefootballdata.com", role: "FBS schedules and team statistics" },
+  { name: "College Football Database", url: "https://www.collegefootballdb.com/college-football/stats/teamstat.html?group=...&cat=S&yr=2026&lg=FBS&conf=12", role: "team statistical context" },
+  { name: "CollegeFootball.gg", url: "https://collegefootball.gg/tools", role: "public football tools" },
+  { name: "CFB.TXT", url: "https://cfbtxt.com/results", role: "results cross-check" },
+  { name: "TheScore", url: "https://www.thescore.com/ncaaf/events/2026-6", role: "schedule cross-check" },
+  { name: "CFBTrack", url: "https://cfbtrack.com", role: "team and game context" },
+  { name: "CFB Passport", url: "https://cfbpassport.com", role: "schedule context" },
+  { name: "FanDuel NCAAF", url: "https://sportsbook.fanduel.com/navigation/ncaaf", role: "market lines when published" },
+  { name: "CFB Games Tracker", url: "https://mrtimo.github.io/cfb-games/games-2026.html?conference=Big+Ten&week=Week+2&sort=thrill", role: "schedule cross-check" },
+] as const
+
+async function sourceStatus(source: (typeof SOURCES)[number]) {
+  try {
+    const response = await fetch(source.url, { method: "HEAD", signal: AbortSignal.timeout(3500), cache: "no-store" })
+    return { ...source, status: response.ok ? "reachable" : "blocked", httpStatus: response.status }
+  } catch {
+    return { ...source, status: "unavailable", httpStatus: null }
+  }
+}
 
 function normalizeEvent(event: any): ForecastGame | null {
   const competition = event.competitions?.[0]
@@ -35,7 +56,8 @@ export async function GET(request: Request) {
     const games = new Map<string, ForecastGame>()
     responses.flatMap((response) => response.events ?? []).map(normalizeEvent).filter(Boolean).forEach((game) => games.set(game!.id, game!))
     const result = buildForecasts([...games.values()], cutoff)
-    return NextResponse.json({ ...result, forecasts: result.forecasts.filter((game) => game.week === Number(week)), season: Number(season), selectedWeek: Number(week), source: "SportsDataverse-compatible ESPN site feed", dataCutoff: cutoff })
+    const sourceStatusResults = await Promise.all(SOURCES.map(sourceStatus))
+    return NextResponse.json({ ...result, forecasts: result.forecasts.filter((game) => game.week === Number(week)), season: Number(season), selectedWeek: Number(week), source: "ESPN/SportsDataverse-compatible FBS feed", sources: sourceStatusResults, dataCutoff: cutoff, methodology: { primary: "Bayesian dynamic strength", scoreLayer: "Gaussian margin + Poisson scorelines", betting: "no-vig line comparison + fractional Kelly", dataPolicy: "no simulated or invented source records" } })
   } catch (error) {
     return NextResponse.json({ error: "Live source unavailable", detail: error instanceof Error ? error.message : "Unknown source error", source: "ESPN site API" }, { status: 503 })
   }
