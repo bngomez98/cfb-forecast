@@ -53,7 +53,7 @@ def main():
             return
         st.caption(f"Run {board.get('run_id', 'unknown')} · {board.get('games', len(rows))} games · {board.get('as_of', '')}")
         st.dataframe(
-            rows[["kickoff", "away_team", "home_team", "expected_away_score", "expected_home_score", "winner", "confidence"]],
+            rows[[column for column in ["kickoff", "away_team", "home_team", "expected_away_score", "expected_home_score", "winner", "confidence", "model_spread", "market_spread"] if column in rows.columns]],
             hide_index=True,
             width="stretch",
         )
@@ -96,6 +96,7 @@ def main():
             "expected_away_score",
             "expected_home_score",
             "projected_home_margin",
+            "model_spread",
             "projected_total",
             "home_spread",
             "total_line",

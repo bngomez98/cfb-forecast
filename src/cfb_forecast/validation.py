@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from .data import sha256, timestamp
-from .evaluate import metrics, calibration
+from .evaluate import metrics, calibration, spread_regression
 
 
 def validate_runs(run_root, schedules, as_of):
@@ -63,6 +63,14 @@ def validate_runs(run_root, schedules, as_of):
                     matched.actual_total,
                 )
             )
+            if "projected_home_margin" in matched and matched.projected_home_margin.notna().any():
+                report["spread_mae"] = float(np.mean(np.abs(matched.actual_margin - matched.projected_home_margin)))
+            if "home_spread" in matched:
+                priced_spread = matched.dropna(subset=["home_spread"])
+                if len(priced_spread) >= 8:
+                    report["market_spread_regression"] = spread_regression(
+                        priced_spread.actual_margin, priced_spread.home_spread
+                    )
             if "market_home_win_probability_no_vig" in matched:
                 priced = matched.dropna(subset=["market_home_win_probability_no_vig"])
                 if len(priced):

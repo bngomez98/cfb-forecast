@@ -33,14 +33,14 @@ The editable install is the git checkout. On Linux that environment is `/home/br
 
 ## Architecture, pipelines, workflows, and sources
 
-Forecasts are calculated from recorded games and the fitted Gaussian score head. The live path does not draw simulated score samples.
+Forecasts come from one model. A hierarchical team state sets the score location. Known-future information (market line, total, rest, weather, and reported injuries) shifts that location. The same location is the Gaussian mean and the Poisson rate. The win probability is the logistic of the margin. The spread is priced by Monte Carlo draws from that Gaussian. CollegeFootballData lines, weather, team stats, and player stats are collected when `CFBD_API_KEY` is set. cfbtrack.com supplies current team and player season stats. Seasons on disk from 2000 through the forecast season are eligible history; a saved model keeps the warmup season it was fit with.
 
 ```mermaid
 flowchart TD
   sources[Public source catalog] --> ingest[ingest_catalog]
   schedules[Schedules and play-by-play] --> sunday[Sunday and weekly calculation]
   ingest --> sqlite[(artifacts/cfb_forecast.sqlite)]
-  sunday --> head[Analytic Gaussian score head]
+  sunday --> head[Forecasting model]
   head --> board[Scores, winner, confidence]
   board --> log[forecast_log]
   log --> sqlite

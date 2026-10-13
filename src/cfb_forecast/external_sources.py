@@ -204,6 +204,20 @@ def _cfbd_week_sources(games: pd.DataFrame, season: int, root: Path, api_key: st
             api_key,
         )
         records.append({"name": f"cfbd_weather_week_{week}", "role": "weather_crosscheck", **weather_receipt})
+        lines, lines_receipt = _cfbd_get(
+            "/lines",
+            {"year": season, "week": week, "seasonType": "regular"},
+            root / f"cfbd_lines_week_{week}.json",
+            api_key,
+        )
+        records.append({"name": f"cfbd_lines_week_{week}", "role": "market_lines", **lines_receipt, "games": len(lines) if isinstance(lines, list) else 0})
+
+    for path, name, role in (
+        ("/stats/season", "cfbd_team_season_stats", "team_season_stats"),
+        ("/stats/player/season", "cfbd_player_season_stats", "player_season_stats"),
+    ):
+        payload, receipt = _cfbd_get(path, {"year": season, "seasonType": "regular"}, root / f"{name}.json", api_key)
+        records.append({"name": name, "role": role, **receipt, "rows": len(payload) if isinstance(payload, list) else 0})
 
     ratings, rating_receipt = _cfbd_get(
         "/ratings/core",

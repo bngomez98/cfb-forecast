@@ -212,7 +212,27 @@ CREATE TABLE IF NOT EXISTS forecast_log (
   home_win_probability REAL NOT NULL,
   logged_at TEXT NOT NULL,
   payload_json TEXT NOT NULL DEFAULT '{}',
+  projected_home_margin REAL,
+  model_spread REAL,
+  market_spread REAL,
+  home_cover_probability REAL,
   UNIQUE(run_id, game_id)
+);
+
+CREATE TABLE IF NOT EXISTS weekly_validation (
+  id INTEGER PRIMARY KEY,
+  season INTEGER NOT NULL,
+  week INTEGER,
+  run_id TEXT NOT NULL,
+  validated_at TEXT NOT NULL,
+  games INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  log_loss REAL,
+  brier REAL,
+  margin_mae REAL,
+  spread_mae REAL,
+  report_json TEXT NOT NULL,
+  UNIQUE(season, week, run_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_games_season_week ON games(season, week);

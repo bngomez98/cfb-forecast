@@ -44,11 +44,20 @@ def validate_previous_week_forecast(forecast_dir, data_root, season, week):
     result.update({
         "season": int(season),
         "week": int(week),
+        "run_id": forecast_dir.name,
         "status": "settled",
         "games": int(len(settled)),
         "validation_source": SOURCE_REGISTRY["cfbtxt_validation"],
+        "validated_at": datetime.now(timezone.utc).isoformat(),
     })
+    if "projected_home_margin" in settled:
+        result["spread_mae"] = float((settled.actual_margin - settled.projected_home_margin).abs().mean())
     (forecast_dir / "weekly_validation.json").write_text(json.dumps(result, indent=2))
+    from contextlib import closing
+    from .database import connect, record_weekly_validation
+    from .paths import database_path
+    with closing(connect(database_path())) as conn:
+        record_weekly_validation(conn, result)
     return result
 
 

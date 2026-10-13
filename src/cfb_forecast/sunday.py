@@ -246,8 +246,10 @@ def sunday_run(
         journal.stage("sources")
         if refresh:
             # Cached historical seasons are retained; the current season always refreshes.
-            fetch(data, list(range(2021, season)))
+            from .config import HISTORY_START_SEASON
+            fetch(data, list(range(HISTORY_START_SEASON, season)))
             fetch(data, [season], refresh=True)
+            fetch(data, [season], raw_pbp=True)
             sync_results(data, season, work / "inputs" / "raw", timestamp(utc_now()))
         schedules, _, paths = load_data(data)
         now = timestamp(utc_now())
@@ -271,6 +273,20 @@ def sunday_run(
         (work / "previous_week_validation.json").write_text(
             json.dumps(validation_summary, indent=2)
         )
+        from contextlib import closing
+        from .database import connect, record_weekly_validation
+        from .paths import resolve_path
+        validation_database = resolve_path(os.environ.get("CFB_DATABASE", root / "cfb_forecast.sqlite"))
+        with closing(connect(validation_database)) as validation_db:
+            for report in validation_summary.get("runs", []):
+                if report.get("settled_games"):
+                    record_weekly_validation(validation_db, {
+                        **report,
+                        "season": season,
+                        "week": report.get("week", 0),
+                        "games": report.get("settled_games", 0),
+                        "status": "settled",
+                    })
         history = []
         if len(validated):
             for old_id, batch in validated.groupby("run_id"):
@@ -306,11 +322,20 @@ def sunday_run(
         if model_root is not None and not (model_path / "model.json").exists():
             raise FileNotFoundError(f"Requested model does not exist: {model_path}")
         if not (model_path / "model.json").exists():
+            from .config import HISTORY_START_SEASON
+            on_disk = [
+                year for year in range(HISTORY_START_SEASON, int(season))
+                if (data / f"schedule_{year}.csv").exists() and (data / f"adv_team_{year}.parquet").exists()
+            ]
+            warmup = on_disk[0] if on_disk else 2021
+            train_start = max(warmup + 1, 2022)
+            if not warmup < train_start < 2024:
+                warmup, train_start = 2021, 2022
             run_backtest(
                 data,
                 model_path.parent,
-                warmup=2021,
-                train_start=2022,
+                warmup=warmup,
+                train_start=train_start,
                 validation=2024,
                 test=2025,
             )
@@ -363,6 +388,7 @@ def sunday_run(
             market_path=store if store.exists() else None,
             target_game_ids=games.game_id.astype(int).tolist(),
             analytic=True,
+            known_future=context_features,
         )
         ordered = (
             context_features.set_index("game_id")
@@ -437,7 +463,7 @@ def sunday_run(
                 for p in (work / "inputs").rglob("*")
                 if p.is_file()
             },
-            "calculation_method": "Gaussian score head; direct probability integration; no generated score samples",
+            "calculation_method": "One forecasting model: hierarchical state, known-future Koopman map, Gaussian scores, Poisson rates, logistic win probability, Monte Carlo spread",
         }
         if timestamp(utc_now()) >= games.start_date.min():
             raise ValueError(

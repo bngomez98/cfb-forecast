@@ -1,6 +1,7 @@
 from dataclasses import asdict, dataclass
 
 METRICS = ("points", "yards_per_play", "yards_per_pass", "yards_per_rush", "first_downs_created_rate")
+HISTORY_START_SEASON = 2000
 
 @dataclass(frozen=True)
 class StateConfig:

@@ -219,7 +219,27 @@ CREATE TABLE IF NOT EXISTS forecast_log (
     home_win_probability REAL NOT NULL,
     logged_at TEXT NOT NULL,
     payload_json TEXT NOT NULL DEFAULT '{}',
+    projected_home_margin REAL,
+    model_spread REAL,
+    market_spread REAL,
+    home_cover_probability REAL,
     UNIQUE(run_id, game_id)
+);
+
+CREATE TABLE IF NOT EXISTS weekly_validation (
+    id INTEGER PRIMARY KEY,
+    season INTEGER NOT NULL,
+    week INTEGER,
+    run_id TEXT NOT NULL,
+    validated_at TEXT NOT NULL,
+    games INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    log_loss REAL,
+    brier REAL,
+    margin_mae REAL,
+    spread_mae REAL,
+    report_json TEXT NOT NULL,
+    UNIQUE(season, week, run_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_games_season_week ON games(season, week);
@@ -237,7 +257,49 @@ def connect(path: str | Path) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     schema_path = Path(__file__).resolve().parents[2] / "sql" / "schema.sql"
     conn.executescript(schema_path.read_text() if schema_path.exists() else SCHEMA)
+    _ensure_forecast_columns(conn)
     return conn
+
+
+def _ensure_forecast_columns(conn: sqlite3.Connection) -> None:
+    """Add forecast columns to a database created before the spread fields existed."""
+    present = {row[1] for row in conn.execute("PRAGMA table_info(forecast_log)")}
+    for name in ("projected_home_margin", "model_spread", "market_spread", "home_cover_probability"):
+        if name not in present:
+            conn.execute(f"ALTER TABLE forecast_log ADD COLUMN {name} REAL")
+    conn.commit()
+
+
+def record_weekly_validation(conn: sqlite3.Connection, report: dict) -> None:
+    conn.execute(
+        """INSERT INTO weekly_validation(
+             season, week, run_id, validated_at, games, status, log_loss, brier,
+             margin_mae, spread_mae, report_json)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(season, week, run_id) DO UPDATE SET
+             validated_at=excluded.validated_at,
+             games=excluded.games,
+             status=excluded.status,
+             log_loss=excluded.log_loss,
+             brier=excluded.brier,
+             margin_mae=excluded.margin_mae,
+             spread_mae=excluded.spread_mae,
+             report_json=excluded.report_json""",
+        (
+            int(report["season"]),
+            None if report.get("week") is None else int(report["week"]),
+            str(report["run_id"]),
+            report["validated_at"],
+            int(report.get("games", report.get("settled_games", 0))),
+            report.get("status", "settled"),
+            report.get("log_loss"),
+            report.get("brier"),
+            report.get("margin_mae"),
+            report.get("spread_mae"),
+            json.dumps(report),
+        ),
+    )
+    conn.commit()
 
 
 def initialize(path: str | Path) -> Path:
@@ -306,7 +368,8 @@ def list_forecasts(conn: sqlite3.Connection, season: int | None = None):
 def list_published_board(conn: sqlite3.Connection, season: int | None = None):
     """Return the published forecast log, which carries winner and confidence."""
     sql = """SELECT run_id, season, game_id, kickoff, away_team, home_team,
-        expected_away_score, expected_home_score, winner, confidence,
+        expected_away_score, expected_home_score, projected_home_margin,
+        model_spread, market_spread, home_cover_probability, winner, confidence,
         home_win_probability, logged_at FROM forecast_log"""
     params: tuple = ()
     if season is not None:

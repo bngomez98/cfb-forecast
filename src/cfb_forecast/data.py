@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import time
+import urllib.error
 import urllib.request
 import numpy as np
 import pandas as pd
@@ -112,6 +113,7 @@ def fetch(root, seasons, refresh=False, raw_pbp=False):
             if target.exists() and not refresh:
                 print(f"cached {name}", flush=True); continue
             tmp = target.with_suffix(".download")
+            saved = False
             for attempt in range(3):
                 try:
                     request = urllib.request.Request(url, headers={"User-Agent": "cfb-forecast/0.1"})
@@ -124,12 +126,25 @@ def fetch(root, seasons, refresh=False, raw_pbp=False):
                     else:
                         import pyarrow.parquet as pq
                         pq.ParquetFile(tmp)  # fail on HTML / incomplete downloads
+                    saved = True
                     break
+                except urllib.error.HTTPError as exc:
+                    tmp.unlink(missing_ok=True)
+                    if exc.code == 404:
+                        manifest["files"][name] = {"url": url, "status": "unavailable", "http_status": 404}
+                        manifest_path.write_text(json.dumps(manifest, indent=2))
+                        print(f"unavailable {name}", flush=True)
+                        break
+                    if attempt == 2:
+                        raise
+                    time.sleep(2 ** attempt)
                 except Exception:
                     tmp.unlink(missing_ok=True)
                     if attempt == 2:
                         raise
                     time.sleep(2 ** attempt)
+            if not saved:
+                continue
             tmp.replace(target)
             manifest["files"][name] = {"url": url, "sha256": sha256(target), "downloaded_at": datetime.now(timezone.utc).isoformat(), "bytes": target.stat().st_size}
             manifest_path.write_text(json.dumps(manifest, indent=2))
