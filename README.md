@@ -606,14 +606,14 @@ The forecast service mounts them read-write so it can produce runtime files.
 For Docker Desktop bind mounts, the project directory must be shared with Docker Desktop:
 
 ```text
-C:\Users\brian\Downloads\cfb_forecast
+C:\Users\brian\cfb-forecast
 ```
 
 The Docker Desktop file-sharing setting must allow access to:
 
 ```text
-C:\Users\brian\Downloads\cfb_forecast\data
-C:\Users\brian\Downloads\cfb_forecast\artifacts
+C:\Users\brian\cfb-forecast\data
+C:\Users\brian\cfb-forecast\artifacts
 ```
 
 Compose configuration:

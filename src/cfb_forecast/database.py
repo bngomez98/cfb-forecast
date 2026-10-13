@@ -260,6 +260,21 @@ def list_forecasts(conn: sqlite3.Connection, season: int | None = None):
     return conn.execute("SELECT * FROM forecasts WHERE season=? ORDER BY kickoff", (int(season),)).fetchall()
 
 
+def list_published_board(conn: sqlite3.Connection, season: int | None = None):
+    """Return the published forecast log, which carries winner and confidence."""
+    sql = """SELECT run_id, season, game_id, kickoff, away_team, home_team,
+        expected_away_score, expected_home_score, winner, confidence,
+        home_win_probability, logged_at FROM forecast_log"""
+    params: tuple = ()
+    if season is not None:
+        sql += " WHERE season = ?"
+        params = (int(season),)
+    rows = conn.execute(sql + " ORDER BY kickoff, game_id", params).fetchall()
+    if rows:
+        return rows
+    return list_forecasts(conn, season)
+
+
 def persist_completed_run(database, model_path, records, receipt, schedules, at):
     from contextlib import closing
     from .data import sha256

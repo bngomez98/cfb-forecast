@@ -5,7 +5,7 @@ This script checks public providers, refreshes integrated datasets, optionally
 fetches raw PBP, validates every local data layer, refreshes ESPN results,
 runs tests, generates a weekly forecast, and builds distributions.
 
-Run inside pythonlib1:
+Run inside the project virtual environment:
     python update_forecast.py --season 2026
 """
 from __future__ import annotations

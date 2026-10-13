@@ -16,7 +16,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-DEFAULT_ROOT = Path(r"C:\Users\brian\Downloads\cfb_forecast")
+DEFAULT_ROOT = Path(r"C:\Users\brian\cfb-forecast")
 EXCLUDED_DIRS = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", "build", "dist"}
 
 

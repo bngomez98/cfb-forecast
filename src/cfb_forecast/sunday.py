@@ -339,7 +339,7 @@ def sunday_run(
         if model_meta["training_through_season"] >= season:
             raise ValueError("Model training must end before the forecast season")
         from .learning import learn
-        database = resolve_path(os.environ.get("CFB_DATABASE", root / "cfb_forecast.sqlite3"))
+        database = resolve_path(os.environ.get("CFB_DATABASE", root / "cfb_forecast.sqlite"))
         learning = learn(data, model_path, root / "learning", database, at)
         model_path = Path(learning["model_path"])
         (work / "learning_report.json").write_text(json.dumps(learning, indent=2))

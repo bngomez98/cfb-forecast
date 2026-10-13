@@ -3,10 +3,10 @@ set -Eeuo pipefail
 
 # One-command WSL build for the CFB forecasting project.
 # Run from any WSL directory:
-#   bash /mnt/c/Users/brian/Downloads/cfb_forecast/cfb_forecast/wsl_forecast.sh
+#   bash /mnt/c/Users/brian/cfb-forecast/wsl_forecast.sh
 
 PROJECT_DIR="${PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
-VENV_DIR="${VENV_DIR:-$HOME/pythonlib1}"
+VENV_DIR="${VENV_DIR:-/home/brian/.venvs/cfb-forecast}"
 DATA_DIR="${CFB_DATA_DIR:-$PROJECT_DIR/data}"
 ARTIFACT_DIR="${CFB_ARTIFACTS_DIR:-$PROJECT_DIR/artifacts}"
 SEASON="${CFB_SEASON:-2026}"
@@ -92,7 +92,7 @@ python -m pip install --upgrade pip setuptools wheel build
 python -m pip install --upgrade jupyterlab ipykernel
 python -m pip install -e "$PROJECT_DIR[test]"
 python -m pip install -r "$PROJECT_DIR/dashboard/requirements.txt"
-python -m ipykernel install --user --name pythonlib1 --display-name "Python (pythonlib1)"
+python -m ipykernel install --user --name cfb-forecast --display-name "Python (cfb-forecast)"
 python -m pip check
 python - <<'PY'
 import enum, subprocess, sys
