@@ -217,3 +217,23 @@ def test_database_team_facts_enter_the_pregame_rates(tmp_path):
     assert matrix is not None
     assert matrix[1, 0] == pytest.approx(41.0)
     assert matrix[1, 4] == pytest.approx(7.2)
+
+
+def test_previous_season_uses_every_recorded_game(tmp_path):
+    from cfb_forecast.features import pregame_history
+
+    completed = pd.DataFrame({
+        "game_id": [1, 2, 3],
+        "season": [2024, 2024, 2025],
+        "week": [1, 2, 1],
+        "home_id": [10, 10, 10],
+        "away_id": [20, 30, 40],
+        "home_points": [10.0, 30.0, 21.0],
+        "away_points": [7.0, 14.0, 17.0],
+        "start_date": pd.to_datetime(["2024-09-01T18:00:00Z", "2024-09-08T18:00:00Z", "2025-09-01T18:00:00Z"]),
+    })
+    matrix = pregame_history(completed, tmp_path, completed)
+    assert matrix is not None
+    assert np.isnan(matrix[0, 0])
+    assert matrix[1, 0] == pytest.approx(10.0)
+    assert matrix[2, 0] == pytest.approx(20.0)

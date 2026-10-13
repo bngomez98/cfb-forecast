@@ -292,17 +292,52 @@ def pregame_history(query, data_root, completed, database=None):
     home_for = {int(game_id): int(home) for game_id, home in zip(query_ids, home_ids[list(query_ids.values())])}
     away_for = {int(game_id): int(away) for game_id, away in zip(query_ids, away_ids[list(query_ids.values())])}
 
+    def snapshot(team_id):
+        record = state.get(int(team_id))
+        if not record:
+            return {}
+        rates = {}
+        for metric in metrics:
+            season_n = record["n"].get(metric, 0)
+            prior_n = record["prior_n"].get(metric, 0)
+            total = prior_n + season_n
+            if total == 0:
+                continue
+            total_sum = 0.0
+            if prior_n and metric in record["prior"]:
+                total_sum += record["prior"][metric] * prior_n
+            if season_n and metric in record["sum"]:
+                total_sum += record["sum"][metric]
+            rates[metric] = total_sum / total
+        return rates
+
     def remember(team_id, row):
-        current = state.setdefault(int(team_id), {})
+        team_id = int(team_id)
+        try:
+            season = int(row["_season"])
+        except (TypeError, ValueError, KeyError):
+            season = None
+        record = state.setdefault(team_id, {"season": season, "prior": {}, "prior_n": {}, "sum": {}, "n": {}})
+        if season is not None and record["season"] is not None and season != record["season"]:
+            record["prior"] = {
+                metric: record["sum"][metric] / record["n"][metric]
+                for metric in record["sum"]
+                if record["n"].get(metric)
+            }
+            record["prior_n"] = {metric: count for metric, count in record["n"].items() if count}
+            record["sum"] = {}
+            record["n"] = {}
+            record["season"] = season
+        elif record["season"] is None:
+            record["season"] = season
         for metric in metrics:
             if metric not in row.index:
                 continue
             value = row[metric]
             if pd.isna(value):
                 continue
-            value = float(value)
-            previous = current.get(metric)
-            current[metric] = value if previous is None else (0.92 * previous + 0.08 * value)
+            record["sum"][metric] = record["sum"].get(metric, 0.0) + float(value)
+            record["n"][metric] = record["n"].get(metric, 0) + 1
 
     for game_id, group in facts.groupby("game_id", sort=False):
         game_id = int(game_id)
@@ -310,8 +345,8 @@ def pregame_history(query, data_root, completed, database=None):
             home_team = home_for[game_id]
             away_team = away_for[game_id]
             emitted[game_id] = {
-                home_team: dict(state.get(home_team, {})),
-                away_team: dict(state.get(away_team, {})),
+                home_team: snapshot(home_team),
+                away_team: snapshot(away_team),
             }
         for row in group.itertuples(index=False):
             remember(row.team_id, pd.Series(row._asdict()))
@@ -328,16 +363,16 @@ def pregame_history(query, data_root, completed, database=None):
         ("receiving_yards", 16, 17),
         ("epa", 18, 19),
     )
-    final_state = state
-    for index, game_id in enumerate(query_ids):
-        slot = query_ids[game_id]
+    final_rates = {team_id: snapshot(team_id) for team_id in state}
+    for game_id, slot in query_ids.items():
         home = int(home_ids[slot])
         away = int(away_ids[slot])
-        home_state = emitted.get(game_id, {}).get(home, final_state.get(home, {}))
-        away_state = emitted.get(game_id, {}).get(away, final_state.get(away, {}))
-        if game_id not in emitted:
-            home_state = final_state.get(home, {})
-            away_state = final_state.get(away, {})
+        if game_id in emitted:
+            home_state = emitted[game_id].get(home, {})
+            away_state = emitted[game_id].get(away, {})
+        else:
+            home_state = final_rates.get(home, {})
+            away_state = final_rates.get(away, {})
         for metric, home_column, away_column in pairs:
             if metric in home_state:
                 matrix[slot, home_column] = home_state[metric]
