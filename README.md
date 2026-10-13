@@ -29,13 +29,73 @@ A real-data forecasting service for the 2026 FBS season. Each Sunday at 10 AM Am
 | Forecast container GID | `10001` |
 | Test result | `39 passed` |
 
-The project uses one retained Python environment:
+The editable install is the git checkout. On Linux that environment is `/home/brian/.venvs/cfb-forecast`. On Windows it is `C:\Users\brian\miniforge3\envs\cfb-python`.
 
-```text
-/home/brian/.venvs/cfb-forecast
+## Architecture, pipelines, workflows, and sources
+
+Forecasts are calculated from recorded games and the fitted Gaussian score head. The live path does not draw simulated score samples.
+
+```mermaid
+flowchart TD
+  sources[Public source catalog] --> ingest[ingest_catalog]
+  schedules[Schedules and play-by-play] --> sunday[Sunday and weekly calculation]
+  ingest --> sqlite[(artifacts/cfb_forecast.sqlite)]
+  sunday --> head[Analytic Gaussian score head]
+  head --> board[Scores, winner, confidence]
+  board --> log[forecast_log]
+  log --> sqlite
+  log --> react[React board and Vercel]
+  log --> streamlit[Streamlit forecast log]
+  log --> datadog[artifacts/logs/datadog.jsonl]
+  log --> mail[Email to bngomez@ieee.org]
 ```
 
-No additional CFB-specific virtual environment is required.
+```mermaid
+flowchart LR
+  refresh[Refresh schedule and results] --> validate[Validate saved predictions]
+  validate --> features[Replay prior results into team state]
+  features --> scores[Expected scores and win probability]
+  scores --> publish[publish_forecast_update]
+  publish --> sqlite[(SQLite)]
+  publish --> apps[React, Streamlit, Datadog, email]
+```
+
+| Workflow | What it runs |
+|---|---|
+| Sunday service | `python -m cfb_forecast sunday-run` at 10:00 America/Chicago. It validates the previous slate and writes the next one. |
+| Weekly forecast | `run_weekly_forecast` calculates one week and publishes that board. |
+| Publish update | `python -m cfb_forecast publish-update --run DIR --run-id ID` stores an existing calculation in SQLite, the apps, the Datadog log, and the email outbox. |
+| Source collection | `ingest_catalog` fetches the catalog and keeps each response or failure receipt. |
+| Data watchdog | `cfb-data-watchdog` records file checksums in `data_files` and `watchdog_events`. |
+| Tests | `.github/workflows/tests.yml` installs the package and runs pytest. |
+| Docker image | `.github/workflows/docker.yml` builds the local image. |
+| External sources | `.github/workflows/external-sources.yml` collects the weekly public sources. |
+| Sunday automation | `.github/workflows/sunday.yml` restores the runtime and runs the Sunday service. |
+
+The SQLite file is `artifacts/cfb_forecast.sqlite`. `sql/schema.sql` is the schema applied on connect. The published board is `forecast_log`. Learning rows are `learning_versions` and `training_examples`. Source provenance is `source_registry`, `source_retrievals`, and `source_files`.
+
+Datadog reads `artifacts/logs/datadog.jsonl` through `datadog/conf.yaml`. Intake runs only when `DD_API_KEY` is set. Email is sent only when `CFB_SMTP_HOST` and `CFB_SMTP_PASSWORD` are set.
+
+| Source | URL |
+|---|---|
+| cfbfastR | `https://cfbfastr.sportsdataverse.org/` |
+| cfbfastR models | `https://github.com/sportsdataverse/cfbfastR-cfb-data/blob/main/models/REGISTRY.md` |
+| SportsDataverse | `https://github.com/sportsdataverse/sportsdataverse-data` |
+| radsportsanalytics | `https://radsportsanalytics.com/blog/introduction-to-cfb-analytics/` |
+| cfbtrack | `https://cfbtrack.com/` |
+| cfbtracker | `https://cfbtracker.com/` |
+| cfbresults | `https://cfbresults.com/` |
+| college-football-results | `https://college-football-results.com/` |
+| collegefootballdb | `https://collegefootballdb.com/` |
+| cfbstats | `https://cfbstats.com/` |
+| collegefootballdata | `https://collegefootballdata.com/` |
+| mrtimo schedule | `https://mrtimo.github.io/cfb-games/games-{season}.html` |
+| CollegeFootballData key | `https://collegefootballdata.com/key` |
+| CollegeFootballData ratings | `https://api.collegefootballdata.com/ratings/core` |
+| cfbtxt validation | `https://cfbtxt.com/schedule/` |
+| FanDuel comparison | `https://www.fanduel.com/research/ncaaf` |
+| FootballDB | `https://www.footballdb.com/college-football/stats/teamstat.html` |
+| ESPN scoreboard | `https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard` |
 
 ## Run with the established Linux environment
 

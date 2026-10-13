@@ -11,8 +11,6 @@ from .data import load_data, timestamp, sha256
 from .features import observations
 from .ratings import DynamicRatings, build_features
 from .model import load_model, ScoreHead
-from .simulate import simulate_scores
-from .distribution import probability_tables
 from .market import market_at_cutoff, market_history_summary, read_market_history
 from .availability import availability_snapshot
 from .analytic import score_summary
@@ -47,10 +45,10 @@ def forecast(
     market_provider=None,
     save_distribution=True,
     target_game_ids=None,
-    analytic=False,
+    analytic=True,
 ):
-    if analytic:
-        save_distribution = False
+    analytic = True
+    save_distribution = False
     at = timestamp(as_of)
     end = timestamp(through)
     if end <= at:
@@ -155,23 +153,7 @@ def forecast(
             if market is not None and not market.empty
             else {"market_snapshot_count": 0}
         )
-        if analytic:
-            sim = score_summary(means, model["score_covariance"], **m)
-            samples = None
-        else:
-            sim, samples = simulate_scores(
-                means,
-                model["score_covariance"],
-                r.game_id,
-                draws=draws,
-                return_samples=True,
-                **{
-                    k: v
-                    for k, v in m.items()
-                    if k
-                    in ["home_spread", "total_line", "home_decimal", "away_decimal"]
-                },
-            )
+        sim = score_summary(means, model["score_covariance"], **m)
         sim["score_head_home_win_probability"] = sim["home_win_probability"]
         sim["raw_home_win_probability"] = (
             float(strength_p[position])
@@ -191,11 +173,6 @@ def forecast(
                 m.get("away_ml_decimal"),
             )
         )
-        if save_distribution:
-            tabs = probability_tables(samples, r.game_id)
-            joint.append(tabs["joint"])
-            margins.append(tabs["margin"])
-            totals.append(tabs["total"])
         rows.append(
             {
                 "game_id": int(r.game_id),
@@ -278,7 +255,7 @@ def advance_forecast_snapshot(
     market_provider=None,
     save_distribution=True,
     target_game_ids=None,
-    analytic=False,
+    analytic=True,
 ):
     """Advance an exact saved forecast state when no new result became eligible.
 
@@ -286,8 +263,8 @@ def advance_forecast_snapshot(
     cross any newly available final result because doing so would require the
     game-level advanced summaries to perform the corresponding state update.
     """
-    if analytic:
-        save_distribution = False
+    analytic = True
+    save_distribution = False
     from .data import normalize_schedule
 
     prev = Path(previous_forecast_dir)
@@ -386,23 +363,7 @@ def advance_forecast_snapshot(
             if market is not None and not market.empty
             else {"market_snapshot_count": 0}
         )
-        if analytic:
-            sim = score_summary(means, model["score_covariance"], **m)
-            samples = None
-        else:
-            sim, samples = simulate_scores(
-                means,
-                model["score_covariance"],
-                r.game_id,
-                draws=draws,
-                return_samples=True,
-                **{
-                    k: v
-                    for k, v in m.items()
-                    if k
-                    in ["home_spread", "total_line", "home_decimal", "away_decimal"]
-                },
-            )
+        sim = score_summary(means, model["score_covariance"], **m)
         sim["score_head_home_win_probability"] = sim["home_win_probability"]
         sim["raw_home_win_probability"] = (
             float(strength_p[position])
@@ -422,11 +383,6 @@ def advance_forecast_snapshot(
                 m.get("away_ml_decimal"),
             )
         )
-        if save_distribution:
-            tabs = probability_tables(samples, r.game_id)
-            joint.append(tabs["joint"])
-            margins.append(tabs["margin"])
-            totals.append(tabs["total"])
         rows.append(
             {
                 "game_id": int(r.game_id),

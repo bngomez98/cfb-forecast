@@ -168,6 +168,28 @@ CREATE TABLE IF NOT EXISTS forecast_runs (
   source_manifest_json TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS learning_versions (
+  version TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL,
+  cutoff TEXT NOT NULL,
+  status TEXT NOT NULL,
+  model_path TEXT NOT NULL,
+  report_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS training_examples (
+  version TEXT NOT NULL REFERENCES learning_versions(version),
+  game_id INTEGER NOT NULL,
+  season INTEGER NOT NULL,
+  forecast_cutoff TEXT NOT NULL,
+  result_available_at TEXT NOT NULL,
+  latest_feature_result TEXT,
+  features_json TEXT NOT NULL,
+  observations_json TEXT NOT NULL,
+  PRIMARY KEY(version, game_id)
+);
+
+CREATE INDEX IF NOT EXISTS training_examples_season ON training_examples(season);
 CREATE INDEX IF NOT EXISTS idx_runs_season ON runs(season);
 CREATE INDEX IF NOT EXISTS idx_sources_run ON sources(run_id);
 CREATE INDEX IF NOT EXISTS idx_forecasts_season_kickoff ON forecasts(season, kickoff);
