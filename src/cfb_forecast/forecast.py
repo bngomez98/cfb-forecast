@@ -15,6 +15,7 @@ from .market import market_at_cutoff, market_history_summary, read_market_histor
 from .availability import availability_snapshot
 from .decision import moneyline_diagnostics
 from .forecast_model import METHOD, ForecastModel, known_future_matrix, rest_days
+from .paths import database_path
 
 
 class SnapshotReplayRequired(ValueError):
@@ -78,12 +79,11 @@ def _project_rows(targets, means, fitted, covariance, schedules, market_rows, hi
 
 def _store_history_facts(data_root, out):
     try:
-        teams, players = load_history_facts(data_root)
+        teams, players = load_history_facts(data_root, database=database_path())
         if teams is None or len(teams) == 0:
             return
         from contextlib import closing
         from .database import connect, record_history_facts
-        from .paths import database_path
         with closing(connect(database_path())) as conn:
             record_history_facts(conn, teams, players)
     except Exception as exc:
@@ -210,7 +210,7 @@ def forecast(
         else {}
         for game in past_games.itertuples(index=False)
     ]
-    history_past = pregame_history(past_games, data_root, past)
+    history_past = pregame_history(past_games, data_root, past, database=database_path())
     fitted = ForecastModel.fit(
         past_location,
         Y[fit_mask][:, :, 0],
@@ -233,7 +233,7 @@ def forecast(
             else {"market_snapshot_count": 0}
         )
     draw_count = int(min(max(int(draws), 1000), 8000))
-    history_future = pregame_history(targets, data_root, past)
+    history_future = pregame_history(targets, data_root, past, database=database_path())
     rows = _project_rows(
         targets,
         mu,
@@ -421,7 +421,7 @@ def advance_forecast_snapshot(
         )
     draw_count = int(min(max(int(draws), 1000), 8000))
     completed = schedules[schedules.result_usable & (schedules.result_available_at < at)]
-    history_future = pregame_history(targets, data_root, completed)
+    history_future = pregame_history(targets, data_root, completed, database=database_path())
     rows = _project_rows(
         targets,
         mu,

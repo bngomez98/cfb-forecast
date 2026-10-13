@@ -71,7 +71,31 @@ def _existing_columns(path, wanted):
     return [column for column in wanted if column in names]
 
 
-def load_history_facts(data_root):
+def _facts_from_database(database):
+    if not database:
+        return pd.DataFrame(), pd.DataFrame()
+    try:
+        from contextlib import closing
+        from .database import connect
+        with closing(connect(database)) as conn:
+            names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            teams = pd.read_sql_query("SELECT * FROM team_game_facts", conn) if "team_game_facts" in names else pd.DataFrame()
+            players = pd.read_sql_query("SELECT * FROM player_game_facts", conn) if "player_game_facts" in names else pd.DataFrame()
+            return teams, players
+    except Exception:
+        return pd.DataFrame(), pd.DataFrame()
+
+
+def _combine_facts(base, stored, keys):
+    if stored is None or len(stored) == 0:
+        return base
+    if base is None or len(base) == 0:
+        return stored
+    combined = pd.concat([base, stored], ignore_index=True, sort=False)
+    return combined.drop_duplicates(keys, keep="last")
+
+
+def load_history_facts(data_root, database=None):
     """Team and player game facts from parquet seasons on disk.
 
     Seasons 2000 through 2025 are the training history. A later season file is
@@ -83,16 +107,18 @@ def load_history_facts(data_root):
         path for path in list(root.glob("pbp_*.parquet")) + list(root.glob("adv_team_*.parquet"))
         if (_year_from_name(path) or 0) >= 2000
     )
+    db_teams, db_players = _facts_from_database(database)
     if not paths:
-        empty = pd.DataFrame()
-        return empty, empty
+        return db_teams, db_players
     cache = root / "_history"
     signature = _fingerprint(paths)
     team_cache = cache / "team_game_facts.parquet"
     player_cache = cache / "player_game_facts.parquet"
     stamp = cache / "fingerprint.txt"
     if team_cache.exists() and player_cache.exists() and stamp.exists() and stamp.read_text().strip() == signature:
-        return pd.read_parquet(team_cache), pd.read_parquet(player_cache)
+        teams = _combine_facts(pd.read_parquet(team_cache), db_teams, ["game_id", "team_id"])
+        players = _combine_facts(pd.read_parquet(player_cache), db_players, ["game_id", "team_id", "player_name", "position_group"])
+        return teams, players
     team_frames = []
     player_frames = []
     for path in paths:
@@ -203,6 +229,8 @@ def load_history_facts(data_root):
     teams.to_parquet(team_cache, index=False)
     players.to_parquet(player_cache, index=False)
     stamp.write_text(signature)
+    teams = _combine_facts(teams, db_teams, ["game_id", "team_id"])
+    players = _combine_facts(players, db_players, ["game_id", "team_id", "player_name", "position_group"])
     return teams, players
 
 
@@ -218,14 +246,14 @@ def _scoring_facts(completed):
     return pd.DataFrame(rows)
 
 
-def pregame_history(query, data_root, completed):
+def pregame_history(query, data_root, completed, database=None):
     """Rates each team had recorded before the game, from parquet facts and final scores.
 
     The current game does not update its own row. A team with no earlier game stays missing.
     """
     if query is None or len(query) == 0 or completed is None or len(completed) == 0:
         return None
-    facts, _players = load_history_facts(data_root)
+    facts, _players = load_history_facts(data_root, database=database)
     scored = _scoring_facts(completed)
     if facts is None or len(facts) == 0:
         facts = scored

@@ -225,6 +225,8 @@ CREATE TABLE IF NOT EXISTS forecast_log (
     model_spread REAL,
     market_spread REAL,
     home_cover_probability REAL,
+    home_moneyline REAL,
+    away_moneyline REAL,
     UNIQUE(run_id, game_id)
 );
 
@@ -299,7 +301,10 @@ def connect(path: str | Path) -> sqlite3.Connection:
 def _ensure_forecast_columns(conn: sqlite3.Connection) -> None:
     """Add forecast columns to a database created before the spread fields existed."""
     present = {row[1] for row in conn.execute("PRAGMA table_info(forecast_log)")}
-    for name in ("projected_home_margin", "model_spread", "market_spread", "home_cover_probability"):
+    for name in (
+        "projected_home_margin", "model_spread", "market_spread", "home_cover_probability",
+        "home_moneyline", "away_moneyline",
+    ):
         if name not in present:
             conn.execute(f"ALTER TABLE forecast_log ADD COLUMN {name} REAL")
     conn.commit()
@@ -451,8 +456,8 @@ def list_published_board(conn: sqlite3.Connection, season: int | None = None):
     """Return the published forecast log, which carries winner and confidence."""
     sql = """SELECT run_id, season, game_id, kickoff, away_team, home_team,
         expected_away_score, expected_home_score, projected_home_margin,
-        model_spread, market_spread, home_cover_probability, winner, confidence,
-        home_win_probability, logged_at FROM forecast_log"""
+        model_spread, market_spread, home_cover_probability, home_moneyline, away_moneyline,
+        winner, confidence, home_win_probability, logged_at FROM forecast_log"""
     params: tuple = ()
     if season is not None:
         sql += " WHERE season = ?"

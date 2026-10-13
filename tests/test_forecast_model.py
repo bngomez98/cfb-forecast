@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from cfb_forecast.database import connect, record_weekly_validation
+from cfb_forecast.decision import probability_to_american
 from cfb_forecast.evaluate import spread_regression
 from cfb_forecast.forecast_model import METHOD, ForecastModel, known_future_matrix, rest_days
 from cfb_forecast.publisher import board_row
@@ -75,6 +76,12 @@ def test_rest_uses_only_the_previous_kickoff():
     assert second.home_rest_days == pytest.approx(7)
 
 
+def test_fair_american_moneyline_matches_sportsbook_sign():
+    assert probability_to_american(0.5) == 100
+    assert probability_to_american(0.7) == -233
+    assert probability_to_american(0.3) == 233
+
+
 def test_known_future_matrix_removes_vig():
     frame = pd.DataFrame([{"home_ml_decimal": 1.5, "away_ml_decimal": 3.0, "home_spread": -3}])
     values = known_future_matrix(frame)
@@ -92,6 +99,8 @@ def test_board_and_database_keep_the_spread():
     assert row["winner"] == "Home"
     assert row["model_spread"] == -10
     assert row["market_spread"] == -7
+    assert row["home_moneyline"] == -233
+    assert row["away_moneyline"] == 233
     fit = spread_regression([3, 7, 10, 14, -3, 6, 9, 1], [-3, -7, -10, -14, 3, -6, -9, -1])
     assert fit["games"] == 8
 
@@ -118,7 +127,7 @@ def test_existing_forecast_log_gains_spread_columns(tmp_path):
     conn.close()
     conn = connect(path)
     columns = {row[1] for row in conn.execute("PRAGMA table_info(forecast_log)")}
-    assert {"model_spread", "market_spread", "home_cover_probability"} <= columns
+    assert {"model_spread", "market_spread", "home_cover_probability", "home_moneyline", "away_moneyline"} <= columns
     assert conn.execute("SELECT COUNT(*) FROM forecast_log").fetchone()[0] == 1
     record_weekly_validation(conn, {
         "season": 2026, "week": 6, "run_id": "2026-week-6", "validated_at": "2026-10-13T00:00:00Z",
@@ -181,3 +190,30 @@ def test_pregame_history_uses_prior_games_in_the_same_season(tmp_path):
     assert np.isnan(matrix[0, 0])
     assert matrix[1, 0] == pytest.approx(35.0)
     assert matrix[1, 2] == pytest.approx(10.0)
+
+
+def test_database_team_facts_enter_the_pregame_rates(tmp_path):
+    from cfb_forecast.database import connect, record_history_facts
+    from cfb_forecast.features import pregame_history
+
+    db = tmp_path / "facts.sqlite"
+    conn = connect(db)
+    record_history_facts(conn, pd.DataFrame([{
+        "game_id": 1, "team_id": 10, "season": 2025, "week": 1,
+        "points_for": 41.0, "points_against": 7.0, "yards_per_play": 7.2,
+    }]))
+    conn.close()
+    completed = pd.DataFrame({
+        "game_id": [1, 2],
+        "season": [2025, 2025],
+        "week": [1, 2],
+        "home_id": [10, 10],
+        "away_id": [20, 30],
+        "home_points": [41.0, 24.0],
+        "away_points": [7.0, 21.0],
+        "start_date": pd.to_datetime(["2025-09-01T18:00:00Z", "2025-09-08T18:00:00Z"]),
+    })
+    matrix = pregame_history(completed, tmp_path, completed, database=db)
+    assert matrix is not None
+    assert matrix[1, 0] == pytest.approx(41.0)
+    assert matrix[1, 4] == pytest.approx(7.2)

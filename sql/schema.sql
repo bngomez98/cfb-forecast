@@ -216,6 +216,8 @@ CREATE TABLE IF NOT EXISTS forecast_log (
   model_spread REAL,
   market_spread REAL,
   home_cover_probability REAL,
+  home_moneyline REAL,
+  away_moneyline REAL,
   UNIQUE(run_id, game_id)
 );
 

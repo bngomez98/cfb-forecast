@@ -61,6 +61,13 @@ def board_row(record: dict) -> dict:
     model_spread = _number(record.get("model_spread"))
     if model_spread is None:
         model_spread = -margin
+    try:
+        from .decision import probability_to_american
+        home_moneyline = probability_to_american(probability)
+        away_moneyline = probability_to_american(1.0 - probability)
+    except ValueError:
+        home_moneyline = None
+        away_moneyline = None
     return {
         "game_id": int(record["game_id"]),
         "season": int(record["season"]),
@@ -73,6 +80,8 @@ def board_row(record: dict) -> dict:
         "model_spread": round(float(model_spread), 2),
         "market_spread": _number(record.get("market_spread", record.get("home_spread"))),
         "home_cover_probability": _number(record.get("home_cover_probability")),
+        "home_moneyline": home_moneyline,
+        "away_moneyline": away_moneyline,
         "winner": winner,
         "confidence": round(max(probability, 1.0 - probability), 4),
         "home_win_probability": round(probability, 4),
@@ -122,8 +131,9 @@ def write_forecast_log(conn, run_id: str, rows: pd.DataFrame, logged_at: str) ->
                  run_id, season, game_id, kickoff, home_team, away_team,
                  expected_home_score, expected_away_score, winner, confidence,
                  home_win_probability, logged_at, payload_json,
-                 projected_home_margin, model_spread, market_spread, home_cover_probability)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 projected_home_margin, model_spread, market_spread, home_cover_probability,
+                 home_moneyline, away_moneyline)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(run_id, game_id) DO UPDATE SET
                  kickoff=excluded.kickoff,
                  expected_home_score=excluded.expected_home_score,
@@ -136,7 +146,9 @@ def write_forecast_log(conn, run_id: str, rows: pd.DataFrame, logged_at: str) ->
                  projected_home_margin=excluded.projected_home_margin,
                  model_spread=excluded.model_spread,
                  market_spread=excluded.market_spread,
-                 home_cover_probability=excluded.home_cover_probability""",
+                 home_cover_probability=excluded.home_cover_probability,
+                 home_moneyline=excluded.home_moneyline,
+                 away_moneyline=excluded.away_moneyline""",
             (
                 run_id, int(row["season"]), int(row["game_id"]), row["kickoff"],
                 row["home_team"], row["away_team"], row["expected_home_score"],
@@ -144,6 +156,7 @@ def write_forecast_log(conn, run_id: str, rows: pd.DataFrame, logged_at: str) ->
                 row["home_win_probability"], logged_at, json.dumps(row),
                 row.get("projected_home_margin"), row.get("model_spread"),
                 row.get("market_spread"), row.get("home_cover_probability"),
+                row.get("home_moneyline"), row.get("away_moneyline"),
             ),
         )
     conn.commit()
