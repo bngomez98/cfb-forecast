@@ -121,4 +121,11 @@ def run_weekly_forecast(
     if latest.exists():
         shutil.rmtree(latest)
     shutil.copytree(destination, latest)
+    try:
+        from .publisher import publish_forecast_update
+        manifest["distribution"] = publish_forecast_update(
+            destination, out_root, run_id=f"{int(season)}-week-{week}", season=int(season)
+        )
+    except Exception as exc:
+        manifest["distribution"] = {"status": "failed", "error": type(exc).__name__}
     return result, manifest

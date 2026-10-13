@@ -93,6 +93,81 @@ CREATE TABLE IF NOT EXISTS watchdog_events (
   details_json TEXT NOT NULL DEFAULT '{}'
 );
 
+CREATE TABLE IF NOT EXISTS source_registry (
+  source_id INTEGER PRIMARY KEY,
+  source_key TEXT NOT NULL UNIQUE,
+  provider TEXT NOT NULL,
+  source_url TEXT,
+  schema_version TEXT
+);
+
+CREATE TABLE IF NOT EXISTS source_retrievals (
+  retrieval_id INTEGER PRIMARY KEY,
+  source_id INTEGER NOT NULL REFERENCES source_registry(source_id),
+  retrieved_at TEXT NOT NULL,
+  cutoff_at TEXT,
+  http_status INTEGER,
+  content_sha256 TEXT,
+  byte_count INTEGER,
+  status TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS source_files (
+  file_id INTEGER PRIMARY KEY,
+  retrieval_id INTEGER NOT NULL REFERENCES source_retrievals(retrieval_id),
+  path TEXT NOT NULL UNIQUE,
+  content_sha256 TEXT,
+  byte_count INTEGER,
+  format TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS teams (
+  team_id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS games (
+  game_id INTEGER PRIMARY KEY,
+  season INTEGER NOT NULL,
+  week INTEGER NOT NULL,
+  kickoff_datetime TEXT NOT NULL,
+  venue_id INTEGER,
+  neutral_site INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  source_id INTEGER REFERENCES source_registry(source_id),
+  metadata_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS game_teams (
+  game_id INTEGER NOT NULL REFERENCES games(game_id),
+  team_id INTEGER NOT NULL REFERENCES teams(team_id),
+  side TEXT NOT NULL,
+  points REAL,
+  PRIMARY KEY (game_id, side)
+);
+
+CREATE TABLE IF NOT EXISTS statistical_parameter_sets (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  version TEXT NOT NULL,
+  data_cutoff TEXT NOT NULL,
+  source_manifest_json TEXT NOT NULL,
+  parameters_json TEXT NOT NULL,
+  uncertainty_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS forecast_runs (
+  id INTEGER PRIMARY KEY,
+  parameter_set_id INTEGER NOT NULL REFERENCES statistical_parameter_sets(id),
+  season INTEGER NOT NULL,
+  information_cutoff TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  status TEXT NOT NULL,
+  source_manifest_json TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_runs_season ON runs(season);
 CREATE INDEX IF NOT EXISTS idx_sources_run ON sources(run_id);
 CREATE INDEX IF NOT EXISTS idx_forecasts_season_kickoff ON forecasts(season, kickoff);
@@ -100,3 +175,24 @@ CREATE INDEX IF NOT EXISTS idx_forecasts_game ON forecasts(game_id);
 CREATE INDEX IF NOT EXISTS idx_results_season ON results(season);
 CREATE INDEX IF NOT EXISTS idx_data_files_status ON data_files(status);
 CREATE INDEX IF NOT EXISTS idx_watchdog_events_time ON watchdog_events(observed_at);
+CREATE TABLE IF NOT EXISTS forecast_log (
+  id INTEGER PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  season INTEGER NOT NULL,
+  game_id INTEGER NOT NULL,
+  kickoff TEXT NOT NULL,
+  home_team TEXT NOT NULL,
+  away_team TEXT NOT NULL,
+  expected_home_score REAL NOT NULL,
+  expected_away_score REAL NOT NULL,
+  winner TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  home_win_probability REAL NOT NULL,
+  logged_at TEXT NOT NULL,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  UNIQUE(run_id, game_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_games_season_week ON games(season, week);
+CREATE INDEX IF NOT EXISTS idx_forecast_runs_season ON forecast_runs(season);
+CREATE INDEX IF NOT EXISTS idx_forecast_log_season_kickoff ON forecast_log(season, kickoff);

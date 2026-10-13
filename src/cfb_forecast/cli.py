@@ -83,9 +83,13 @@ def main():
     sb.add_argument("--draws",type=int,default=50000); sb.add_argument("--lead-hours",type=float,default=48.0)
     pf=sub.add_parser("preflight",help="Validate mounted data and artifact paths")
     pf.add_argument("--data",default="data"); pf.add_argument("--artifacts",default="artifacts"); pf.add_argument("--season",type=int,default=None)
+    pu=sub.add_parser("publish-update",help="Publish a completed forecast directory to SQLite, React, Streamlit, logs, and email")
+    pu.add_argument("--run",required=True); pu.add_argument("--artifacts",default="artifacts")
+    pu.add_argument("--database",default=None); pu.add_argument("--web",default=None); pu.add_argument("--run-id",default=None)
+    pu.add_argument("--fetch-sources",action="store_true")
     args=parser.parse_args()
     from .paths import cli_path
-    for name in ("data", "artifacts", "model", "models", "out", "store", "ledger", "predictions", "archive", "market", "input", "previous", "forecast", "holdout", "frozen_batch"):
+    for name in ("data", "artifacts", "model", "models", "out", "store", "ledger", "predictions", "archive", "market", "input", "previous", "forecast", "holdout", "frozen_batch", "run", "web", "database"):
         value = getattr(args, name, None)
         if value is not None:
             setattr(args, name, str(cli_path(value)))
@@ -172,6 +176,10 @@ def main():
     elif args.command=="preflight":
         from .preflight import run_preflight
         run_preflight(args.data,args.artifacts,args.season)
+    elif args.command=="publish-update":
+        from .publisher import publish_forecast_update
+        report = publish_forecast_update(args.run, args.artifacts, args.database, args.web, args.run_id, fetch_sources=args.fetch_sources)
+        print(pd.Series(report).to_string())
     elif args.command == "sunday-run":
         from .sunday import sunday_run
         report = sunday_run(args.data, args.artifacts, args.season, args.model, args.timezone, args.scheduled, not args.no_refresh)

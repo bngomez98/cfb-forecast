@@ -17,20 +17,50 @@ ESPN = "https://site.api.espn.com/apis/site/v2/sports/football/college-football"
 SOURCE_REGISTRY = {
     "cfbfastR": "https://cfbfastr.sportsdataverse.org/",
     "cfbfastR_models": "https://github.com/sportsdataverse/cfbfastR-cfb-data/blob/main/models/REGISTRY.md",
+    "sportsdataverse": "https://github.com/sportsdataverse/sportsdataverse-data",
     "radsportsanalytics": "https://radsportsanalytics.com/blog/introduction-to-cfb-analytics/",
     "cfbtrack": "https://cfbtrack.com/",
+    "cfbtracker": "https://cfbtracker.com/",
+    "cfbresults": "https://cfbresults.com/",
+    "college_football_results": "https://college-football-results.com/",
+    "collegefootballdb": "https://collegefootballdb.com/",
+    "cfbstats": "https://cfbstats.com/",
+    "collegefootballdata": "https://collegefootballdata.com/",
     "mrtimo_schedule": "https://mrtimo.github.io/cfb-games/games-{season}.html",
     "cfbd_key": "https://collegefootballdata.com/key",
     "cfbd_ratings": "https://api.collegefootballdata.com/ratings/core",
     "cfbtxt_validation": "https://cfbtxt.com/schedule/",
     "fanduel_comparison": "https://www.fanduel.com/research/ncaaf",
     "football_db": "https://www.footballdb.com/college-football/stats/teamstat.html?yr={season}&lg=FBS",
+    "espn_scoreboard": "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard",
 }
 
 
 def source_registry(season):
     """Return the named source configuration used by collection and weekly review."""
     return {name: url.format(season=int(season)) for name, url in SOURCE_REGISTRY.items()}
+
+
+def ingest_catalog(season, destination):
+    """Fetch each catalog source and keep the response or the failure receipt."""
+    destination = Path(destination)
+    receipts = []
+    jobs = source_registry(season)
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = {
+            pool.submit(
+                collect,
+                url,
+                destination / f"{name}.bin",
+                "api." in url or url.endswith(".json"),
+            ): name
+            for name, url in jobs.items()
+        }
+        for future, name in futures.items():
+            _, receipt = future.result()
+            receipt["name"] = name
+            receipts.append(receipt)
+    return receipts
 
 
 def utc_now():

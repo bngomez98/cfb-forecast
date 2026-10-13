@@ -6,15 +6,16 @@ A real-data forecasting service for the 2026 FBS season. Each Sunday at 10 AM Am
 
 | Field | Value |
 |---|---|
-| Project root | `/mnt/c/Users/brian/Downloads/cfb_forecast` |
+| Project root | `/mnt/c/Users/brian/cfb-forecast` |
 | Python virtual environment | `/home/brian/.venvs/cfb-forecast` |
+| Windows environment | `C:\Users\brian\miniforge3\envs\cfb-python` |
 | Python version | `3.12.3` |
 | pip version | `26.2.1` |
 | Package name | `cfb-forecast` |
 | Package version | `0.4.0` |
-| Python source | `/mnt/c/Users/brian/Downloads/cfb_forecast/src/cfb_forecast` |
-| Runtime data directory | `/mnt/c/Users/brian/Downloads/cfb_forecast/data` |
-| Runtime artifacts directory | `/mnt/c/Users/brian/Downloads/cfb_forecast/artifacts` |
+| Python source | `/mnt/c/Users/brian/cfb-forecast/src/cfb_forecast` |
+| Runtime data directory | `/mnt/c/Users/brian/cfb-forecast/data` |
+| Runtime artifacts directory | `/mnt/c/Users/brian/cfb-forecast/artifacts` |
 | Docker application directory | `/app` |
 | Main Docker image | `cfb-forecast:local` |
 | Dashboard Docker image | `cfb-forecast-dashboard:local` |
@@ -41,7 +42,7 @@ No additional CFB-specific virtual environment is required.
 From Ubuntu WSL:
 
 ```bash
-cd /mnt/c/Users/brian/Downloads/cfb_forecast
+cd /mnt/c/Users/brian/cfb-forecast
 source /home/brian/.venvs/cfb-forecast/bin/activate
 ```
 
@@ -454,13 +455,23 @@ Manual dispatch runs immediately, including the initial setup run.
 | `artifacts/runs/<season-date>/validation.json` | Probability, score, and saved-price betting metrics |
 | `artifacts/latest/` | Most recent completed run for the dashboard |
 | `artifacts/training/` | Recomputed historical comparisons and fitted model files |
+| `web/public/forecasts.json` | Board the React app and the Vercel build serve |
+| `artifacts/cfb_forecast.sqlite` | Source catalog and `forecast_log` rows |
+
+A completed Sunday or weekly run calls `publish_forecast_update`. The same board is written to SQLite, `artifacts/latest/forecast_board.json`, the React file, the Streamlit forecast log, `artifacts/logs/datadog.jsonl`, and an email to `bngomez@ieee.org`. Email is sent only when `CFB_SMTP_HOST` and `CFB_SMTP_PASSWORD` are set. Datadog intake is used only when `DD_API_KEY` is set. Otherwise both receipts stay on disk.
+
+Publish an existing calculation without retraining:
+
+```bash
+python -m cfb_forecast publish-update --run artifacts/weekly/2026-week-7 --run-id 2026-week-7 --fetch-sources
+```
 
 ## Verification
 
 Run the complete test suite:
 
 ```bash
-cd /mnt/c/Users/brian/Downloads/cfb_forecast
+cd /mnt/c/Users/brian/cfb-forecast
 source /home/brian/.venvs/cfb-forecast/bin/activate
 python -m pytest -q
 ```
@@ -584,8 +595,8 @@ cfb_forecast_default
 The default bind mounts are:
 
 ```text
-/mnt/c/Users/brian/Downloads/cfb_forecast/data:/app/data
-/mnt/c/Users/brian/Downloads/cfb_forecast/artifacts:/app/artifacts
+/mnt/c/Users/brian/cfb-forecast/data:/app/data
+/mnt/c/Users/brian/cfb-forecast/artifacts:/app/artifacts
 ```
 
 The dashboard mounts those directories read-only.
@@ -844,7 +855,7 @@ The dashboard is a Streamlit application using the generated runtime artifacts a
 From the project root:
 
 ```bash
-cd /mnt/c/Users/brian/Downloads/cfb_forecast
+cd /mnt/c/Users/brian/cfb-forecast
 ```
 
 Create runtime directories if they do not exist:
@@ -890,7 +901,7 @@ Data and artifacts are excluded from the Docker build context and supplied throu
 The single source project root is:
 
 ```text
-/mnt/c/Users/brian/Downloads/cfb_forecast
+/mnt/c/Users/brian/cfb-forecast
 ```
 
 The single CFB Python environment is:

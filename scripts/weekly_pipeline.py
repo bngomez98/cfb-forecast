@@ -1,4 +1,9 @@
-"""Compatibility entry point for the Sunday service."""
+"""Run the Sunday forecast and publish the same board to every surface.
+
+The Sunday service writes the calculation. publish_forecast_update then stores
+the log, refreshes the React and Streamlit boards, writes the Datadog log, and
+sends the forecast email when SMTP is configured.
+"""
 
 import os
 from cfb_forecast.sunday import sunday_run

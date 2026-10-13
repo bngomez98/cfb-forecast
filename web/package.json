@@ -14,7 +14,9 @@
     "react": "latest",
     "react-dom": "latest",
     "vite": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest"
   },
   "devDependencies": {}
 }

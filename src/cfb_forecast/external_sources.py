@@ -45,6 +45,36 @@ PUBLIC_SOURCES = (
         "role": "team_player_context",
     },
     {
+        "name": "cfbtracker",
+        "url": "https://cfbtracker.com/",
+        "role": "team_player_context",
+    },
+    {
+        "name": "cfbresults",
+        "url": "https://cfbresults.com/",
+        "role": "results_validation",
+    },
+    {
+        "name": "college_football_results",
+        "url": "https://college-football-results.com/",
+        "role": "results_validation",
+    },
+    {
+        "name": "cfbstats",
+        "url": "https://cfbstats.com/",
+        "role": "team_player_context",
+    },
+    {
+        "name": "collegefootballdb",
+        "url": "https://collegefootballdb.com/",
+        "role": "team_player_context",
+    },
+    {
+        "name": "collegefootballdata",
+        "url": "https://collegefootballdata.com/",
+        "role": "ratings_and_schedule_validation",
+    },
+    {
         "name": "cfbtxt_schedule",
         "url": "https://cfbtxt.com/schedule/",
         "role": "weekly_schedule_validation",
