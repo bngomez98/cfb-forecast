@@ -11,8 +11,8 @@ button { font: inherit; }
 .brand strong, .brand span { display: block; }
 .brand span, .sidebar small, .muted, .game-meta, .metric span, .metric small, .score span, .probability span, .source-state, footer { color: #8795a5; font-size: 12px; }
 nav { display: grid; gap: 8px; }
-nav a { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 8px; color: #8795a5; }
-nav a.active { color: #e8eef5; background: #17232e; }
+nav a, nav button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 12px; border: 0; border-radius: 8px; background: transparent; color: #8795a5; text-align: left; font: inherit; cursor: pointer; }
+nav a.active, nav button.active { color: #e8eef5; background: #17232e; }
 nav svg, .metric-icon svg, .panel-head > svg, footer svg { width: 16px; height: 16px; }
 .sidebar-foot { margin-top: auto; display: grid; gap: 12px; }
 .signal, .live-pill, .source-state { display: flex; gap: 7px; align-items: center; }

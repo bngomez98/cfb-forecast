@@ -32,6 +32,9 @@ SOURCE_REGISTRY = {
     "cfbtxt_validation": "https://cfbtxt.com/schedule/",
     "fanduel_comparison": "https://www.fanduel.com/research/ncaaf",
     "football_db": "https://www.footballdb.com/college-football/stats/teamstat.html?yr={season}&lg=FBS",
+    "footballdb_stats_index": "https://www.footballdb.com/college-football/stats/index.html",
+    "footballdb_player_stats": "https://www.footballdb.com/college-football/stats/stats.html?lg=FBS&yr={season}",
+    "open_meteo": "https://api.open-meteo.com/v1/forecast",
     "espn_scoreboard": "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard",
 }
 
@@ -337,6 +340,63 @@ def current_injuries(reports, as_of, max_age_days=14):
     return current, rejected
 
 
+def _venue_weather(venue, kickoff):
+    """Open-Meteo forecast for a real venue when the scoreboard has no weather.
+
+    Returns an empty dict when the venue has no city or the service does not answer.
+    Nothing is filled in from a typical or average value.
+    """
+    address = (venue or {}).get("address") or {}
+    city = str(address.get("city") or "").strip()
+    if not city:
+        return {}
+    state = str(address.get("state") or "").strip()
+    query = f"{city}, {state}" if state else city
+    try:
+        geo_url = "https://geocoding-api.open-meteo.com/v1/search?" + urllib.parse.urlencode(
+            {"name": query, "count": 1, "language": "en", "format": "json"}
+        )
+        request = urllib.request.Request(geo_url, headers={"User-Agent": "cfb-forecast/0.4", "Accept": "application/json"})
+        with urllib.request.urlopen(request, timeout=12) as response:
+            geo = json.loads(response.read().decode("utf-8"))
+        hits = geo.get("results") or []
+        if not hits:
+            return {}
+        lat, lon = hits[0].get("latitude"), hits[0].get("longitude")
+        if lat is None or lon is None:
+            return {}
+        when = pd.Timestamp(kickoff)
+        if when.tzinfo is None:
+            when = when.tz_localize("UTC")
+        day = when.tz_convert("UTC").strftime("%Y-%m-%d")
+        hour = int(when.tz_convert("UTC").hour)
+        cast_url = "https://api.open-meteo.com/v1/forecast?" + urllib.parse.urlencode(
+            {
+                "latitude": lat,
+                "longitude": lon,
+                "hourly": "temperature_2m,precipitation_probability",
+                "temperature_unit": "fahrenheit",
+                "start_date": day,
+                "end_date": day,
+                "timezone": "UTC",
+            }
+        )
+        request = urllib.request.Request(cast_url, headers={"User-Agent": "cfb-forecast/0.4", "Accept": "application/json"})
+        with urllib.request.urlopen(request, timeout=12) as response:
+            cast = json.loads(response.read().decode("utf-8"))
+        hourly = cast.get("hourly") or {}
+        temps = hourly.get("temperature_2m") or []
+        probs = hourly.get("precipitation_probability") or []
+        if hour >= len(temps) or temps[hour] is None:
+            return {}
+        weather = {"temperature": temps[hour], "source": "open-meteo"}
+        if hour < len(probs) and probs[hour] is not None:
+            weather["precipitation"] = probs[hour]
+        return weather
+    except Exception:
+        return {}
+
+
 def collect_game_inputs(games, season, root, workers=6):
     """Gather weather, injuries, lineups, player and team stats before inference.
 
@@ -378,6 +438,8 @@ def collect_game_inputs(games, season, root, workers=6):
         if season_value is not None and int(season_value) != int(season):
             raise ValueError(f"Wrong season in ESPN game {game.game_id}")
         weather = summary.get("gameInfo", {}).get("weather") or {}
+        if not weather:
+            weather = _venue_weather(summary.get("gameInfo", {}).get("venue"), game.start_date)
         record = {
             "game_id": int(game.game_id),
             "season": int(season),

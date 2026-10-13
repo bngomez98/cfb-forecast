@@ -252,9 +252,64 @@ def collect_extended_sources(games: pd.DataFrame, season: int, root) -> dict:
     # their broader pages here as independent source receipts as well.
     extra_pages = [
         (
-            "footballdb_team_stats",
-            f"https://www.footballdb.com/college-football/stats/teamstat.html?cat=S&yr={season}&lg=FBS",
-            "team_statistics",
+            "footballdb_stats_index",
+            "https://www.footballdb.com/college-football/stats/index.html",
+            "player_team_scoring_index",
+        ),
+        (
+            "footballdb_team_offense",
+            f"https://www.footballdb.com/college-football/stats/teamstat.html?group=O&cat=T&yr={season}&lg=FBS",
+            "team_offense",
+        ),
+        (
+            "footballdb_team_offense_passing",
+            f"https://www.footballdb.com/college-football/stats/teamstat.html?group=O&cat=P&yr={season}&lg=FBS",
+            "team_passing",
+        ),
+        (
+            "footballdb_team_offense_rushing",
+            f"https://www.footballdb.com/college-football/stats/teamstat.html?group=O&cat=R&yr={season}&lg=FBS",
+            "team_rushing",
+        ),
+        (
+            "footballdb_team_scoring",
+            f"https://www.footballdb.com/college-football/stats/teamstat.html?group=O&cat=S&yr={season}&lg=FBS",
+            "team_scoring",
+        ),
+        (
+            "footballdb_team_defense",
+            f"https://www.footballdb.com/college-football/stats/teamstat.html?group=D&cat=T&yr={season}&lg=FBS",
+            "team_defense",
+        ),
+        (
+            "footballdb_team_defense_scoring",
+            f"https://www.footballdb.com/college-football/stats/teamstat.html?group=D&cat=S&yr={season}&lg=FBS",
+            "team_defense_scoring",
+        ),
+        (
+            "footballdb_player_passing",
+            f"https://www.footballdb.com/college-football/stats/stats.html?lg=FBS&yr={season}&mode=P",
+            "player_passing",
+        ),
+        (
+            "footballdb_player_rushing",
+            f"https://www.footballdb.com/college-football/stats/stats.html?lg=FBS&yr={season}&mode=R",
+            "player_rushing",
+        ),
+        (
+            "footballdb_player_receiving",
+            f"https://www.footballdb.com/college-football/stats/stats.html?lg=FBS&yr={season}&mode=C",
+            "player_receiving",
+        ),
+        (
+            "footballdb_player_scoring",
+            f"https://www.footballdb.com/college-football/stats/stats.html?lg=FBS&yr={season}&mode=S",
+            "player_scoring",
+        ),
+        (
+            "footballdb_player_defense",
+            f"https://www.footballdb.com/college-football/stats/stats.html?lg=FBS&yr={season}&mode=D",
+            "player_defense",
         ),
     ]
     for name, url, role in extra_pages:

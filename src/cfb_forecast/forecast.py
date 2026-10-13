@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from .config import StateConfig
 from .data import load_data, timestamp, sha256
-from .features import observations
+from .features import observations, pregame_history, load_history_facts
 from .ratings import DynamicRatings, build_features
 from .model import load_model, ScoreHead
 from .market import market_at_cutoff, market_history_summary, read_market_history
@@ -35,7 +35,7 @@ def _known_frame(games, schedules, market_rows, extra):
     return frame
 
 
-def _project_rows(targets, means, fitted, covariance, schedules, market_rows, history_rows, extra, draws, metadata):
+def _project_rows(targets, means, fitted, covariance, schedules, market_rows, history_rows, extra, draws, metadata, history=None):
     known = known_future_matrix(_known_frame(targets, schedules, market_rows, extra))
     projected = fitted.apply(
         means,
@@ -44,6 +44,7 @@ def _project_rows(targets, means, fitted, covariance, schedules, market_rows, hi
         market_rows,
         targets.game_id.astype(int).tolist(),
         draws=draws,
+        history=history,
     )
     rows = []
     for game, sim, market, history in zip(targets.itertuples(index=False), projected, market_rows, history_rows):
@@ -73,6 +74,20 @@ def _project_rows(targets, means, fitted, covariance, schedules, market_rows, hi
             }
         )
     return rows
+
+
+def _store_history_facts(data_root, out):
+    try:
+        teams, players = load_history_facts(data_root)
+        if teams is None or len(teams) == 0:
+            return
+        from contextlib import closing
+        from .database import connect, record_history_facts
+        from .paths import database_path
+        with closing(connect(database_path())) as conn:
+            record_history_facts(conn, teams, players)
+    except Exception as exc:
+        (Path(out) / "history_database_error.txt").write_text(str(exc))
 
 
 def archive_market(path, out):
@@ -195,12 +210,14 @@ def forecast(
         else {}
         for game in past_games.itertuples(index=False)
     ]
+    history_past = pregame_history(past_games, data_root, past)
     fitted = ForecastModel.fit(
         past_location,
         Y[fit_mask][:, :, 0],
         known_future_matrix(_known_frame(past_games, population, past_market, None)),
         (past_games.home_points.to_numpy() > past_games.away_points.to_numpy()).astype(int),
         weeks=past_games.season.astype(str) + "-" + past_games.week.astype(str),
+        history=history_past,
     )
     market_rows = []
     history_rows = []
@@ -216,6 +233,7 @@ def forecast(
             else {"market_snapshot_count": 0}
         )
     draw_count = int(min(max(int(draws), 1000), 8000))
+    history_future = pregame_history(targets, data_root, past)
     rows = _project_rows(
         targets,
         mu,
@@ -233,12 +251,14 @@ def forecast(
             "model_variant": model["variant"],
             "head_training_through_season": model["training_through_season"],
         },
+        history=history_future,
     )
     joint = []
     margins = []
     totals = []
     out = Path(out_root)
     out.mkdir(parents=True, exist_ok=True)
+    _store_history_facts(data_root, out)
     market_archive = archive_market(market_path, out)
     market_file = market_archive["market_file"]
     (out / "forecasts.json").write_text(json.dumps(rows, indent=2))
@@ -400,6 +420,8 @@ def advance_forecast_snapshot(
             else {"market_snapshot_count": 0}
         )
     draw_count = int(min(max(int(draws), 1000), 8000))
+    completed = schedules[schedules.result_usable & (schedules.result_available_at < at)]
+    history_future = pregame_history(targets, data_root, completed)
     rows = _project_rows(
         targets,
         mu,
@@ -417,6 +439,7 @@ def advance_forecast_snapshot(
             "model_variant": model["variant"],
             "head_training_through_season": model["training_through_season"],
         },
+        history=history_future,
     )
     joint = []
     margins = []

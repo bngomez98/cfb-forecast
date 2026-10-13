@@ -235,6 +235,39 @@ CREATE TABLE IF NOT EXISTS weekly_validation (
   UNIQUE(season, week, run_id)
 );
 
+CREATE TABLE IF NOT EXISTS team_game_facts (
+  game_id INTEGER NOT NULL,
+  team_id INTEGER NOT NULL,
+  season INTEGER,
+  week INTEGER,
+  plays INTEGER,
+  points_for REAL,
+  points_against REAL,
+  yards_per_play REAL,
+  success_rate REAL,
+  explosive_rate REAL,
+  turnover_rate REAL,
+  pass_yards REAL,
+  rush_yards REAL,
+  receiving_yards REAL,
+  epa REAL,
+  PRIMARY KEY (game_id, team_id)
+);
+
+CREATE TABLE IF NOT EXISTS player_game_facts (
+  game_id INTEGER NOT NULL,
+  team_id INTEGER NOT NULL,
+  player_name TEXT NOT NULL,
+  position_group TEXT NOT NULL,
+  season INTEGER,
+  plays INTEGER,
+  yards REAL,
+  epa REAL,
+  PRIMARY KEY (game_id, team_id, player_name, position_group)
+);
+
+CREATE INDEX IF NOT EXISTS idx_team_game_facts_team ON team_game_facts(team_id, season);
+CREATE INDEX IF NOT EXISTS idx_player_game_facts_team ON player_game_facts(team_id, season);
 CREATE INDEX IF NOT EXISTS idx_games_season_week ON games(season, week);
 CREATE INDEX IF NOT EXISTS idx_forecast_runs_season ON forecast_runs(season);
 CREATE INDEX IF NOT EXISTS idx_forecast_log_season_kickoff ON forecast_log(season, kickoff);

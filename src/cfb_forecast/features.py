@@ -1,8 +1,11 @@
 """Past-game observations and deterministic optional raw-play cleaning."""
+import hashlib
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from .config import METRICS
 from .data import require_columns
+from .forecast_model import HISTORY_COLUMNS
 
 def clean_plays(plays):
     cols = ["game_id", "game_play_number", "pos_team_id", "def_pos_team_id", "down", "distance", "statYardage", "rush", "pass", "sack", "kneel_down", "penalty_no_play", "period", "start.pos_score_diff"]
@@ -13,7 +16,8 @@ def clean_plays(plays):
         if not p[c].dropna().isin([True, False, 0, 1]).all():
             raise ValueError(f"Invalid raw-play flag {c}")
         p[c] = p[c].fillna(False).astype(bool)
-    p = p[(p.rush | p["pass"] | p.sack) & ~p.kneel_down & ~p.penalty_no_play & p.down.between(1,4) & p.distance.between(1,99) & p.period.between(1,4) & p["start.pos_score_diff"].abs().le(21) & p.statYardage.notna()].copy()
+    # Keep overtime and plays at any score. Kneels and penalty no-plays have no scrimmage result.
+    p = p[(p.rush | p["pass"] | p.sack) & ~p.kneel_down & ~p.penalty_no_play & p.down.between(1, 4) & p.distance.between(1, 99) & p.period.ge(1) & p.statYardage.notna()].copy()
     p["pass_play"] = p["pass"] | p.sack
     threshold = p.distance * np.select([p.down.eq(1), p.down.eq(2)], [0.5, 0.7], default=1.)
     p["success"] = p.statYardage.ge(threshold).astype(float)
@@ -47,6 +51,274 @@ def normalization(Y, mask):
     if not np.isfinite(center).all() or not np.isfinite(scale).all() or (scale < 1e-8).any():
         raise ValueError("Warmup data must contain variable observations for every metric")
     return center, scale
+
+def _year_from_name(path):
+    digits = "".join(ch for ch in path.stem if ch.isdigit())
+    return int(digits) if digits else None
+
+
+def _fingerprint(paths):
+    digest = hashlib.sha256()
+    for path in paths:
+        stat = path.stat()
+        digest.update(f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}".encode())
+    return digest.hexdigest()
+
+
+def _existing_columns(path, wanted):
+    import pyarrow.parquet as pq
+    names = set(pq.read_schema(path).names)
+    return [column for column in wanted if column in names]
+
+
+def load_history_facts(data_root):
+    """Team and player game facts from parquet seasons on disk.
+
+    Seasons 2000 through 2025 are the training history. A later season file is
+    read too, and the forecast caller keeps only games already completed.
+    Missing seasons are skipped. No stat is filled with a league average here.
+    """
+    root = Path(data_root)
+    paths = sorted(
+        path for path in list(root.glob("pbp_*.parquet")) + list(root.glob("adv_team_*.parquet"))
+        if (_year_from_name(path) or 0) >= 2000
+    )
+    if not paths:
+        empty = pd.DataFrame()
+        return empty, empty
+    cache = root / "_history"
+    signature = _fingerprint(paths)
+    team_cache = cache / "team_game_facts.parquet"
+    player_cache = cache / "player_game_facts.parquet"
+    stamp = cache / "fingerprint.txt"
+    if team_cache.exists() and player_cache.exists() and stamp.exists() and stamp.read_text().strip() == signature:
+        return pd.read_parquet(team_cache), pd.read_parquet(player_cache)
+    team_frames = []
+    player_frames = []
+    for path in paths:
+        year = _year_from_name(path)
+        if "adv_team" in path.name:
+            columns = _existing_columns(path, ["game_id", "pos_team_id", "season", "week", "yards_per_play", "yards_per_pass", "yards_per_rush"])
+            if "game_id" not in columns or "pos_team_id" not in columns:
+                continue
+            frame = pd.read_parquet(path, columns=columns)
+            frame = frame.rename(columns={"pos_team_id": "team_id"})
+            if "season" not in frame:
+                frame["season"] = year
+            team_frames.append(frame)
+            continue
+        columns = _existing_columns(
+            path,
+            [
+                "game_id", "game_play_number", "pos_team_id", "season", "week", "statYardage",
+                "pass", "rush", "EPA", "EPA_success", "is_turnover", "scrimmage_play",
+                "passer_player_name", "rusher_player_name", "receiver_player_name",
+            ],
+        )
+        if "game_id" not in columns or "pos_team_id" not in columns or "statYardage" not in columns:
+            continue
+        frame = pd.read_parquet(path, columns=columns)
+        if "game_play_number" in frame:
+            frame = frame.drop_duplicates(["game_id", "game_play_number"])
+        if "scrimmage_play" in frame:
+            recorded = frame.scrimmage_play.fillna(False).astype(bool) | frame.statYardage.notna()
+            frame = frame.loc[recorded].copy()
+        frame = frame[frame.statYardage.notna() | frame.get("EPA", pd.Series(index=frame.index)).notna()].copy()
+        if "season" not in frame:
+            frame["season"] = year
+        if "pass" in frame:
+            frame["pass"] = frame["pass"].fillna(False).astype(bool)
+        if "rush" in frame:
+            frame["rush"] = frame["rush"].fillna(False).astype(bool)
+        if "pass" in frame and "rush" in frame:
+            frame["explosive_play"] = frame.statYardage.ge(np.where(frame["pass"], 20, 10))
+        else:
+            frame["explosive_play"] = frame.statYardage.ge(20)
+        grouped = frame.groupby(["game_id", "pos_team_id"], as_index=False)
+        team = grouped.agg(
+            plays=("statYardage", "size"),
+            yards_per_play=("statYardage", "mean"),
+            explosive_rate=("explosive_play", "mean"),
+        )
+        if "EPA" in frame:
+            team = team.merge(grouped.agg(epa=("EPA", "mean")), on=["game_id", "pos_team_id"], how="left")
+        if "EPA_success" in frame:
+            team = team.merge(grouped.agg(success_rate=("EPA_success", "mean")), on=["game_id", "pos_team_id"], how="left")
+        if "is_turnover" in frame:
+            team = team.merge(grouped.agg(turnover_rate=("is_turnover", "mean")), on=["game_id", "pos_team_id"], how="left")
+        if "pass" in frame:
+            passed = frame.loc[frame["pass"]].groupby(["game_id", "pos_team_id"], as_index=False).agg(pass_yards=("statYardage", "sum"))
+            team = team.merge(passed, on=["game_id", "pos_team_id"], how="left")
+            team["pass_yards"] = team["pass_yards"].fillna(0.0)
+        if "rush" in frame:
+            rushed = frame.loc[frame["rush"]].groupby(["game_id", "pos_team_id"], as_index=False).agg(rush_yards=("statYardage", "sum"))
+            team = team.merge(rushed, on=["game_id", "pos_team_id"], how="left")
+            team["rush_yards"] = team["rush_yards"].fillna(0.0)
+        if "receiver_player_name" in frame:
+            caught = frame.loc[frame.receiver_player_name.notna()].groupby(["game_id", "pos_team_id"], as_index=False).agg(receiving_yards=("statYardage", "sum"))
+            team = team.merge(caught, on=["game_id", "pos_team_id"], how="left")
+        season_week = frame.groupby(["game_id", "pos_team_id"], as_index=False).agg(season=("season", "first"))
+        if "week" in frame:
+            season_week = season_week.merge(frame.groupby(["game_id", "pos_team_id"], as_index=False).agg(week=("week", "first")), on=["game_id", "pos_team_id"], how="left")
+        team = team.merge(season_week, on=["game_id", "pos_team_id"], how="left")
+        team = team.rename(columns={"pos_team_id": "team_id"})
+        team_frames.append(team)
+        for role, name_column, flag in (
+            ("passing", "passer_player_name", "pass"),
+            ("rushing", "rusher_player_name", "rush"),
+            ("receiving", "receiver_player_name", None),
+        ):
+            if name_column not in frame:
+                continue
+            role_rows = frame[frame[name_column].notna()].copy()
+            if flag and flag in role_rows:
+                role_rows = role_rows[role_rows[flag]]
+            if role_rows.empty:
+                continue
+            player = role_rows.groupby(["game_id", "pos_team_id", name_column], as_index=False).agg(
+                plays=("statYardage", "size"),
+                yards=("statYardage", "sum"),
+                **({"epa": ("EPA", "mean")} if "EPA" in role_rows else {}),
+            )
+            player = player.rename(columns={"pos_team_id": "team_id", name_column: "player_name"})
+            player["position_group"] = role
+            player["season"] = year
+            player_frames.append(player)
+    if not team_frames:
+        empty = pd.DataFrame()
+        return empty, empty
+    teams = pd.concat(team_frames, ignore_index=True)
+    teams["game_id"] = pd.to_numeric(teams.game_id, errors="coerce")
+    teams["team_id"] = pd.to_numeric(teams.team_id, errors="coerce")
+    teams = teams.dropna(subset=["game_id", "team_id"])
+    teams["game_id"] = teams.game_id.astype("int64")
+    teams["team_id"] = teams.team_id.astype("int64")
+    value_columns = [column for column in teams.columns if column not in {"game_id", "team_id", "season", "week"}]
+    teams = teams.groupby(["game_id", "team_id"], as_index=False).agg(
+        {column: "mean" if column not in {"plays", "pass_yards", "rush_yards", "receiving_yards"} else "sum" for column in value_columns}
+        | {"season": "first", **({"week": "first"} if "week" in teams.columns else {})}
+    )
+    players = pd.concat(player_frames, ignore_index=True) if player_frames else pd.DataFrame()
+    cache.mkdir(parents=True, exist_ok=True)
+    teams.to_parquet(team_cache, index=False)
+    players.to_parquet(player_cache, index=False)
+    stamp.write_text(signature)
+    return teams, players
+
+
+def _scoring_facts(completed):
+    rows = []
+    usable = completed.dropna(subset=["home_points", "away_points"])
+    for game in usable.itertuples(index=False):
+        if not np.isfinite(game.home_points) or not np.isfinite(game.away_points):
+            continue
+        base = {"game_id": int(game.game_id), "season": int(game.season), "week": int(game.week)}
+        rows.append({**base, "team_id": int(game.home_id), "points_for": float(game.home_points), "points_against": float(game.away_points)})
+        rows.append({**base, "team_id": int(game.away_id), "points_for": float(game.away_points), "points_against": float(game.home_points)})
+    return pd.DataFrame(rows)
+
+
+def pregame_history(query, data_root, completed):
+    """Rates each team had recorded before the game, from parquet facts and final scores.
+
+    The current game does not update its own row. A team with no earlier game stays missing.
+    """
+    if query is None or len(query) == 0 or completed is None or len(completed) == 0:
+        return None
+    facts, _players = load_history_facts(data_root)
+    scored = _scoring_facts(completed)
+    if facts is None or len(facts) == 0:
+        facts = scored
+    elif len(scored):
+        facts = facts.merge(scored[["game_id", "team_id", "points_for", "points_against"]], on=["game_id", "team_id"], how="outer", suffixes=("", "_score"))
+        for column in ("points_for", "points_against"):
+            scored_column = f"{column}_score"
+            if scored_column in facts:
+                facts[column] = facts[scored_column].combine_first(facts[column]) if column in facts else facts[scored_column]
+                facts = facts.drop(columns=[scored_column])
+    if facts is None or len(facts) == 0:
+        return None
+    season = int(pd.to_numeric(query.season, errors="coerce").max())
+    past_ids = set(pd.to_numeric(completed.game_id, errors="coerce").dropna().astype("int64"))
+    if "season" in facts:
+        keep = facts.game_id.isin(past_ids) | (pd.to_numeric(facts.season, errors="coerce") < season)
+        facts = facts.loc[keep].copy()
+    else:
+        facts = facts.loc[facts.game_id.isin(past_ids)].copy()
+    if facts.empty:
+        return None
+    order = completed[["game_id", "start_date"]].drop_duplicates("game_id")
+    facts = facts.merge(order, on="game_id", how="left")
+    facts["_season"] = pd.to_numeric(facts.season, errors="coerce") if "season" in facts else season
+    facts["_week"] = pd.to_numeric(facts.week, errors="coerce") if "week" in facts else 0
+    facts = facts.sort_values(["_season", "_week", "start_date", "game_id"], kind="mergesort")
+    metrics = [
+        "points_for", "points_against", "yards_per_play", "success_rate", "explosive_rate",
+        "turnover_rate", "pass_yards", "rush_yards", "receiving_yards", "epa",
+    ]
+    state = {}
+    emitted = {}
+    query_ids = {int(game_id): index for index, game_id in enumerate(pd.to_numeric(query.game_id, errors="coerce").astype("int64"))}
+    home_ids = pd.to_numeric(query.home_id, errors="coerce").astype("int64").to_numpy()
+    away_ids = pd.to_numeric(query.away_id, errors="coerce").astype("int64").to_numpy()
+    home_for = {int(game_id): int(home) for game_id, home in zip(query_ids, home_ids[list(query_ids.values())])}
+    away_for = {int(game_id): int(away) for game_id, away in zip(query_ids, away_ids[list(query_ids.values())])}
+
+    def remember(team_id, row):
+        current = state.setdefault(int(team_id), {})
+        for metric in metrics:
+            if metric not in row.index:
+                continue
+            value = row[metric]
+            if pd.isna(value):
+                continue
+            value = float(value)
+            previous = current.get(metric)
+            current[metric] = value if previous is None else (0.92 * previous + 0.08 * value)
+
+    for game_id, group in facts.groupby("game_id", sort=False):
+        game_id = int(game_id)
+        if game_id in query_ids:
+            home_team = home_for[game_id]
+            away_team = away_for[game_id]
+            emitted[game_id] = {
+                home_team: dict(state.get(home_team, {})),
+                away_team: dict(state.get(away_team, {})),
+            }
+        for row in group.itertuples(index=False):
+            remember(row.team_id, pd.Series(row._asdict()))
+    matrix = np.full((len(query), len(HISTORY_COLUMNS)), np.nan)
+    pairs = (
+        ("points_for", 0, 1),
+        ("points_against", 2, 3),
+        ("yards_per_play", 4, 5),
+        ("success_rate", 6, 7),
+        ("explosive_rate", 8, 9),
+        ("turnover_rate", 10, 11),
+        ("pass_yards", 12, 13),
+        ("rush_yards", 14, 15),
+        ("receiving_yards", 16, 17),
+        ("epa", 18, 19),
+    )
+    final_state = state
+    for index, game_id in enumerate(query_ids):
+        slot = query_ids[game_id]
+        home = int(home_ids[slot])
+        away = int(away_ids[slot])
+        home_state = emitted.get(game_id, {}).get(home, final_state.get(home, {}))
+        away_state = emitted.get(game_id, {}).get(away, final_state.get(away, {}))
+        if game_id not in emitted:
+            home_state = final_state.get(home, {})
+            away_state = final_state.get(away, {})
+        for metric, home_column, away_column in pairs:
+            if metric in home_state:
+                matrix[slot, home_column] = home_state[metric]
+            if metric in away_state:
+                matrix[slot, away_column] = away_state[metric]
+    if not np.isfinite(matrix).any():
+        return None
+    return matrix
+
 
 def feature_columns(variant):
     # Layout: offense(5), defense(5), offense-defense(5), products(5),

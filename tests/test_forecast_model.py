@@ -126,3 +126,58 @@ def test_existing_forecast_log_gains_spread_columns(tmp_path):
     })
     assert conn.execute("SELECT games FROM weekly_validation").fetchone()[0] == 40
     conn.close()
+
+
+def test_recorded_scoring_history_moves_the_home_score():
+    rng = np.random.default_rng(4)
+    n = 80
+    known = np.full((n, 9), np.nan)
+    location = np.full((n, 2), 24.0)
+    history = np.full((n, 20), np.nan)
+    history[:, 0] = rng.normal(28, 6, n)
+    history[:, 1] = rng.normal(22, 6, n)
+    actual = np.column_stack(
+        [
+            0.45 * history[:, 0] + 0.55 * 24 + rng.normal(0, 1, n),
+            0.45 * history[:, 1] + 0.55 * 24 + rng.normal(0, 1, n),
+        ]
+    )
+    wins = (actual[:, 0] > actual[:, 1]).astype(int)
+    wins[0] = 0
+    wins[1] = 1
+    model = ForecastModel.fit(location, actual, known, wins, history=history)
+    assert model.input_columns
+    assert "posterior" not in METHOD
+    high = history[:1].copy()
+    high[0, 0] = 42
+    high[0, 1] = 14
+    low = history[:1].copy()
+    low[0, 0] = 14
+    low[0, 1] = 42
+    blank = np.full((1, 9), np.nan)
+    cov = [[36.0, 4.0], [4.0, 36.0]]
+    up = model.apply(location[:1], blank, cov, [{}], [1], history=high)
+    down = model.apply(location[:1], blank, cov, [{}], [2], history=low)
+    assert up[0]["expected_home_score"] > down[0]["expected_home_score"]
+
+
+def test_pregame_history_uses_prior_games_in_the_same_season(tmp_path):
+    from cfb_forecast.features import pregame_history
+
+    completed = pd.DataFrame(
+        {
+            "game_id": [1, 2],
+            "season": [2025, 2025],
+            "week": [1, 2],
+            "home_id": [10, 10],
+            "away_id": [20, 30],
+            "home_points": [35.0, 21.0],
+            "away_points": [10.0, 28.0],
+            "start_date": pd.to_datetime(["2025-09-01T18:00:00Z", "2025-09-08T18:00:00Z"]),
+        }
+    )
+    matrix = pregame_history(completed, tmp_path, completed)
+    assert matrix is not None
+    assert np.isnan(matrix[0, 0])
+    assert matrix[1, 0] == pytest.approx(35.0)
+    assert matrix[1, 2] == pytest.approx(10.0)

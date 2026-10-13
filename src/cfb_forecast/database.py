@@ -6,6 +6,8 @@ import sqlite3
 from pathlib import Path
 from typing import Iterable
 
+import pandas as pd
+
 SCHEMA = """
 PRAGMA foreign_keys = ON;
 
@@ -242,6 +244,39 @@ CREATE TABLE IF NOT EXISTS weekly_validation (
     UNIQUE(season, week, run_id)
 );
 
+CREATE TABLE IF NOT EXISTS team_game_facts (
+    game_id INTEGER NOT NULL,
+    team_id INTEGER NOT NULL,
+    season INTEGER,
+    week INTEGER,
+    plays INTEGER,
+    points_for REAL,
+    points_against REAL,
+    yards_per_play REAL,
+    success_rate REAL,
+    explosive_rate REAL,
+    turnover_rate REAL,
+    pass_yards REAL,
+    rush_yards REAL,
+    receiving_yards REAL,
+    epa REAL,
+    PRIMARY KEY (game_id, team_id)
+);
+
+CREATE TABLE IF NOT EXISTS player_game_facts (
+    game_id INTEGER NOT NULL,
+    team_id INTEGER NOT NULL,
+    player_name TEXT NOT NULL,
+    position_group TEXT NOT NULL,
+    season INTEGER,
+    plays INTEGER,
+    yards REAL,
+    epa REAL,
+    PRIMARY KEY (game_id, team_id, player_name, position_group)
+);
+
+CREATE INDEX IF NOT EXISTS idx_team_game_facts_team ON team_game_facts(team_id, season);
+CREATE INDEX IF NOT EXISTS idx_player_game_facts_team ON player_game_facts(team_id, season);
 CREATE INDEX IF NOT EXISTS idx_games_season_week ON games(season, week);
 CREATE INDEX IF NOT EXISTS idx_forecast_runs_season ON forecast_runs(season);
 CREATE INDEX IF NOT EXISTS idx_forecast_log_season_kickoff ON forecast_log(season, kickoff);
@@ -267,6 +302,53 @@ def _ensure_forecast_columns(conn: sqlite3.Connection) -> None:
     for name in ("projected_home_margin", "model_spread", "market_spread", "home_cover_probability"):
         if name not in present:
             conn.execute(f"ALTER TABLE forecast_log ADD COLUMN {name} REAL")
+    conn.commit()
+
+
+def record_history_facts(conn: sqlite3.Connection, teams: pd.DataFrame, players: pd.DataFrame | None = None) -> None:
+    """Store team and player facts read from historical parquet files."""
+    team_columns = [
+        "game_id", "team_id", "season", "week", "plays", "points_for", "points_against",
+        "yards_per_play", "success_rate", "explosive_rate", "turnover_rate",
+        "pass_yards", "rush_yards", "receiving_yards", "epa",
+    ]
+    if teams is not None and len(teams):
+        frame = teams.copy()
+        for column in team_columns:
+            if column not in frame:
+                frame[column] = None
+        frame = frame[team_columns].drop_duplicates(["game_id", "team_id"], keep="last")
+        conn.executemany(
+            """INSERT INTO team_game_facts(
+                 game_id, team_id, season, week, plays, points_for, points_against,
+                 yards_per_play, success_rate, explosive_rate, turnover_rate,
+                 pass_yards, rush_yards, receiving_yards, epa)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(game_id, team_id) DO UPDATE SET
+                 season=excluded.season, week=excluded.week, plays=excluded.plays,
+                 points_for=excluded.points_for, points_against=excluded.points_against,
+                 yards_per_play=excluded.yards_per_play, success_rate=excluded.success_rate,
+                 explosive_rate=excluded.explosive_rate, turnover_rate=excluded.turnover_rate,
+                 pass_yards=excluded.pass_yards, rush_yards=excluded.rush_yards,
+                 receiving_yards=excluded.receiving_yards, epa=excluded.epa""",
+            frame.itertuples(index=False, name=None),
+        )
+    player_columns = ["game_id", "team_id", "player_name", "position_group", "season", "plays", "yards", "epa"]
+    if players is not None and len(players):
+        frame = players.copy()
+        for column in player_columns:
+            if column not in frame:
+                frame[column] = None
+        frame = frame[player_columns].dropna(subset=["player_name", "position_group"])
+        frame = frame.drop_duplicates(["game_id", "team_id", "player_name", "position_group"], keep="last")
+        conn.executemany(
+            """INSERT INTO player_game_facts(
+                 game_id, team_id, player_name, position_group, season, plays, yards, epa)
+               VALUES(?,?,?,?,?,?,?,?)
+               ON CONFLICT(game_id, team_id, player_name, position_group) DO UPDATE SET
+                 season=excluded.season, plays=excluded.plays, yards=excluded.yards, epa=excluded.epa""",
+            frame.itertuples(index=False, name=None),
+        )
     conn.commit()
 
 

@@ -1,13 +1,13 @@
 """One forecasting model for college football games.
 
-The hierarchical state supplies the pregame score location. Known-future
-information (the market line, the total, rest, weather, and reported
-injuries) shifts that location through a Koopman map. Partial known-future
-values are filled from the games that already have them. Games in the same
-week are reconciled toward that week's slate. The shifted location is the
-Gaussian mean and the Poisson rate. The win probability is the logistic of
-that margin. Spread prices are Monte Carlo frequencies of integer scores
-drawn from that Gaussian.
+The hierarchical state supplies the pregame score location. Recorded team
+and player rates from on-disk history, and known-future information (the
+market line, the total, rest, weather, and reported injuries), shift that
+location through one Koopman map. Partial values are filled from the games
+that already have them. Games in the same week are reconciled toward that
+week's slate. The shifted location is the Gaussian mean and the Poisson
+rate. The win probability is the logistic of that margin. Spread prices are
+Monte Carlo frequencies of integer scores drawn from that Gaussian.
 """
 
 from __future__ import annotations
@@ -21,8 +21,30 @@ from .analytic import score_summary
 from .simulate import checked_covariance, game_seed, win_probability
 
 METHOD = (
-    "hierarchical state, known-future Koopman map, Gaussian scores, "
-    "Poisson rates, logistic win probability, Monte Carlo spread"
+    "hierarchical state, historical team and player rates, known-future Koopman map, "
+    "Gaussian scores, Poisson rates, logistic win probability, Monte Carlo spread"
+)
+HISTORY_COLUMNS = (
+    "home_points_for",
+    "away_points_for",
+    "home_points_against",
+    "away_points_against",
+    "home_yards_per_play",
+    "away_yards_per_play",
+    "home_success_rate",
+    "away_success_rate",
+    "home_explosive_rate",
+    "away_explosive_rate",
+    "home_turnover_rate",
+    "away_turnover_rate",
+    "home_pass_yards",
+    "away_pass_yards",
+    "home_rush_yards",
+    "away_rush_yards",
+    "home_receiving_yards",
+    "away_receiving_yards",
+    "home_epa",
+    "away_epa",
 )
 KNOWN_COLUMNS = (
     "home_spread",
@@ -114,6 +136,11 @@ class ForecastModel:
         self.logistic_ready = False
         self.score_low = np.array([0.0, 0.0])
         self.score_high = np.array([150.0, 150.0])
+        self.input_columns = []
+        self.input_fill = np.zeros(0)
+        self.input_center = np.zeros(0)
+        self.input_scale = np.ones(0)
+        self.input_koopman = np.zeros((0, 2))
 
     def to_dict(self):
         return {
@@ -131,11 +158,23 @@ class ForecastModel:
             "logistic_ready": self.logistic_ready,
             "score_low": self.score_low.tolist(),
             "score_high": self.score_high.tolist(),
+            **(
+                {
+                    "schema_version": 2,
+                    "input_columns": self.input_columns,
+                    "input_fill": self.input_fill.tolist(),
+                    "input_center": self.input_center.tolist(),
+                    "input_scale": self.input_scale.tolist(),
+                    "input_koopman": self.input_koopman.tolist(),
+                }
+                if self.input_columns
+                else {}
+            ),
         }
 
     @classmethod
     def from_dict(cls, value):
-        if value.get("schema_version") != 1:
+        if value.get("schema_version") not in (1, 2):
             raise ValueError("Unsupported forecasting model schema")
         model = cls()
         model.ready = bool(value["ready"])
@@ -150,6 +189,12 @@ class ForecastModel:
         model.logistic_ready = bool(value["logistic_ready"])
         model.score_low = np.asarray(value["score_low"], float)
         model.score_high = np.asarray(value["score_high"], float)
+        if value.get("input_columns"):
+            model.input_columns = list(value["input_columns"])
+            model.input_fill = np.asarray(value["input_fill"], float)
+            model.input_center = np.asarray(value["input_center"], float)
+            model.input_scale = np.asarray(value["input_scale"], float)
+            model.input_koopman = np.asarray(value["input_koopman"], float)
         return model
 
     @classmethod
@@ -157,7 +202,7 @@ class ForecastModel:
         return cls()
 
     @classmethod
-    def fit(cls, location, actual, known_future, home_wins, weeks=None):
+    def fit(cls, location, actual, known_future, home_wins, weeks=None, history=None):
         location = np.asarray(location, float)
         actual = np.asarray(actual, float)
         known = np.asarray(known_future, float)
@@ -173,7 +218,15 @@ class ForecastModel:
         model.score_high = np.maximum(np.quantile(actual, 0.99, axis=0), model.score_low + 1.0)
         usable = np.isfinite(known).mean(axis=0) >= 0.2
         model.columns = [name for name, keep in zip(KNOWN_COLUMNS, usable) if keep]
-        if model.columns and len(location) >= MIN_GAMES:
+        history_values = None
+        history_keep = None
+        if history is not None:
+            history_values = np.asarray(history, float)
+            if history_values.shape != (len(location), len(HISTORY_COLUMNS)):
+                raise ValueError("Historical team and player rates do not match the model columns")
+            history_keep = np.isfinite(history_values).mean(axis=0) >= 0.2
+            model.input_columns = [name for name, keep in zip(HISTORY_COLUMNS, history_keep) if keep]
+        if model.columns and len(location) >= MIN_GAMES and not model.input_columns:
             selected = known[:, usable]
             observed = np.isfinite(selected).any(axis=1)
             fill = np.nanmean(selected, axis=0)
@@ -193,6 +246,50 @@ class ForecastModel:
             model.ready = True
             shifted = location.copy()
             shifted[observed] = location[observed] + design @ koopman
+        elif (model.columns or model.input_columns) and len(location) >= MIN_GAMES:
+            observed = np.zeros(len(location), dtype=bool)
+            known_completed = known_center = known_scale = None
+            if model.columns:
+                selected = known[:, usable]
+                observed |= np.isfinite(selected).any(axis=1)
+                fill = np.nanmean(selected, axis=0)
+                model.fill = np.where(np.isfinite(fill), fill, 0.0)
+                known_completed = np.where(np.isfinite(selected), selected, model.fill)
+            history_completed = None
+            if model.input_columns:
+                selected = history_values[:, history_keep]
+                observed |= np.isfinite(selected).any(axis=1)
+                fill = np.nanmean(selected, axis=0)
+                model.input_fill = np.where(np.isfinite(fill), fill, 0.0)
+                history_completed = np.where(np.isfinite(selected), selected, model.input_fill)
+            shifted = location.copy()
+            if observed.any():
+                blocks = []
+                if model.columns:
+                    known_center = known_completed[observed].mean(axis=0)
+                    known_scale = known_completed[observed].std(axis=0)
+                    known_scale = np.where(known_scale < 1e-6, 1.0, known_scale)
+                    model.center = known_center
+                    model.scale = known_scale
+                    blocks.append((known_completed[observed] - known_center) / known_scale)
+                if model.input_columns:
+                    model.input_center = history_completed[observed].mean(axis=0)
+                    model.input_scale = history_completed[observed].std(axis=0)
+                    model.input_scale = np.where(model.input_scale < 1e-6, 1.0, model.input_scale)
+                    blocks.append((history_completed[observed] - model.input_center) / model.input_scale)
+                design = np.concatenate(blocks, axis=1)
+                residual = actual[observed] - location[observed]
+                gram = design.T @ design + RIDGE * np.eye(design.shape[1])
+                coef = np.linalg.solve(gram, design.T @ residual)
+                split = 0
+                if model.columns:
+                    width = blocks[0].shape[1]
+                    model.koopman = coef[:width]
+                    split = width
+                if model.input_columns:
+                    model.input_koopman = coef[split:]
+                model.ready = True
+                shifted[observed] = location[observed] + design @ coef
         else:
             shifted = location.copy()
         if weeks is not None:
@@ -226,13 +323,27 @@ class ForecastModel:
         design = (completed - self.center) / self.scale
         return location + design @ self.koopman
 
-    def apply(self, location, known_future, covariance, market_rows, game_ids, draws=4000):
+    def _input_shift(self, history, rows):
+        if not self.input_columns:
+            return np.zeros((rows, 2))
+        if history is None:
+            return np.zeros((rows, 2))
+        history = np.asarray(history, float)
+        if history.shape != (rows, len(HISTORY_COLUMNS)):
+            raise ValueError("Historical team and player rates do not match the model columns")
+        index = [HISTORY_COLUMNS.index(name) for name in self.input_columns]
+        selected = history[:, index]
+        completed = np.where(np.isfinite(selected), selected, self.input_fill)
+        design = (completed - self.input_center) / self.input_scale
+        return design @ self.input_koopman
+
+    def apply(self, location, known_future, covariance, market_rows, game_ids, draws=4000, history=None):
         location = np.asarray(location, float)
         known = np.asarray(known_future, float)
         covariance = checked_covariance(covariance)
         if known.shape != (len(location), len(KNOWN_COLUMNS)):
             raise ValueError("Known-future features do not match the model columns")
-        shifted = self._shift(location, known)
+        shifted = self._shift(location, known) + self._input_shift(history, len(location))
         if len(shifted) > 1 and self.reconcile:
             parent = shifted.mean(axis=0)
             shifted = (1.0 - self.reconcile) * shifted + self.reconcile * parent
