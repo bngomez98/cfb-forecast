@@ -277,6 +277,20 @@ def sunday_run(
         store = data / "market_history.csv"
         prices = capture_prices(games, work / "inputs", store) if len(games) else 0
         at = timestamp(utc_now())
+        if len(context_features):
+            from ..ingest.player_matchups import import_player_evidence
+            from ..modeling.forecast_model import KNOWN_COLUMNS
+            from ..paths import database_path
+            features_path = work / "inputs" / "features.csv"
+            digest = sha256(features_path)
+            context_rows = []
+            for row in context_features.to_dict("records"):
+                values = {key: float(row[key]) for key in KNOWN_COLUMNS
+                          if key in row and row[key] is not None and pd.notna(row[key])}
+                context_rows.append({"game_id": int(row["game_id"]), "observed_at": at.isoformat(),
+                                     "provider": "archived_run_inputs", "source_url": features_path.resolve().as_uri(),
+                                     "source_sha256": digest, "features": values})
+            import_player_evidence(database_path(), {"contexts": context_rows})
         journal.stage("validation")
         validated, validation_summary = validate_runs(runs, schedules, at)
         (work / "previous_week_validation.json").write_text(
@@ -284,8 +298,8 @@ def sunday_run(
         )
         from contextlib import closing
         from ..storage.database import connect, record_weekly_validation
-        from ..paths import resolve_path
-        validation_database = resolve_path(os.environ.get("CFB_DATABASE", root / "cfb_forecast.sqlite"))
+        from ..paths import resolve_path, database_path
+        validation_database = database_path()
         with closing(connect(validation_database)) as validation_db:
             for report in validation_summary.get("runs", []):
                 if report.get("settled_games"):
@@ -374,7 +388,7 @@ def sunday_run(
         if model_meta["training_through_season"] >= season:
             raise ValueError("Model training must end before the forecast season")
         from ..modeling.learning import learn
-        database = resolve_path(os.environ.get("CFB_DATABASE", root / "cfb_forecast.sqlite"))
+        database = database_path()
         learning = learn(data, model_path, root / "learning", database, at)
         model_path = Path(learning["model_path"])
         (work / "learning_report.json").write_text(json.dumps(learning, indent=2))
@@ -407,7 +421,10 @@ def sunday_run(
         )
         predictions["context_model_status"] = context_report["status"]
         predictions["context_logit_contribution"] = 0.0
-        if context_spec:
+        joint_players = "model_variant" in predictions and bool((predictions.model_variant == "joint_player").all())
+        if joint_players:
+            predictions["context_model_status"] = "integrated_in_joint_posterior"
+        if context_spec and not joint_players:
             selected_model = json.loads((model_path / "model.json").read_text())
             predictions = apply_score_context(
                 predictions, ordered, context_spec, selected_model["score_covariance"]
@@ -473,14 +490,18 @@ def sunday_run(
                 for p in (work / "inputs").rglob("*")
                 if p.is_file()
             },
-            "calculation_method": METHOD,
+            "calculation_method": "joint conditional Gaussian team/player/opponent hierarchy" if joint_players else METHOD,
+            "joint_model_path": str(final) if joint_players else None,
         }
         if timestamp(utc_now()) >= games.start_date.min():
             raise ValueError(
                 "A target game started during calculation; rerun with the remaining slate"
             )
         from ..storage.database import persist_completed_run
-        persist_completed_run(database, model_path, records, receipt, schedules, at)
+        if joint_players:
+            persist_completed_run(database, model_path, records, receipt, schedules, at, joint_model_root=work)
+        else:
+            persist_completed_run(database, model_path, records, receipt, schedules, at)
         journal.finish()
         shutil.copy2(model_path / "model.json", work / "model.json")
         (work / "run_manifest.json").write_text(json.dumps(receipt, indent=2))

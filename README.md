@@ -2,6 +2,22 @@
 
 A real-data forecasting service for the 2026 FBS season. Each Sunday at 10 AM America/Chicago, it gathers game information, validates previously saved predictions, and calculates forecasts for the coming Monday–Sunday slate. Predictions, actual results, and hypothetical betting returns remain separate records.
 
+## Current mathematical implementation
+
+The default forecast now fits **one conditional Gaussian hierarchical posterior**
+from team scores and individual player-game observations. Shared player ability,
+opponent role-defense and player–opponent matchup effects enter both player
+rates and team scoring. Their joint posterior covariance enters score, winner,
+spread and total uncertainty. Supplied availability probabilities are integrated
+as lineup scenarios with role-specific usage redistribution.
+
+See [the complete mathematics, database contract, assumptions and verification](docs/joint_player_model.md).
+The new family is not covered by the previous model's historical accuracy.
+`--legacy-score` explicitly reproduces the earlier team-only calculation.
+The following service/configuration sections retain operational reference;
+where they discuss the earlier ridge or context heads, those describe the
+legacy family rather than the new default posterior.
+
 ## Actual project configuration
 
 | Field | Value |
@@ -39,7 +55,17 @@ remaining mathematical components. The [production model contract](docs/MODEL_CO
 documents the calculation currently used. Datadog's supplied Python rulesets are
 configured in [`code-security.datadog.yaml`](code-security.datadog.yaml).
 
-Forecasts come from one model. A hierarchical team state sets the score location. Pregame team and player rates from the parquet seasons on disk (2000 through 2025, plus completed games after that) and known-future information (market line, total, rest, weather, and reported injuries) shift that location together. The same location is the Gaussian mean and the Poisson rate. The win probability is the Gaussian probability that the home score exceeds the away score. Spread and total probabilities are analytic Gaussian probabilities. A missing rate stays missing. Every recorded game in the previous season sets that season's mean; every completed game in the current season updates it. Those rates are stored in `team_game_facts` and `player_game_facts`, and the next weekly forecast reads them back into the same hierarchical state, Poisson rates, Gaussian scores, and Gaussian win probability. The prediction board shows kickoff, teams, expected score, winner, and confidence. Spreads and moneylines, team and player statistics, and method notes are separate pages. Weather comes from the ESPN game summary, and from Open-Meteo for the venue when that summary has none. CollegeFootballData lines enter the forecast from the key in `pyproject.toml`. Weather, team stats, and player stats are collected from the same API. FootballDB college offense, defense, scoring, and player pages are collected with the other sources. cfbtrack.com supplies current team and player season stats. A saved model keeps the warmup season it was fit with. Missing history is left missing; it is not replaced with a made-up season.
+The forecast reads game, team and player facts from the same database-backed
+history. Versioned player observations resolve game and opponent IDs; roster
+snapshots and known pregame context are selected before the information cutoff.
+The team/player hierarchy fits a common sparse posterior, then integrates
+player/opponent uncertainty and supplied availability scenarios into the game
+score distribution. Player-rate projections and game probabilities share those
+latent effects. Missing evidence remains explicitly unconfirmed. No separate
+ridge correction or independent context probability head is added to this
+family. Existing registered public sources retain capture receipts; their pages
+must be normalized and identified before they can become player observations.
+
 
 ```mermaid
 flowchart TD
@@ -206,12 +232,12 @@ A failed run can be retried. Operating-system locking prevents concurrent writer
 10. Use the prices recorded when predictions were issued.
 11. Keep pending games pending.
 12. Build game features.
-13. Fit context candidates using earlier saved game inputs and later real results.
+13. Select timestamped context and identified player observations from the database.
 14. Reserve the latest prior week for model comparison before adoption.
-15. Replay eligible prior FBS results into opponent-adjusted team states.
+15. Fit team, player, role-defense, matchup and context effects in the common posterior.
 16. Calculate score expectations and winner, cover, and total probabilities directly from the fitted distribution.
 17. Do not generate simulated score samples in the live workflow.
-18. Apply the selected probability model and any validated context contribution.
+18. Integrate supplied availability scenarios without an independent probability overlay.
 19. Compare probabilities with the actual recorded prices.
 20. Enforce decision and exposure limits.
 21. Save the completed run.
@@ -339,7 +365,7 @@ The Sunday initializer compares the strength model with the selected score head 
 
 Because the 2025 comparison guides the deployment choice, 2025 is not an untouched evaluation of that final deployment choice.
 
-Scores and winner probabilities may come from separate heads. The exported `probability_source` identifies the head used.
+The current joint family derives score, winner, spread and total probabilities from one posterior predictive distribution. Its `probability_source` is `joint_player_posterior`.
 
 ## Context learning
 

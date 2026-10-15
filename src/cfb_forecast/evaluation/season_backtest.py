@@ -6,7 +6,7 @@ from ..ingest.data import load_data, timestamp
 from ..modeling.forecast import forecast
 
 
-def run_season_backtest(data_root, model_root, out_root, season, draws=50000, lead_hours=48):
+def run_season_backtest(data_root, model_root, out_root, season, draws=50000, lead_hours=48, legacy_score=False):
     data_root = Path(data_root)
     out_root = Path(out_root) / f"season-{int(season)}"
     schedules, _, _ = load_data(data_root)
@@ -38,6 +38,7 @@ def run_season_backtest(data_root, model_root, out_root, season, draws=50000, le
             season=int(season),
             draws=draws,
             target_game_ids=games.game_id.astype(int).tolist(),
+            legacy_score=legacy_score,
         )
         actual = games[["game_id", "completed", "home_points", "away_points"]].copy()
         graded = predictions.merge(actual, on="game_id", how="left")

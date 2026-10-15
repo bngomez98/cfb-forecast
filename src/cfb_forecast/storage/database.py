@@ -269,6 +269,7 @@ CREATE TABLE IF NOT EXISTS player_game_facts (
     game_id INTEGER NOT NULL,
     team_id INTEGER NOT NULL,
     player_name TEXT NOT NULL,
+    source_player_id TEXT,
     position_group TEXT NOT NULL,
     season INTEGER,
     plays INTEGER,
@@ -282,6 +283,58 @@ CREATE INDEX IF NOT EXISTS idx_player_game_facts_team ON player_game_facts(team_
 CREATE INDEX IF NOT EXISTS idx_games_season_week ON games(season, week);
 CREATE INDEX IF NOT EXISTS idx_forecast_runs_season ON forecast_runs(season);
 CREATE INDEX IF NOT EXISTS idx_forecast_log_season_kickoff ON forecast_log(season, kickoff);
+
+-- Versioned player evidence. Source IDs require an explicit crosswalk; names
+-- alone never merge players across providers, teams, or seasons.
+CREATE TABLE IF NOT EXISTS player_identities (
+  player_id TEXT PRIMARY KEY,
+  display_name TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS player_source_ids (
+  provider TEXT NOT NULL,
+  source_player_id TEXT NOT NULL,
+  player_id TEXT NOT NULL REFERENCES player_identities(player_id),
+  PRIMARY KEY(provider, source_player_id)
+);
+CREATE TABLE IF NOT EXISTS player_observations (
+  game_id INTEGER NOT NULL,
+  team_id INTEGER NOT NULL,
+  opponent_id INTEGER NOT NULL,
+  player_id TEXT NOT NULL REFERENCES player_identities(player_id),
+  role TEXT NOT NULL,
+  opportunities REAL NOT NULL CHECK(opportunities > 0),
+  yards REAL,
+  epa REAL,
+  available_at TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  source_sha256 TEXT NOT NULL,
+  PRIMARY KEY(game_id, team_id, player_id, role, provider, available_at)
+);
+CREATE TABLE IF NOT EXISTS player_lineups (
+  game_id INTEGER NOT NULL,
+  team_id INTEGER NOT NULL,
+  observed_at TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  source_sha256 TEXT NOT NULL,
+  players_json TEXT NOT NULL,
+  PRIMARY KEY(game_id, team_id, observed_at, provider)
+);
+CREATE INDEX IF NOT EXISTS idx_player_observations_cutoff ON player_observations(available_at);
+CREATE INDEX IF NOT EXISTS idx_player_lineups_cutoff ON player_lineups(game_id, observed_at);
+
+
+CREATE TABLE IF NOT EXISTS game_context_snapshots (
+  game_id INTEGER NOT NULL,
+  observed_at TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  source_sha256 TEXT NOT NULL,
+  features_json TEXT NOT NULL,
+  PRIMARY KEY(game_id, observed_at, provider)
+);
+
 """
 
 
@@ -295,6 +348,9 @@ def connect(path: str | Path) -> sqlite3.Connection:
     schema_path = Path(__file__).resolve().parents[3] / "sql" / "schema.sql"
     conn.executescript(schema_path.read_text() if schema_path.exists() else SCHEMA)
     _ensure_forecast_columns(conn)
+    if "source_player_id" not in {row[1] for row in conn.execute("PRAGMA table_info(player_game_facts)")}:
+        conn.execute("ALTER TABLE player_game_facts ADD COLUMN source_player_id TEXT")
+        conn.commit()
     return conn
 
 
@@ -338,7 +394,7 @@ def record_history_facts(conn: sqlite3.Connection, teams: pd.DataFrame, players:
                  receiving_yards=excluded.receiving_yards, epa=excluded.epa""",
             frame.itertuples(index=False, name=None),
         )
-    player_columns = ["game_id", "team_id", "player_name", "position_group", "season", "plays", "yards", "epa"]
+    player_columns = ["game_id", "team_id", "player_name", "position_group", "season", "plays", "yards", "epa", "source_player_id"]
     if players is not None and len(players):
         frame = players.copy()
         for column in player_columns:
@@ -348,10 +404,10 @@ def record_history_facts(conn: sqlite3.Connection, teams: pd.DataFrame, players:
         frame = frame.drop_duplicates(["game_id", "team_id", "player_name", "position_group"], keep="last")
         conn.executemany(
             """INSERT INTO player_game_facts(
-                 game_id, team_id, player_name, position_group, season, plays, yards, epa)
-               VALUES(?,?,?,?,?,?,?,?)
+                 game_id, team_id, player_name, position_group, season, plays, yards, epa, source_player_id)
+               VALUES(?,?,?,?,?,?,?,?,?)
                ON CONFLICT(game_id, team_id, player_name, position_group) DO UPDATE SET
-                 season=excluded.season, plays=excluded.plays, yards=excluded.yards, epa=excluded.epa""",
+                 season=excluded.season, plays=excluded.plays, yards=excluded.yards, epa=excluded.epa, source_player_id=excluded.source_player_id""",
             frame.itertuples(index=False, name=None),
         )
     conn.commit()
@@ -468,12 +524,22 @@ def list_published_board(conn: sqlite3.Connection, season: int | None = None):
     return list_forecasts(conn, season)
 
 
-def persist_completed_run(database, model_path, records, receipt, schedules, at):
+def persist_completed_run(database, model_path, records, receipt, schedules, at, joint_model_root=None):
     from contextlib import closing
     from ..ingest.data import sha256
     with closing(connect(database)) as conn:
         run_id = register_run(conn, receipt["run_id"], receipt["season"], receipt)
-        model_id = register_model(conn, sha256(Path(model_path) / "model.json"), str(model_path), receipt.get("learning", {}))
+        if joint_model_root is not None:
+            folder = Path(joint_model_root)
+            fitted = json.loads((folder / "joint_player_model.json").read_text())
+            identity = sha256(folder / "joint_player_model.json")
+            conn.execute("""INSERT OR IGNORE INTO models(name,path,training_through_season,variant,created_at,manifest_json)
+                            VALUES(?,?,?,?,?,?)""",
+                         (identity, receipt.get("joint_model_path") or str(folder), int(fitted["training_through_season"]), "joint_player",
+                          fitted["cutoff"], json.dumps({"family": fitted["family"], "posterior_precision_sha256": sha256(folder / "joint_player_precision.npz")})))
+            model_id = int(conn.execute("SELECT id FROM models WHERE name=?", (identity,)).fetchone()[0])
+        else:
+            model_id = register_model(conn, sha256(Path(model_path) / "model.json"), str(model_path), receipt.get("learning", {}))
         insert_forecasts(conn, model_id, records, run_id)
         completed = schedules[schedules.result_usable & (schedules.result_available_at < at)]
         conn.executemany("""INSERT INTO results(game_id,season,home_points,away_points,completed,result_available_at,source)

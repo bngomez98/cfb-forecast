@@ -70,6 +70,7 @@ def run_weekly_forecast(
     as_of=None,
     market_path=None,
     draws=50000,
+    legacy_score=False,
 ):
     """Forecast the next upcoming week, or an explicitly selected week."""
     data_root = Path(data_root)
@@ -110,6 +111,7 @@ def run_weekly_forecast(
         market_path=market_path,
         draws=draws,
         target_game_ids=games.game_id.astype(int).tolist(),
+        legacy_score=legacy_score,
     )
     manifest = {
         "season": int(season),
