@@ -1,0 +1,8 @@
+Package: cfbforecast
+Type: Package
+Title: CFB Forecast SQLite and Reporting Helpers
+Version: 0.1.0
+Description: R utilities for reading CFB Forecast SQLite data and exporting weekly reports.
+Imports: DBI, RSQLite
+License: MIT
+Encoding: UTF-8

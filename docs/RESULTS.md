@@ -1,4 +1,14 @@
-# Computed results
+# Measured results
+
+No static model-performance or betting-profit claims ship with this repository.
+
+Run the Sunday service to download real sources, fit the earlier-season models, and write measured comparisons under `artifacts/training/`. After saved predictions have real final outcomes, the service writes validation files alongside those original predictions.
+
+The dashboard reads those runtime files. It does not display the numerical claims in the uploaded methodology as if this code reproduced them.
+
+## Held-out backtest committed with this repository
+
+The figures below are not static claims: `cfb-forecast backtest` (`make reproduce`) regenerates them from the data in `data/` and writes `artifacts/backtest/metrics.csv`, `paired_comparisons.csv` and the rest of that folder, which these tables are copied from. The Sunday service writes its own measured comparisons under `artifacts/training/` and validates saved predictions as results arrive.
 
 Selected variant: **pbp_player** (team state model plus the hierarchical player layer), selected using 2024 validation only.
 
@@ -52,11 +62,11 @@ The selected PBP variant is essentially 50/50 on recorded spread directions. Tha
 
 ## Checks and limits
 
-- 44 automated tests pass (`make test`). They include future-outcome exclusion for both state and Elo ratings, strict result availability at cutoff, covariance stability, neutral-site symmetry, head serialization, deterministic simulation, market-timestamp filtering, invalid-score quarantine, the external-source parsing and cross-check, and the player layer's recovery of a known offense gap and point-in-time safety.
+- 120 automated tests pass (`make test`). They include future-outcome exclusion for both state and Elo ratings, strict result availability at cutoff, covariance stability, neutral-site symmetry, head serialization, deterministic simulation, market-timestamp filtering, invalid-score quarantine, the external-source parsing and cross-check, and the player layer's recovery of a known offense gap and point-in-time safety.
 - Every evaluated forecast cutoff is before kickoff, and every latest contributing result is before its forecast cutoff. The player layer is fit per week from plays strictly before the same cutoff.
 - Saved input hashes were verified against the prior source package. Original external snapshot CSVs and commit metadata are retained; the archive adapter checks their internal consistency.
 - The source records may have been corrected after games. No immutable as-known statistical archive or historical injury model is reconstructed; the player layer infers expected usage from recent play shares, not declared availability.
-- The win probability is the analytic Gaussian margin integral; margin, total and cover probabilities come from Monte-Carlo integration of the same joint-Gaussian predictive distribution. This is a probability model, not a drive-level rules engine.
+- The win probability is the analytic Gaussian margin integral, and margin, total and cover probabilities are computed analytically from the same Gaussian predictive distribution (no simulated scores). This is a probability model, not a drive-level rules engine.
 - The historical test season had been studied in prior work. A fully prospective season is still the real test.
 
 The delivered result is one working, testable predictive-probability model. Its historical performance does not justify a claim that it beats the market.

@@ -2,8 +2,10 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import json
+import time
 import urllib.parse
 import urllib.request
+from urllib.error import URLError
 
 import pandas as pd
 
@@ -12,8 +14,14 @@ ESPN_SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/football/colleg
 
 def _request_json(url):
     request = urllib.request.Request(url, headers={"User-Agent": "cfb-forecast/0.3"})
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return json.loads(response.read().decode("utf-8"))
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except (URLError, TimeoutError):
+            if attempt == 3:
+                raise
+            time.sleep(2 ** attempt)
 
 
 def _event_row(event, retrieved_at):
@@ -69,12 +77,12 @@ def _team_key(value):
 
 def _map_schedule_ids(results, schedule):
     schedule = schedule.copy()
-    schedule["start_date"] = pd.to_datetime(schedule["start_date"], utc=True)
+    schedule["start_date"] = pd.to_datetime(schedule["start_date"], utc=True, format="ISO8601")
     schedule["_date"] = schedule.start_date.dt.date
     schedule["_home_key"] = schedule.home_team.map(_team_key)
     schedule["_away_key"] = schedule.away_team.map(_team_key)
     results = results.copy()
-    results["kickoff"] = pd.to_datetime(results.kickoff, utc=True, errors="coerce")
+    results["kickoff"] = pd.to_datetime(results.kickoff, utc=True, format="ISO8601", errors="coerce")
     results["_date"] = results.kickoff.dt.date
     results["_home_key"] = results.home_team.map(_team_key)
     results["_away_key"] = results.away_team.map(_team_key)
@@ -95,7 +103,7 @@ def refresh_results(data_root="data", output_root="artifacts/results", season=No
     if not schedule_paths:
         raise FileNotFoundError(f"No schedule_{season}.csv found in {data_root.resolve()}")
     schedule = pd.read_csv(schedule_paths[0], low_memory=False)
-    schedule["start_date"] = pd.to_datetime(schedule["start_date"], utc=True)
+    schedule["start_date"] = pd.to_datetime(schedule["start_date"], utc=True, format="ISO8601")
     if week is not None:
         schedule = schedule[pd.to_numeric(schedule["week"], errors="coerce") == int(week)]
     if schedule.empty:

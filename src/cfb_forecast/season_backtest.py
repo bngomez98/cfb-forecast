@@ -11,17 +11,24 @@ def run_season_backtest(data_root, model_root, out_root, season, draws=50000, le
     out_root = Path(out_root) / f"season-{int(season)}"
     schedules, _, _ = load_data(data_root)
     season_games = schedules[(schedules.season == int(season)) & schedules.fbs_game].copy()
-    weeks = sorted(season_games.week.dropna().astype(int).unique())
+    # Postseason games restart week numbering at 1; keep them out of regular week 1.
+    if "season_type" not in season_games:
+        season_games["season_type"] = "regular"
+    season_games["season_type"] = season_games.season_type.fillna("regular").astype(str)
     reports = []
     all_games = []
-    for week in weeks:
-        games = season_games[season_games.week == week].sort_values("start_date")
-        if games.empty:
-            continue
+    for (_, week), games in sorted(
+        season_games.dropna(subset=["week"]).groupby(["season_type", "week"]),
+        key=lambda item: item[1].start_date.min(),
+    ):
+        week = int(week)
+        games = games.sort_values("start_date")
+        postseason = games.season_type.iloc[0].lower() == "postseason"
+        label = f"postseason-{week}" if postseason else f"{week}"
         first_kickoff = games.start_date.min()
         last_kickoff = games.start_date.max()
         as_of = first_kickoff - pd.Timedelta(hours=lead_hours)
-        destination = out_root / f"week-{week}"
+        destination = out_root / f"week-{label}"
         predictions = forecast(
             data_root=data_root,
             model_root=model_root,
@@ -45,9 +52,10 @@ def run_season_backtest(data_root, model_root, out_root, season, draws=50000, le
         graded["margin_mae"] = abs(graded.projected_home_margin - (graded.home_points - graded.away_points))
         graded["total_mae"] = abs(graded.projected_total - (graded.home_points + graded.away_points))
         graded["week"] = int(week)
+        graded["season_type"] = games.season_type.iloc[0]
         graded.to_csv(destination / "graded.csv", index=False)
         all_games.append(graded)
-        reports.append({"season": int(season), "week": int(week), "games": int(len(graded)), "winner_accuracy": float(graded.correct.mean()), "brier_score": float(graded.brier.mean()), "score_mae": float(graded.score_mae.mean()), "margin_mae": float(graded.margin_mae.mean()), "total_mae": float(graded.total_mae.mean()), "as_of": as_of.isoformat()})
+        reports.append({"season": int(season), "week": int(week), "season_type": games.season_type.iloc[0], "games": int(len(graded)), "winner_accuracy": float(graded.correct.mean()), "brier_score": float(graded.brier.mean()), "score_mae": float(graded.score_mae.mean()), "margin_mae": float(graded.margin_mae.mean()), "total_mae": float(graded.total_mae.mean()), "as_of": as_of.isoformat()})
     if not all_games:
         raise ValueError(f"No completed games were available to grade for season {season}")
     combined = pd.concat(all_games, ignore_index=True)

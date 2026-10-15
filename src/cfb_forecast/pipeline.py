@@ -26,11 +26,12 @@ from pathlib import Path
 from typing import Callable
 
 from . import __version__
+from .paths import model_root
 from .logs import add_file, close_file, configure, get
 
 log = get("pipeline")
 
-ACTIONS = ("forecast", "results", "sources", "backtest", "data")
+ACTIONS = ("sunday", "forecast", "results", "sources", "backtest", "data")
 
 
 @dataclass
@@ -53,7 +54,7 @@ class Context:
         return cls(
             data=Path(args.data),
             artifacts=artifacts,
-            model=Path(args.model) if args.model else artifacts / "backtest" / "model",
+            model=Path(args.model) if args.model else model_root(),
             season=int(args.season),
             draws=int(args.draws),
             lead_hours=float(args.lead_hours),
@@ -96,12 +97,14 @@ def stage_data(ctx):
 
 def stage_preflight(ctx):
     from .preflight import run_preflight
+    from .sunday import ensure_model
 
     run_preflight(ctx.data, ctx.artifacts, ctx.season)
     model_file = ctx.model / "model.json"
-    if not model_file.exists():
-        raise FileNotFoundError(f"Production model not found: {model_file}. Run `cfb-forecast backtest` first.")
-    return {"model": str(model_file)}
+    trained = not model_file.exists()
+    # First run on a fresh volume: train the production model from the historical seasons on disk.
+    ensure_model(ctx.data, ctx.model, ctx.season)
+    return {"model": str(model_file), "trained_now": trained}
 
 
 def stage_results(ctx):
@@ -115,7 +118,7 @@ def stage_results(ctx):
 
 def _sources_stage(tag):
     def stage(ctx):
-        from .sources import collect
+        from .webdata import collect
 
         if ctx.sources.strip().lower() in ("", "none", "off", "0"):
             return {"action": "disabled"}
@@ -170,12 +173,24 @@ def stage_players(ctx):
 def stage_forecast(ctx):
     from .weekly import run_daily_forecast
 
-    result, manifest = run_daily_forecast(ctx.data, ctx.model, ctx.artifacts, ctx.season,
+    result, manifest = run_daily_forecast(ctx.data, ctx.model, ctx.artifacts / "daily", ctx.season,
                                           market_path=_market_path(ctx), draws=ctx.draws,
-                                          keep=int(os.environ.get("CFB_KEEP_FORECASTS", "14")))
+                                          keep=int(os.environ.get("CFB_KEEP_FORECASTS", "14")), artifacts=ctx.artifacts)
     ctx.outputs["forecast"] = manifest["output"]
     ctx.outputs["latest"] = str(ctx.artifacts / "latest")
     return manifest
+
+
+def stage_sunday(ctx):
+    """The Sunday service: sources, validation of prior runs, learning, the weekend slate, publication."""
+    from .sunday import sunday_run
+
+    report = sunday_run(ctx.data, ctx.artifacts, ctx.season, ctx.model if (ctx.model / "model.json").exists() else None,
+                        os.environ.get("CFB_SUNDAY_TIMEZONE", "America/Chicago"), False, True)
+    ctx.outputs["sunday"] = str(ctx.artifacts / "runs" / str(report.get("run_id", "")))
+    if report.get("status") not in ("completed", "already_completed", "no_upcoming_fbs_games"):
+        raise RuntimeError(f"Sunday run ended with status {report.get('status')}")
+    return {k: report.get(k) for k in ("status", "run_id", "games", "as_of")}
 
 
 def stage_backtest(ctx):
@@ -216,7 +231,10 @@ FORECAST = Stage("forecast", stage_forecast, True, "Forecast every remaining upc
 BACKTEST = Stage("backtest", stage_backtest, False, "Point-in-time backtest: re-forecast every completed week from its pre-kickoff state, compare with final scores")
 VERIFY = Stage("verify", stage_verify, True, "Check that the forecast outputs exist")
 
+SUNDAY = Stage("sunday", stage_sunday, True, "Sunday service: collect sources, validate, learn, forecast the week, publish")
+
 PLANS = {
+    "sunday": (SUNDAY,),
     # One ongoing daily pipeline: refresh data and completed results, update player ratings,
     # forecast the full remaining slate from the current state. No chronological ledger.
     "forecast": (DATA, PREFLIGHT, PLAYERS, MARKET, RESULTS, SOURCES, FORECAST, VERIFY),
@@ -298,7 +316,7 @@ def write_receipt(artifacts, receipt, started):
 def add_arguments(p):
     env = os.environ.get
     p.add_argument("action", choices=ACTIONS, help=(
-        "forecast: daily full-slate forecast (the ongoing pipeline); results: final scores of completed games; "
+        "sunday: the weekly Sunday service; forecast: daily full-slate forecast (the ongoing pipeline); results: final scores of completed games; "
         "sources: all external sites; backtest: point-in-time season backtest; data: fetch inputs"))
     p.add_argument("--season", type=int, default=int(env("CFB_FORECAST_SEASON", "2026")))
     p.add_argument("--week", type=int, default=None, help="Forecast or refresh one specific week")
@@ -306,7 +324,7 @@ def add_arguments(p):
     p.add_argument("--lead-hours", type=float, default=float(env("CFB_BACKTEST_LEAD_HOURS", "48")))
     p.add_argument("--data", default=env("CFB_DATA_DIR", "data"))
     p.add_argument("--artifacts", default=env("CFB_ARTIFACTS_DIR", "artifacts"))
-    p.add_argument("--model", default=env("CFB_MODEL_DIR"), help="Defaults to <artifacts>/backtest/model")
+    p.add_argument("--model", default=env("CFB_MODEL_DIR"), help="Defaults to CFB_MODEL_DIR or <artifacts>/training/model")
     p.add_argument("--sources", default=env("CFB_SOURCES", "all"),
                    help="External sources to collect: 'all', 'none' or a comma-separated list (see sources-list)")
     p.add_argument("--log-dir", default=env("CFB_LOG_DIR"), help="Defaults to <artifacts>/logs")

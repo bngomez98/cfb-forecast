@@ -27,10 +27,10 @@ reproduce: ## Reproduce the 2025 held-out evaluation from bundled inputs
 	cfb-forecast backtest --data data --out artifacts/reproduced --archive data/archive/matched_predictions.csv
 
 forecast: ## Ongoing daily pipeline: refresh data/results/players, forecast every upcoming game
-	cfb-pipeline forecast --season $(SEASON) --draws $(DRAWS) --refresh-data
+	cfb-forecast pipeline forecast --season $(SEASON) --draws $(DRAWS) --refresh-data
 
 results: ## Final scores of completed games from ESPN and result sites
-	cfb-pipeline results --season $(SEASON)
+	cfb-forecast pipeline results --season $(SEASON)
 
 sources: ## Collect every external source once
 	cfb-forecast sources-collect --season $(SEASON)
@@ -45,7 +45,7 @@ scheduler-status: ## Show each automated job's last run and whether it is due
 	cfb-forecast scheduler --status
 
 backtest-season: ## Point-in-time backtest of every completed week of SEASON
-	cfb-pipeline backtest --season $(SEASON) --draws $(DRAWS)
+	cfb-forecast pipeline backtest --season $(SEASON) --draws $(DRAWS)
 
 dashboard: ## Run the Streamlit dashboard locally
 	streamlit run dashboard/app.py

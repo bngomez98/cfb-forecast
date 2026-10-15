@@ -38,7 +38,7 @@ def test_scheduler_job_timing(tmp_path, monkeypatch):
     now = datetime(2026, 10, 10, 20, 0, tzinfo=timezone.utc)  # a Saturday, in season
     cal = _calendar(tmp_path, [(now - timedelta(hours=1)).isoformat(), (now + timedelta(days=2)).isoformat()])
     jobs = {j.name: j for j in build_jobs()}
-    assert set(jobs) == {"forecast", "backtest"}  # one ongoing pipeline + a weekly backtest
+    assert set(jobs) == {"sunday", "forecast", "backtest"}  # Sunday slate + the ongoing daily pipeline + a weekly backtest
     # forecast is due once every 24h; a run 25h ago is due, 1h ago is not
     assert jobs["forecast"].due(now, {"forecast": {"last_started": (now - timedelta(hours=25)).isoformat()}}, cal)
     assert not jobs["forecast"].due(now, {"forecast": {"last_started": (now - timedelta(hours=1)).isoformat()}}, cal)
@@ -46,6 +46,16 @@ def test_scheduler_job_timing(tmp_path, monkeypatch):
     last_tue = datetime(2026, 10, 6, 11, 0, tzinfo=timezone.utc)
     assert not jobs["backtest"].due(now, {"backtest": {"last_started": (last_tue + timedelta(minutes=1)).isoformat()}}, cal)
     assert jobs["backtest"].due(now, {"backtest": {"last_started": (last_tue - timedelta(days=1)).isoformat()}}, cal)
+    # the Sunday service: due from 10:00 Chicago time on Sunday, once per Sunday
+    monkeypatch.setenv("CFB_SUNDAY_HOUR", "10")
+    sunday_jobs = {j.name: j for j in build_jobs()}
+    sun_cal = _calendar(tmp_path, [(datetime(2026, 10, 11, 12, 0, tzinfo=timezone.utc) + timedelta(days=5)).isoformat()])
+    before = datetime(2026, 10, 11, 14, 59, tzinfo=timezone.utc)   # 09:59 CDT
+    after = datetime(2026, 10, 11, 15, 1, tzinfo=timezone.utc)     # 10:01 CDT
+    assert not sunday_jobs["sunday"].due(before, {}, sun_cal)
+    assert sunday_jobs["sunday"].due(after, {}, sun_cal)
+    assert not sunday_jobs["sunday"].due(after, {"sunday": {"last_started": (after - timedelta(seconds=30)).isoformat()}}, sun_cal)
+    assert not sunday_jobs["sunday"].due(now, {}, sun_cal)  # a Saturday
     # off-season: nothing is due
     off = _calendar(tmp_path, ["2026-03-01T00:00:00Z"])
     assert not jobs["forecast"].due(now, {}, off)

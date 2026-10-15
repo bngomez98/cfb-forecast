@@ -4,7 +4,9 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import time
+import urllib.error
 import urllib.request
+import numpy as np
 import pandas as pd
 
 RELEASE = "https://github.com/sportsdataverse/sportsdataverse-data/releases/download"
@@ -43,7 +45,7 @@ def normalize_schedule(df):
         df[c] = booleans(df[c], c)
     for c in ("game_id", "home_id", "away_id", "season", "week"):
         df[c] = pd.to_numeric(df[c], errors="raise").astype("int64")
-    df["start_date"] = pd.to_datetime(df.start_date, utc=True, errors="raise")
+    df["start_date"] = pd.to_datetime(df.start_date, utc=True, format="ISO8601", errors="raise")
     if df.game_id.duplicated().any():
         raise ValueError("Duplicate game IDs in schedule; refusing ambiguous outcomes")
     if (df.home_id == df.away_id).any():
@@ -65,7 +67,7 @@ def normalize_schedule(df):
     # Unknown actual final whistle is conservatively proxied at kickoff + 8h.
     df["result_available_at"] = df.start_date + RESULT_LAG
     if "completed_at" in df:
-        actual = pd.to_datetime(df.completed_at, utc=True, errors="coerce")
+        actual = pd.to_datetime(df.completed_at, utc=True, format="ISO8601", errors="coerce")
         df["result_available_at"] = actual.fillna(df.result_available_at)
     if (df.result_available_at <= df.start_date).any():
         raise ValueError("Result availability must be later than kickoff")
@@ -122,6 +124,15 @@ def load_data(root):
     paths_adv = sorted(root.glob("adv_team_*.parquet")) + sorted(root.glob("adv_team_*.csv"))
     adv = pd.concat([read_frame(p) for p in paths_adv], ignore_index=True) if paths_adv else pd.DataFrame(columns=ADV_FIELDS)
     require_columns(adv, ADV_FIELDS, "play-by-play summaries")
+    for column in ("game_id", "pos_team_id"):
+        adv[column] = pd.to_numeric(adv[column], errors="raise").astype("int64")
+    for column in ADV_FIELDS[2:]:
+        adv[column] = pd.to_numeric(adv[column], errors="raise")
+        if np.isinf(adv[column].to_numpy(dtype=float)).any():
+            raise ValueError(f"Nonfinite advanced statistic: {column}")
+    known = adv.merge(schedules[["game_id", "home_id", "away_id"]], on="game_id", how="inner", validate="many_to_one")
+    if (~(known.pos_team_id.eq(known.home_id) | known.pos_team_id.eq(known.away_id))).any():
+        raise ValueError("Advanced statistics team does not belong to the scheduled game")
     if adv.duplicated(["game_id", "pos_team_id"]).any():
         raise ValueError("Duplicate (game_id, pos_team_id) PBP summary rows")
     return schedules, adv, paths + paths_adv
@@ -140,6 +151,7 @@ def fetch(root, seasons, refresh=False, raw_pbp=False):
             if target.exists() and not refresh:
                 print(f"cached {name}", flush=True); continue
             tmp = target.with_suffix(".download")
+            saved = False
             for attempt in range(3):
                 try:
                     request = urllib.request.Request(url, headers={"User-Agent": "cfb-forecast/0.1"})
@@ -152,12 +164,25 @@ def fetch(root, seasons, refresh=False, raw_pbp=False):
                     else:
                         import pyarrow.parquet as pq
                         pq.ParquetFile(tmp)  # fail on HTML / incomplete downloads
+                    saved = True
                     break
+                except urllib.error.HTTPError as exc:
+                    tmp.unlink(missing_ok=True)
+                    if exc.code == 404:
+                        manifest["files"][name] = {"url": url, "status": "unavailable", "http_status": 404}
+                        manifest_path.write_text(json.dumps(manifest, indent=2))
+                        print(f"unavailable {name}", flush=True)
+                        break
+                    if attempt == 2:
+                        raise
+                    time.sleep(2 ** attempt)
                 except Exception:
                     tmp.unlink(missing_ok=True)
                     if attempt == 2:
                         raise
                     time.sleep(2 ** attempt)
+            if not saved:
+                continue
             tmp.replace(target)
             manifest["files"][name] = {"url": url, "sha256": sha256(target), "downloaded_at": datetime.now(timezone.utc).isoformat(), "bytes": target.stat().st_size}
             manifest_path.write_text(json.dumps(manifest, indent=2))

@@ -10,6 +10,8 @@ Jobs (all times UTC, overridable with environment variables):
 =============  ======================================================================  ==========
 job            when it runs                                                            action
 =============  ======================================================================  ==========
+sunday         Sunday from CFB_SUNDAY_HOUR (10) in CFB_SUNDAY_TIMEZONE (America/Chicago):  sunday
+               collect sources, validate prior runs, learn, forecast the weekend slate
 forecast       every CFB_FORECAST_HOURS (24) in season, and at CFB_FORECAST_HOUR (9):  forecast
                the ongoing pipeline — refresh data, completed results and player
                ratings, then forecast every remaining upcoming FBS game
@@ -32,10 +34,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
 from .logs import add_file, configure, get
+from .paths import model_root
 
 log = get("scheduler")
 
@@ -114,6 +118,18 @@ def build_jobs():
     forecast_hour = env_int("CFB_FORECAST_HOUR", 9)
     backtest_day = DAYS[os.environ.get("CFB_BACKTEST_DAY", "tue")[:3].lower()]
     backtest_hour = env_int("CFB_BACKTEST_HOUR", 11)
+    sunday_hour = env_int("CFB_SUNDAY_HOUR", 10)
+    sunday_zone = os.environ.get("CFB_SUNDAY_TIMEZONE", "America/Chicago")
+
+    def sunday(now, st, cal):
+        # Once per Sunday from the configured local hour on, so a restarted scheduler still catches it.
+        if not cal.in_season(now):
+            return False
+        local = now.astimezone(ZoneInfo(sunday_zone))
+        if local.weekday() != 6 or local.hour < sunday_hour:
+            return False
+        slot = local.replace(hour=sunday_hour, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+        return not _ran_after(st, "sunday", slot)
 
     def forecast(now, st, cal):
         # Once per CFB_FORECAST_HOURS during the season; also right at the daily slot so a
@@ -129,6 +145,7 @@ def build_jobs():
         return cal.in_season(now) and not _ran_after(st, "backtest", slot)
 
     return [
+        Job("sunday", "sunday", sunday, "Sunday service: sources, validation, learning, the weekend slate, publication"),
         Job("forecast", "forecast", forecast, "Daily full-slate forecast: refresh data/results/players, forecast every upcoming game"),
         Job("backtest", "backtest", backtest, "Weekly point-in-time season backtest"),
     ]
@@ -177,7 +194,7 @@ class Scheduler:
         from .pipeline import Context
 
         return Context(
-            data=self.data, artifacts=self.artifacts, model=Path(os.environ.get("CFB_MODEL_DIR") or self.artifacts / "backtest" / "model"),
+            data=self.data, artifacts=self.artifacts, model=Path(os.environ["CFB_MODEL_DIR"]) if os.environ.get("CFB_MODEL_DIR") else model_root(),
             season=self.season, draws=env_int("CFB_FORECAST_DRAWS", 50000),
             lead_hours=float(os.environ.get("CFB_BACKTEST_LEAD_HOURS", "48")),
             refresh_data=True, sources=os.environ.get("CFB_SOURCES", "all"),

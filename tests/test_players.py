@@ -101,3 +101,28 @@ def test_player_features_by_week_is_one_fit_per_week():
     assert set(["home_player_offense", "away_player_offense", "home_player_defense", "away_player_defense"]).issubset(pf.columns)
     assert pf.index.name == "game_id" and len(pf) == len(games)
     assert np.isfinite(pf.to_numpy()).all()
+
+
+def test_cached_player_features_match_a_full_pass_and_fit_only_new_weeks(tmp_path, monkeypatch):
+    import cfb_forecast.players as players
+
+    agg = _synthetic_games()
+    games = agg[["game_id", "season", "week", "team_id"]].drop_duplicates("game_id").copy()
+    games = games.rename(columns={"team_id": "home_id"})
+    games["away_id"] = np.where(games.home_id == 10, 11, 10)
+    games["start_date"] = agg.groupby("game_id").start_date.first().reindex(games.game_id).to_numpy()
+    full = player_features_by_week(agg, games, lead_hours=48.0)
+    cache = tmp_path / "player_features_cache.parquet"
+    weeks = sorted(games.week.unique())
+    early = games[games.week < weeks[-1]]
+    players.cached_player_features(agg, early, cache)
+    fitted = []
+    original = players.player_features_by_week
+    monkeypatch.setattr(players, "player_features_by_week", lambda a, g, *args, **kw: fitted.append(sorted(g.week.unique())) or original(a, g, *args, **kw))
+    out = players.cached_player_features(agg, games, cache)
+    assert fitted == [[weeks[-1]]]  # only the new week is fit
+    pd.testing.assert_frame_equal(out.loc[full.index].sort_index(), full.sort_index(), check_exact=False)
+    # a different configuration discards the cache
+    fitted.clear()
+    players.cached_player_features(agg, games, cache, lead_hours=24.0)
+    assert len(fitted) == 1

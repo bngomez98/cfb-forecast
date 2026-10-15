@@ -9,11 +9,11 @@ import json
 import pandas as pd
 import pytest
 
-from cfb_forecast.sources import collection as collect_mod
-from cfb_forecast.sources.extract import parse_html, parse_json, parse_text
-from cfb_forecast.sources.fetch import store
-from cfb_forecast.sources.interpret import GameBook, interpret, numbers, team_stats
-from cfb_forecast.sources.teams import TeamIndex
+from cfb_forecast.webdata import collection as collect_mod
+from cfb_forecast.webdata.extract import parse_html, parse_json, parse_text
+from cfb_forecast.webdata.fetch import store
+from cfb_forecast.webdata.interpret import GameBook, interpret, numbers, team_stats
+from cfb_forecast.webdata.teams import TeamIndex
 
 GAMES = [
     # game_id, week, start, away, home, away_pts, home_pts, completed

@@ -27,6 +27,7 @@ expected usage comes from the share of recent plays each player took.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -256,7 +257,7 @@ def player_features_by_week(aggregates, games, lead_hours=48.0, config=None, loo
         ratings = fit_player_ratings(aggregates, cutoff, config)
         usage = recent_usage(aggregates, cutoff, lookback_games)
         team = team_offense_ratings(ratings, usage).set_index("team_id")
-        offense = team.player_offense if "player_offense" in team else pd.Series(dtype=float)
+        offense = dict(zip(team.index.astype(int), team.player_offense)) if "player_offense" in team else {}
         for r in wk.itertuples(index=False):
             ho = float(offense.get(int(r.home_id), 0.0))
             ao = float(offense.get(int(r.away_id), 0.0))
@@ -268,6 +269,41 @@ def player_features_by_week(aggregates, games, lead_hours=48.0, config=None, loo
                          "player_net_signal": (ho - ad) - (ao - hd)})
     cols = ["game_id", "home_player_offense", "away_player_offense", "home_player_defense", "away_player_defense", "player_net_signal"]
     return pd.DataFrame(rows, columns=cols).set_index("game_id")
+
+
+def cached_player_features(aggregates, games, cache_path, lead_hours=48.0, config=None, lookback_games=4):
+    """``player_features_by_week`` with completed weeks cached on disk.
+
+    A completed week's features depend only on plays before that week's cutoff, so they never
+    change once computed; only weeks missing from the cache are fit. The cache is keyed to the
+    player configuration and lead time and is discarded when either changes.
+    """
+    config = config or PlayerConfig()
+    signature = json.dumps({"config": config.to_dict(), "lead_hours": float(lead_hours), "lookback": int(lookback_games)}, sort_keys=True)
+    cache_path = Path(cache_path)
+    cached = pd.DataFrame()
+    if cache_path.exists():
+        try:
+            frame = pd.read_parquet(cache_path)
+            if len(frame) and frame["signature"].iloc[0] == signature:
+                cached = frame.drop(columns="signature").set_index("game_id")
+        except Exception:
+            cached = pd.DataFrame()
+    todo = games[~games.game_id.astype(int).isin(cached.index)] if len(cached) else games
+    if len(todo):
+        # Fit whole weeks so the cutoff (the week's first kickoff) is the same as in a full pass.
+        weeks = set(zip(todo.season, todo.week))
+        missing = games[[(a, b) in weeks for a, b in zip(games.season, games.week)]]
+        fresh = player_features_by_week(aggregates, missing, lead_hours, config, lookback_games)
+        cached = pd.concat([cached[~cached.index.isin(fresh.index)], fresh]) if len(cached) else fresh
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            out = cached.reset_index()
+            out["signature"] = signature
+            out.to_parquet(cache_path, index=False)
+        except Exception:
+            pass
+    return cached
 
 
 def player_feature_matrix(game_ids, features_by_week):

@@ -172,8 +172,10 @@ def test_dashboard_renders_every_view_from_a_daily_run(tmp_path, monkeypatch):
     script = str(Path(__file__).resolve().parents[1] / "dashboard" / "app.py")
     at = AppTest.from_file(script, default_timeout=60).run()
     assert not at.exception, [e.value for e in at.exception]
+    at.sidebar.radio[0].set_value("Forecast desk").run()
+    assert not at.exception, [e.value for e in at.exception]
     assert any("What changed" in s.value for s in at.subheader)
-    for view in ("Players & teams", "Historical backtest", "External sources"):
+    for view in ("Overview", "Players & teams", "Web sources", "Sources", "Calculation pipeline", "Historical training"):
         at.sidebar.radio[0].set_value(view).run()
         assert not at.exception, (view, [e.value for e in at.exception])
     at.sidebar.radio[0].set_value("Players & teams").run()

@@ -22,6 +22,9 @@ WORKDIR /app
 COPY dashboard/requirements.txt ./
 RUN --mount=type=cache,target=/root/.cache/pip python -m pip install -r requirements.txt
 COPY dashboard ./dashboard
+COPY src ./src
+COPY .streamlit ./.streamlit
+ENV PYTHONPATH=/app/src
 
 RUN useradd --create-home --uid 10001 cfb && chown -R cfb:cfb /app
 USER cfb

@@ -7,6 +7,7 @@ dist/
 
 # Tooling caches
 .pytest_cache/
+.pytest_tmp/
 .ruff_cache/
 .mypy_cache/
 .coverage
@@ -17,6 +18,25 @@ htmlcov/
 venv/
 env/
 activate/
+pythonlib1/
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# R package and local R state
+.Rproj.user/
+renv/library/
+renv/staging/
+.Rhistory
+.RData
+.Ruserdata
+
+# Web board build output
+web/node_modules/
+web/dist/
+web/tsconfig.tsbuildinfo
 
 # Local configuration
 .env
@@ -25,16 +45,35 @@ activate/
 *.log
 artifacts/logs/
 
-# Per-run pipeline outputs (published as CI artifacts instead)
-artifacts/pipeline/
-artifacts/latest/
-artifacts/forecasts/
-artifacts/results/
+# Generated runtime database
+*.sqlite
+*.sqlite3
+*.db
 
-# External-source runtime state: raw snapshots, collected records, collection receipts
+# Runtime outputs of the Sunday service and the daily pipeline
+# (the committed artifacts/backtest/ evidence and the data/ seed files stay tracked)
+artifacts/runs/
+artifacts/work/
+artifacts/latest/
+artifacts/latest-weekly/
+artifacts/weekly/
+artifacts/forecasts/
+artifacts/daily/
+artifacts/training/
+artifacts/learning/
+artifacts/pipeline/
+artifacts/scheduler/
+artifacts/results/
+artifacts/probability-research/
+artifacts/.run.lock
+
+# Runtime data: external-source state, derived history cache, the results overlay
 data/sources/
+data/_history/
 data/results_overlay.csv
 
 # Large optional downloads
 data/pbp_*.parquet
 *.download
+artifacts/cache/
+web/public/forecasts.json

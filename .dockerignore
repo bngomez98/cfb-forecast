@@ -9,25 +9,41 @@
 __pycache__
 *.py[cod]
 .pytest_cache
+.pytest_tmp
 .mypy_cache
 .ruff_cache
 .venv
 venv
 env
 activate
+pythonlib1
 build
 dist
 *.egg-info
+web/node_modules
+web/dist
+
+# Local duplicate/build output directories
+cli
+cfb-forecast
 
 # Transient downloads and per-run outputs (regenerated inside the container)
 *.download
 data/pbp_*.parquet
+data/sources
+data/_history
 artifacts/pipeline
 artifacts/results
 artifacts/latest
 artifacts/forecasts
+artifacts/daily
+artifacts/runs
+artifacts/work
 artifacts/logs
-data/sources
+artifacts/scheduler
+*.sqlite
+*.sqlite3
 
 # Local configuration
 .env
+artifacts/cache

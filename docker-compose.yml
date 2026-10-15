@@ -1,13 +1,15 @@
-# CFB forecast stack.
+# CFB forecast application.
 #
-#   docker compose up -d                           # scheduler (automation) + dashboard on http://localhost:8501
-#   docker compose run --rm pipeline               # the ongoing daily forecast pipeline
-#   docker compose run --rm sources                # collect external sites only
-#   docker compose run --rm cfb-forecast backtest  # any engine subcommand
-#   docker compose run --rm -v ./src:/app/src cfb-forecast ...   # run local source edits without rebuilding
-#   docker compose --profile public up -d          # dashboard behind Caddy with automatic HTTPS
+#   docker compose up -d                   # scheduler + dashboard (+ api, data watchdog) -> http://localhost:8501
+#   docker compose run --rm cfb-forecast sunday-run --season 2026     # the Sunday slate, now
+#   docker compose run --rm cfb-forecast pipeline forecast            # the daily update, now
+#   docker compose run --rm cfb-forecast backtest                     # any engine subcommand
+#   docker compose -f docker-compose.yml -f docker-compose.public.yml up -d   # HTTPS via Caddy (CFB_DOMAIN)
+#   docker compose run --rm -v ./src:/app/src cfb-forecast ...        # run local source edits without rebuilding
 #
 # Defaults are listed in .env.example; copy it to .env to override them.
+# The forecast containers run as UID/GID 10001 (the image user); on Linux make the bind-mounted
+# ./data and ./artifacts writable by it, or set CFB_UID/CFB_GID to your own ids.
 
 x-logging: &logging
   driver: json-file
@@ -20,13 +22,18 @@ x-engine: &engine
   build:
     context: .
     dockerfile: Dockerfile
-  # Run as the host user so files written to the bind mounts stay editable.
-  user: "${CFB_UID:-1000}:${CFB_GID:-1000}"
+  user: "${CFB_UID:-10001}:${CFB_GID:-10001}"
   logging: *logging
-  environment:
+  environment: &engine-environment
     HOME: /tmp
+    PYTHONDONTWRITEBYTECODE: "1"
+    PYTHONUNBUFFERED: "1"
+    OPENBLAS_NUM_THREADS: "1"
+    OMP_NUM_THREADS: "1"
+    MKL_NUM_THREADS: "1"
     CFB_DATA_DIR: /app/data
     CFB_ARTIFACTS_DIR: /app/artifacts
+    CFB_DATABASE: /app/artifacts/cfb_forecast.sqlite
     CFB_FORECAST_SEASON: ${CFB_FORECAST_SEASON:-2026}
     CFB_FORECAST_DRAWS: ${CFB_FORECAST_DRAWS:-50000}
     CFB_BACKTEST_LEAD_HOURS: ${CFB_BACKTEST_LEAD_HOURS:-48}
@@ -35,47 +42,36 @@ x-engine: &engine
     CFB_SOURCES: ${CFB_SOURCES:-all}
     CFB_LOG_LEVEL: ${CFB_LOG_LEVEL:-INFO}
     CFB_LOG_DIR: /app/artifacts/logs
+    CFBD_API_KEY: ${CFBD_API_KEY:-}
+    DD_SITE: ${DD_SITE:-datadoghq.com}
+    DD_API_KEY: ${DD_API_KEY:-}
+    CFB_SMTP_HOST: ${CFB_SMTP_HOST:-}
+    CFB_SMTP_PASSWORD: ${CFB_SMTP_PASSWORD:-}
   volumes:
     - ${CFB_DATA_DIR:-./data}:/app/data
     - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts
 
 services:
+  # One-off engine commands: docker compose run --rm cfb-forecast <command>.
   cfb-forecast:
     <<: *engine
     profiles: [cli]
     command: ["--help"]
 
-  pipeline:
-    <<: *engine
-    profiles: [cli]
-    command: ["pipeline", "forecast"]
-
-  sources:
-    <<: *engine
-    profiles: [cli]
-    command: ["pipeline", "sources"]
-
-  # Automation: the ongoing daily forecast pipeline and a weekly backtest,
-  # scheduled from the game calendar (see src/cfb_forecast/scheduler.py).
+  # Automation: the Sunday service, the daily forecast pipeline and the weekly backtest, scheduled
+  # from the game calendar (see src/cfb_forecast/scheduler.py).
   scheduler:
     <<: *engine
     restart: unless-stopped
     command: ["scheduler"]
     environment:
-      HOME: /tmp
-      CFB_DATA_DIR: /app/data
-      CFB_ARTIFACTS_DIR: /app/artifacts
-      CFB_FORECAST_SEASON: ${CFB_FORECAST_SEASON:-2026}
-      CFB_FORECAST_DRAWS: ${CFB_FORECAST_DRAWS:-50000}
-      CFB_BACKTEST_LEAD_HOURS: ${CFB_BACKTEST_LEAD_HOURS:-48}
-      CFB_SOURCES: ${CFB_SOURCES:-all}
-      CFB_LOG_LEVEL: ${CFB_LOG_LEVEL:-INFO}
-      CFB_LOG_DIR: /app/artifacts/logs
+      <<: *engine-environment
       CFB_FORECAST_HOURS: ${CFB_FORECAST_HOURS:-24}
       CFB_FORECAST_HOUR: ${CFB_FORECAST_HOUR:-9}
+      CFB_SUNDAY_TIMEZONE: ${CFB_SUNDAY_TIMEZONE:-America/Chicago}
+      CFB_SUNDAY_HOUR: ${CFB_SUNDAY_HOUR:-10}
       CFB_BACKTEST_DAY: ${CFB_BACKTEST_DAY:-tue}
       CFB_BACKTEST_HOUR: ${CFB_BACKTEST_HOUR:-11}
-      CFB_KEEP_FORECASTS: ${CFB_KEEP_FORECASTS:-14}
     healthcheck:
       test: ["CMD", "cfb-forecast", "healthcheck", "--artifacts", "/app/artifacts", "--max-age", "600"]
       interval: 60s
@@ -83,11 +79,35 @@ services:
       retries: 3
       start_period: 120s
 
-  dashboard:
+  cfb-api:
+    <<: *engine
+    entrypoint: ["python", "-m", "cfb_forecast.api"]
+    command: []
+    environment:
+      <<: *engine-environment
+      CFB_REQUIRE_R: "1"
+    ports:
+      - "${CFB_API_PORT:-8000}:8000"
+    volumes:
+      - ${CFB_DATA_DIR:-./data}:/app/data:ro
+      - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts
+    restart: unless-stopped
+
+  cfb-data-watchdog:
+    <<: *engine
+    entrypoint: ["cfb-data-watchdog"]
+    command: ["--data", "/app/data", "--database", "/app/artifacts/cfb_forecast.sqlite", "--watch"]
+    restart: unless-stopped
+    volumes:
+      - ${CFB_DATA_DIR:-./data}:/app/data:ro
+      - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts
+
+  cfb-dashboard:
     image: ${CFB_DASHBOARD_IMAGE:-cfb-forecast-dashboard:local}
     build:
       context: .
       dockerfile: dashboard/Dockerfile
+    user: "${CFB_DASHBOARD_UID:-10002}:${CFB_DASHBOARD_GID:-10002}"
     restart: unless-stopped
     logging: *logging
     environment:
@@ -104,25 +124,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
-
-  caddy:
-    image: caddy:2-alpine
-    profiles: [public]
-    restart: unless-stopped
-    logging: *logging
-    environment:
-      CFB_DOMAIN: ${CFB_DOMAIN:-localhost}
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      dashboard:
-        condition: service_healthy
-
-volumes:
-  caddy_data:
-  caddy_config:
