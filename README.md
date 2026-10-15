@@ -393,6 +393,7 @@ The required fields are:
 
 Each evaluation season receives calibration fitted only on prior seasons.
 
+**2. Expected points.** A regression turns the two teams' ratings into expected points for each side. The learning stage proposes refits with recent games counting more. It fits the candidate without the latest held-out games and checks its log loss on them: if the candidate is no worse than the current regression on those games, the status is `promoted` and the candidate takes over; otherwise the status is `retained` and the current regression stays in use. Forecasting uses whichever regression is selected; the Bayesian team ratings still update as results arrive.
 A single-season file produces a candidate for later use but cannot demonstrate later-season improvement.
 
 The constraint bounds changes on:
@@ -423,6 +424,7 @@ A two-sided no-vig probability is then computed.
 
 Edge and expected return are separate calculations.
 
+A separate team strength model (opponent-adjusted margins, with a 365-day half-life, an 8-game ridge penalty and a 3-point home edge) is fitted alongside and kept for comparison. Win chances always come from the forecasting model described above, read off the fitted logistic curve from the score margin; the strength model never sets a win chance.
 A hypothetical candidate requires:
 
 - At least two percentage points of edge.
