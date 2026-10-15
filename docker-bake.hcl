@@ -6,10 +6,6 @@ variable "IMAGE_TAG" {
   default = "local"
 }
 
-variable "PUSH" {
-  default = false
-}
-
 variable "PLATFORMS" {
   default = ["linux/amd64"]
 }
@@ -23,7 +19,6 @@ target "cfb-dashboard" {
   dockerfile = "dashboard/Dockerfile"
   tags = ["${REGISTRY_IMAGE}-dashboard:${IMAGE_TAG}"]
   platforms = PLATFORMS
-  push = PUSH
   cache-from = ["type=gha"]
   cache-to = ["type=gha,mode=max"]
   labels = {
@@ -37,7 +32,6 @@ target "cfb-forecast" {
   dockerfile = "Dockerfile"
   tags = ["${REGISTRY_IMAGE}:${IMAGE_TAG}"]
   platforms = PLATFORMS
-  push = PUSH
   cache-from = ["type=gha"]
   cache-to = ["type=gha,mode=max"]
   labels = {
