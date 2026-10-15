@@ -204,12 +204,12 @@ export function App() {
     <header className="topbar">
       <a className="brand" href="#top" onClick={() => setPage('forecast')} aria-label="FieldQuant home">
         <span className="brand-mark"><LineChart aria-hidden="true" /></span>
-        <span><strong>FIELDQUANT</strong><small>FBS FORECAST DESK</small></span>
+        <span><strong>FIELDQUANT</strong><small>2026 COLLEGE FOOTBALL</small></span>
       </a>
       <nav aria-label="Primary navigation">
         {PAGES.map(item => <button key={item.id} className={page === item.id ? 'active' : ''} aria-current={page === item.id ? 'page' : undefined} onClick={() => setPage(item.id)}>{item.label}</button>)}
       </nav>
-      <div className="model-status"><i aria-hidden="true" /> Picks updated</div>
+      <div className="model-status"><i aria-hidden="true" /> 2026 schedule live</div>
     </header>
 
     <main id="top">
@@ -220,8 +220,8 @@ export function App() {
   <div className="live-score-strip" role="status"><span><i aria-hidden="true" /> 2026 scores refresh every 60 seconds</span><small>{scoresUpdatedAt ? `Last checked ${scoresUpdatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Connecting to score feed'} · Published forecasts cover {chronological.length} scheduled games</small></div>
           <div className="metric-grid" aria-label="Weekly forecast summary">
             <Metric icon={CalendarDays} label="Games in window" value={weekGames.length ? String(weekGames.length) : '—'} detail={`${weekName} slate`} />
-            <Metric icon={Gauge} label="Average pick strength" value={weekGames.length ? pct(avgConfidence, 1) : '—'} detail="Average chance for the picked team" />
-            <Metric icon={Target} label="Strong picks" value={weekGames.length ? String(strongPicks) : '—'} detail="Games at 70% or higher" />
+            <Metric icon={Gauge} label="Average win chance" value={weekGames.length ? pct(avgConfidence, 1) : '—'} detail="Average chance for the favored team" />
+            <Metric icon={Target} label="Clear favorites" value={weekGames.length ? String(strongPicks) : '—'} detail="Games with a 70%+ win chance" />
             <Metric icon={CircleDot} label="Tightest matchup" value={closest ? `${Math.abs(margin(closest)).toFixed(1)} pts` : '—'} detail={closest ? `${closest.away_team} at ${closest.home_team}` : 'Awaiting slate'} />
           </div>
           <BoardControls query={query} setQuery={setQuery} range={range} setRange={setRange} sort={sort} setSort={setSort} weekName={weekName} />
@@ -257,13 +257,13 @@ function Hero({ weekName, updated, games, onRefresh, loading }: { weekName: stri
   return <section className="hero">
     <div className="hero-inner">
       <div className="eyebrow"><span>2026 FBS</span><span>{weekName}</span><span>{games} games</span></div>
-      <h1>Smarter picks for every game.</h1>
-      <p>See who is more likely to win, the predicted score, and what a fair price looks like—all in one place.</p>
+      <h1>Every 2026 college football game, in one place.</h1>
+      <p>Check the full FBS schedule, projected scores, win chances, fair moneylines, and live results as the season unfolds.</p>
       <div className="hero-actions">
         <button className="primary-action" onClick={() => document.querySelector('.forecast-board')?.scrollIntoView({ behavior: 'smooth' })}>View the board <ArrowRight aria-hidden="true" /></button>
         <button className="secondary-action" onClick={onRefresh} disabled={loading}><RefreshCw className={loading ? 'spin' : ''} aria-hidden="true" />{loading ? 'Refreshing' : 'Refresh data'}</button>
       </div>
-      <div className="run-meta"><ShieldCheck aria-hidden="true" /><span>Point-in-time forecast</span><i /> <span>{updated ? `Generated ${shortDate(updated)}` : 'No forecast published'}</span></div>
+      <div className="run-meta"><ShieldCheck aria-hidden="true" /><span>2026 season forecast</span><i /> <span>{updated ? `Generated ${shortDate(updated)}` : 'No forecast published'}</span></div>
     </div>
     <div className="hero-visual" aria-hidden="true">
       <div className="field-line line-one" /><div className="field-line line-two" /><div className="field-line line-three" />
@@ -284,7 +284,7 @@ function BoardControls({ query, setQuery, range, setRange, sort, setSort, weekNa
   query: string; setQuery: (value: string) => void; range: Range; setRange: (value: Range) => void; sort: Sort; setSort: (value: Sort) => void; weekName: string
 }) {
   return <section className="board-controls" aria-label="Forecast filters">
-    <label className="search-field"><Search aria-hidden="true" /><input type="search" placeholder="Search team" value={query} onChange={event => setQuery(event.target.value)} aria-label="Search team" /></label>
+    <label className="search-field"><Search aria-hidden="true" /><input type="search" placeholder="Search any team or matchup" value={query} onChange={event => setQuery(event.target.value)} aria-label="Search team" /></label>
     <div className="segmented" role="group" aria-label="Date range">
       <button className={range === 'week' ? 'active' : ''} onClick={() => setRange('week')}>{weekName}</button>
       <button className={range === 'all' ? 'active' : ''} onClick={() => setRange('all')}>Full 2026 season</button>
@@ -325,8 +325,8 @@ function ForecastCard({ game, result }: { game: Forecast; result?: LiveResult })
     </div>
     <div className="probability-track" aria-label={`${game.away_team} ${pct(away)}, ${game.home_team} ${pct(home)}`}><i style={{ width: `${away * 100}%` }} /><i style={{ width: `${home * 100}%` }} /></div>
     <dl className="game-details">
-      <div><dt>Predicted spread</dt><dd>{pickedTeam} {spreadFor(game, pickHome ? 'home' : 'away')}</dd></div>
-      <div><dt>Predicted points</dt><dd>{projectedTotal.toFixed(1)}</dd></div>
+      <div><dt>Projected spread</dt><dd>{pickedTeam} {spreadFor(game, pickHome ? 'home' : 'away')}</dd></div>
+      <div><dt>Projected total</dt><dd>{projectedTotal.toFixed(1)} pts</dd></div>
       <div><dt>Fair odds</dt><dd>{oddsLabel(fairMoneyline(confidence))}</dd></div>
     </dl>
     <button className="details-toggle" onClick={() => setExpanded(value => !value)} aria-expanded={expanded} aria-controls={detailsId}>
