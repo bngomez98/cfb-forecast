@@ -20,6 +20,15 @@ import {
   TrendingUp,
 } from 'lucide-react'
 
+type LiveResult = {
+  game_id: number
+  status: 'scheduled' | 'live' | 'final'
+  status_detail?: string | null
+  period?: number | null
+  clock?: string | null
+  home_points?: number | null
+  away_points?: number | null
+}
 type Forecast = {
   game_id: number
   away_team: string
@@ -119,22 +128,31 @@ export function App() {
   const [query, setQuery] = useState('')
   const [range, setRange] = useState<Range>('week')
   const [sort, setSort] = useState<Sort>('kickoff')
+  const [liveResults, setLiveResults] = useState<Record<number, LiveResult>>({})
+  const [scoresUpdatedAt, setScoresUpdatedAt] = useState<Date | null>(null)
 
   async function refresh() {
     setLoading(true)
     try {
       const published = await fetch('/forecasts.json', { cache: 'no-store' })
+      let currentForecasts = forecasts
       if (published.ok) {
         const board = await published.json() as Board
         setBoardMeta(board)
-        if (Array.isArray(board.forecasts)) setForecasts(board.forecasts)
+        if (Array.isArray(board.forecasts)) {
+          currentForecasts = board.forecasts
+          setForecasts(board.forecasts)
+        }
         if (Array.isArray(board.sources)) setSources(board.sources)
       }
-      const response = await fetch('/api/forecasts?season=2026')
-      if (response.ok && response.headers.get('content-type')?.includes('json')) {
-        const data = await response.json()
-        if (Array.isArray(data.forecasts) && data.forecasts.length && data.forecasts[0].winner) setForecasts(data.forecasts)
-        if (data.validation) setValidation(data.validation)
+      const firstKickoff = currentForecasts.length ? new Date(Math.min(...currentForecasts.map(game => new Date(game.kickoff).getTime()))) : new Date()
+      const start = new Date(Math.max(firstKickoff.getTime(), Date.now() - DAY))
+      const end = new Date(start.getTime() + 8 * DAY)
+      const response = await fetch(`/api/live-results?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`, { cache: 'no-store' })
+      if (response.ok) {
+        const data = await response.json() as { updated_at?: string; results?: LiveResult[] }
+        if (Array.isArray(data.results)) setLiveResults(Object.fromEntries(data.results.map(result => [result.game_id, result])))
+        if (data.updated_at) setScoresUpdatedAt(new Date(data.updated_at))
       }
     } catch {
       // The static publication is the production fallback when the self-hosted API is unavailable.
@@ -143,7 +161,11 @@ export function App() {
     }
   }
 
-  useEffect(() => { void refresh() }, [])
+  useEffect(() => {
+    void refresh()
+    const timer = window.setInterval(() => { void refresh() }, 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }) }, [page])
 
   const updated = boardMeta.as_of ? new Date(boardMeta.as_of) : null
@@ -194,6 +216,7 @@ export function App() {
       {page === 'forecast' && <>
         <Hero weekName={weekName} updated={updated} games={weekGames.length} onRefresh={refresh} loading={loading} />
         <section className="content-section">
+          <div className="live-score-strip" role="status"><span><i aria-hidden="true" /> Live 2026 scores refresh every 60 seconds</span><small>{scoresUpdatedAt ? `Last checked ${scoresUpdatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Connecting to score feed'}</small></div>
           <div className="metric-grid" aria-label="Weekly forecast summary">
             <Metric icon={CalendarDays} label="Games in window" value={weekGames.length ? String(weekGames.length) : '—'} detail={`${weekName} slate`} />
             <Metric icon={Gauge} label="Average pick strength" value={weekGames.length ? pct(avgConfidence, 1) : '—'} detail="Average chance for the picked team" />
@@ -201,7 +224,7 @@ export function App() {
             <Metric icon={CircleDot} label="Tightest matchup" value={closest ? `${Math.abs(margin(closest)).toFixed(1)} pts` : '—'} detail={closest ? `${closest.away_team} at ${closest.home_team}` : 'Awaiting slate'} />
           </div>
           <BoardControls query={query} setQuery={setQuery} range={range} setRange={setRange} sort={sort} setSort={setSort} weekName={weekName} />
-          <Board days={days} mode="forecast" hasGames={chronological.length > 0} query={query} />
+          <Board days={days} mode="forecast" hasGames={chronological.length > 0} query={query} liveResults={liveResults} />
         </section>
       </>}
 
@@ -269,18 +292,18 @@ function BoardControls({ query, setQuery, range, setRange, sort, setSort, weekNa
   </section>
 }
 
-function Board({ days, mode, hasGames, query }: { days: { day: string; games: Forecast[] }[]; mode: 'forecast' | 'moneyline'; hasGames: boolean; query: string }) {
+function Board({ days, mode, hasGames, query, liveResults = {} }: { days: { day: string; games: Forecast[] }[]; mode: 'forecast' | 'moneyline'; hasGames: boolean; query: string; liveResults?: Record<number, LiveResult> }) {
   if (!hasGames) return <div className="empty-state"><Database aria-hidden="true" /><h2>No forecast published</h2><p>The board fills when the weekly run writes the public forecast file.</p></div>
   if (!days.some(day => day.games.length)) return <div className="empty-state"><Search aria-hidden="true" /><h2>No matching games</h2><p>No team matches “{query}”.</p></div>
   return <div className="forecast-board">
     {days.map(day => <section className="day-group" key={day.day}>
       <div className="day-heading"><h2>{day.day}</h2><span>{day.games.length} {day.games.length === 1 ? 'game' : 'games'}</span></div>
-      <div className="game-grid">{day.games.map(game => mode === 'forecast' ? <ForecastCard key={game.game_id} game={game} /> : <MoneylineRow key={game.game_id} game={game} />)}</div>
+      <div className="game-grid">{day.games.map(game => mode === 'forecast' ? <ForecastCard key={game.game_id} game={game} result={liveResults[game.game_id]} /> : <MoneylineRow key={game.game_id} game={game} />)}</div>
     </section>)}
   </div>
 }
 
-function ForecastCard({ game }: { game: Forecast }) {
+function ForecastCard({ game, result }: { game: Forecast; result?: LiveResult }) {
   const [expanded, setExpanded] = useState(false)
   const home = homeChance(game)
   const away = 1 - home
@@ -289,14 +312,15 @@ function ForecastCard({ game }: { game: Forecast }) {
   const projectedTotal = game.expected_home_score + game.expected_away_score
   const pickedTeam = pickHome ? game.home_team : game.away_team
   const detailsId = `game-details-${game.game_id}`
-  return <article className="game-card">
+  const statusLabel = result?.status === 'final' ? 'Final' : result?.status === 'live' ? (result.status_detail ?? `${result.clock ?? ''} · Q${result.period ?? ''}`) : timeLabel(game.kickoff)
+  return <article className={`game-card ${result?.status === 'live' ? 'is-live' : ''}`}>
     <header>
-      <div><span className="live-dot" aria-hidden="true" /><span>{timeLabel(game.kickoff)}</span></div>
+      <div><span className="live-dot" aria-hidden="true" /><span>{statusLabel}</span></div>
       <span className={`confidence ${confidence >= 0.7 ? 'high' : ''}`}>{confidenceLabel(confidence)} · {pct(confidence)}</span>
     </header>
     <div className="matchup">
-      <TeamLine team={game.away_team} score={game.expected_away_score} chance={away} picked={!pickHome} side="Away" />
-      <TeamLine team={game.home_team} score={game.expected_home_score} chance={home} picked={pickHome} side="Home" />
+      <TeamLine team={game.away_team} score={game.expected_away_score} actualScore={result?.away_points} chance={away} picked={!pickHome} side="Away" status={result?.status} />
+      <TeamLine team={game.home_team} score={game.expected_home_score} actualScore={result?.home_points} chance={home} picked={pickHome} side="Home" status={result?.status} />
     </div>
     <div className="probability-track" aria-label={`${game.away_team} ${pct(away)}, ${game.home_team} ${pct(home)}`}><i style={{ width: `${away * 100}%` }} /><i style={{ width: `${home * 100}%` }} /></div>
     <dl className="game-details">
@@ -318,11 +342,11 @@ function ForecastCard({ game }: { game: Forecast }) {
   </article>
 }
 
-function TeamLine({ team, score, chance, picked, side }: { team: string; score: number; chance: number; picked: boolean; side: string }) {
+function TeamLine({ team, score, actualScore, chance, picked, side, status }: { team: string; score: number; actualScore?: number | null; chance: number; picked: boolean; side: string; status?: LiveResult['status'] }) {
   return <div className={`team-line ${picked ? 'picked' : ''}`}>
     <span className="team-badge" aria-hidden="true">{initials(team)}</span>
     <span className="team-name"><strong>{team}</strong><small>{side}{picked ? ' · Model pick' : ''}</small></span>
-    <span className="projected-score">{score.toFixed(1)}</span>
+    <span className="projected-score" title={status && status !== 'scheduled' ? `Model projected ${score.toFixed(1)}` : 'Model projected score'}>{status && status !== 'scheduled' && actualScore != null ? actualScore.toFixed(0) : score.toFixed(1)}<small>{status && status !== 'scheduled' ? 'ACTUAL' : 'PRED'}</small></span>
     <span className="win-probability">{pct(chance)}</span>
   </div>
 }
@@ -385,7 +409,7 @@ function MethodologyPage({ model }: { model?: string }) {
         <article><span className="section-eyebrow">SCORE LAYER</span><h2>One coherent distribution</h2><p>The score head estimates each team&apos;s expected points. Historical residual covariance captures how paired scores vary around those means; the production probabilities use the resulting Gaussian approximation.</p><div className="equation"><span>Projected margin</span><strong>μ<sub>home</sub> − μ<sub>away</sub></strong></div><div className="equation"><span>Win probability</span><strong>P(margin &gt; 0)</strong></div></article>
       </section>
       <section className="guardrails"><div><ShieldCheck aria-hidden="true" /><h2>What the model refuses to do</h2></div><ul><li>It does not invent missing lines, weather, injuries, scores, or starters.</li><li>It does not use a result or line that was unavailable at forecast time.</li><li>It does not let a separate winner curve override the score distribution.</li><li>It does not activate weather or injury effects until enough graded forecasts show out-of-sample improvement.</li><li>It does not present hypothetical betting returns as realized performance.</li></ul></section>
-      <section className="training-timeline"><span className="section-eyebrow">SEASON ROLES</span><h2>Walk-forward model development</h2><div><article><strong>2000+</strong><span>Historical base</span><p>Schedules and game-level statistics establish priors and scales.</p></article><article><strong>2022–23</strong><span>Estimation</span><p>Fit the initial expected-points regression.</p></article><article><strong>2024</strong><span>Selection</span><p>Choose rating settings and regularization strength.</p></article><article><strong>2025</strong><span>Evaluation</span><p>Compare candidate systems on a later season.</p></article><article><strong>2026</strong><span>Forecast</span><p>Publish immutable weekly predictions.</p></article></div></section>
+      <section className="training-timeline"><span className="section-eyebrow">SEASON ROLES</span><h2>Walk-forward model development</h2><div><article><strong>2021</strong><span>Warmup</span><p>Initial team states are formed; these games are not used for final 2026 grading.</p></article><article><strong>2022–23</strong><span>Estimation</span><p>Fit the initial expected-points regression.</p></article><article><strong>2024</strong><span>Selection</span><p>Choose rating settings and regularization strength.</p></article><article><strong>2025</strong><span>Evaluation</span><p>Compare candidate systems on a later season.</p></article><article><strong>2026</strong><span>Forecast</span><p>Publish immutable weekly predictions.</p></article></div></section>
       <div className="disclosure"><Info aria-hidden="true" /><p><strong>Important limitation:</strong> because 2025 informed model selection, it is not a fully untouched test of the final specification. Published 2026 forecasts provide the cleanest prospective record.</p></div>
     </section>
   </>
