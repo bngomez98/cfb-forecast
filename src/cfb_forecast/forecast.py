@@ -9,13 +9,16 @@ import pandas as pd
 from .config import StateConfig
 from .data import load_data, timestamp, sha256
 from .features import observations, pregame_history, load_history_facts
-from .ratings import DynamicRatings, build_features
+from .ratings import DynamicRatings, build_features, early_season
 from .model import load_model, ScoreHead
 from .market import market_at_cutoff, market_history_summary, read_market_history
 from .availability import availability_snapshot
 from .decision import moneyline_diagnostics
 from .forecast_model import METHOD, ForecastModel, known_future_matrix, rest_days
 from .paths import database_path
+
+
+LOCATION_HEAD = "location_head.json"
 
 
 class SnapshotReplayRequired(ValueError):
@@ -36,7 +39,7 @@ def _known_frame(games, schedules, market_rows, extra):
     return frame
 
 
-def _project_rows(targets, means, fitted, covariance, schedules, market_rows, history_rows, extra, draws, metadata, history=None):
+def _project_rows(targets, means, fitted, covariance, schedules, market_rows, history_rows, extra, metadata, history=None):
     known = known_future_matrix(_known_frame(targets, schedules, market_rows, extra))
     projected = fitted.apply(
         means,
@@ -44,7 +47,6 @@ def _project_rows(targets, means, fitted, covariance, schedules, market_rows, hi
         covariance,
         market_rows,
         targets.game_id.astype(int).tolist(),
-        draws=draws,
         history=history,
     )
     rows = []
@@ -184,7 +186,7 @@ def forecast(
     state.advance(at)
     F = np.stack(
         [
-            state.features(r.home_id, r.away_id, r.neutral_site, int(r.week) <= 4)
+            state.features(r.home_id, r.away_id, r.neutral_site, early_season(r))
             for r in targets.itertuples(index=False)
         ]
     )
@@ -214,7 +216,8 @@ def forecast(
     fitted = ForecastModel.fit(
         past_location,
         Y[fit_mask][:, :, 0],
-        known_future_matrix(_known_frame(past_games, population, past_market, None)),
+        # Rest days count every earlier kickoff, including games against non-FBS teams.
+        known_future_matrix(_known_frame(past_games, schedules, past_market, None)),
         (past_games.home_points.to_numpy() > past_games.away_points.to_numpy()).astype(int),
         weeks=past_games.season.astype(str) + "-" + past_games.week.astype(str),
         history=history_past,
@@ -232,18 +235,16 @@ def forecast(
             if market is not None and not market.empty
             else {"market_snapshot_count": 0}
         )
-    draw_count = int(min(max(int(draws), 1000), 8000))
     history_future = pregame_history(targets, data_root, past, database=database_path())
     rows = _project_rows(
         targets,
         mu,
         fitted,
         model["score_covariance"],
-        population,
+        schedules,
         market_rows,
         history_rows,
         known_future,
-        draw_count,
         {
             "as_of": at.isoformat(),
             "latest_result_available_at": state.latest_update.isoformat() if state.latest_update is not None else None,
@@ -263,6 +264,7 @@ def forecast(
     market_file = market_archive["market_file"]
     (out / "forecasts.json").write_text(json.dumps(rows, indent=2))
     (out / "forecast_model.json").write_text(json.dumps(fitted.to_dict(), indent=2))
+    (out / LOCATION_HEAD).write_text(json.dumps(live_head.to_dict(), indent=2))
     pd.DataFrame(rows).to_csv(out / "forecasts.csv", index=False)
     distribution_files = []
     if save_distribution:
@@ -397,11 +399,15 @@ def advance_forecast_snapshot(
     state.advance(at)
     F = np.stack(
         [
-            state.features(r.home_id, r.away_id, r.neutral_site, int(r.week) <= 4)
+            state.features(r.home_id, r.away_id, r.neutral_site, early_season(r))
             for r in targets.itertuples(index=False)
         ]
     )
-    mu = ScoreHead.from_dict(model["head"]).predict(F)
+    # The forecast that saved this state refit its score head on every result
+    # before its cutoff; reuse that head so no-new-result advances match a replay.
+    saved_head = prev / LOCATION_HEAD
+    head = ScoreHead.from_dict(json.loads(saved_head.read_text())) if saved_head.exists() else ScoreHead.from_dict(model["head"])
+    mu = head.predict(F)
     market = read_market_history(market_path) if market_path else None
     prior_count = int(pd.read_csv(prev / "forecasts.csv").prior_fbs_games.iloc[0])
     saved_model = prev / "forecast_model.json"
@@ -419,8 +425,12 @@ def advance_forecast_snapshot(
             if market is not None and not market.empty
             else {"market_snapshot_count": 0}
         )
-    draw_count = int(min(max(int(draws), 1000), 8000))
-    completed = schedules[schedules.result_usable & (schedules.result_available_at < at)]
+    completed = schedules[
+        schedules.fbs_game
+        & schedules.season.between(model["warmup_season"], season)
+        & schedules.result_usable
+        & (schedules.result_available_at < at)
+    ]
     history_future = pregame_history(targets, data_root, completed, database=database_path())
     rows = _project_rows(
         targets,
@@ -431,7 +441,6 @@ def advance_forecast_snapshot(
         market_rows,
         history_rows,
         None,
-        draw_count,
         {
             "as_of": at.isoformat(),
             "latest_result_available_at": state.latest_update.isoformat() if state.latest_update is not None else None,
@@ -448,6 +457,7 @@ def advance_forecast_snapshot(
     market_archive = archive_market(market_path, out)
     (out / "forecasts.json").write_text(json.dumps(rows, indent=2))
     (out / "forecast_model.json").write_text(json.dumps(fitted.to_dict(), indent=2))
+    (out / LOCATION_HEAD).write_text(json.dumps(head.to_dict(), indent=2))
     pd.DataFrame(rows).to_csv(out / "forecasts.csv", index=False)
     distribution_files = []
     if save_distribution:

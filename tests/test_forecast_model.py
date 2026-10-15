@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -28,7 +30,7 @@ def test_koopman_shift_follows_known_future_and_logistic_picks_the_higher_score(
     favored = location[:1] + 0
     known_row = np.zeros((1, 9))
     known_row[0, 0] = known[:, 0].mean() + 2 * known[:, 0].std()
-    out = model.apply(favored, known_row, [[36, 4], [4, 36]], [{}], [11], draws=500)
+    out = model.apply(favored, known_row, [[36, 4], [4, 36]], [{}], [11])
     assert out[0]["distribution_method"] == "forecast_model"
     assert out[0]["win_link"] == "logistic"
     assert 0 < out[0]["home_win_probability"] < 1
@@ -47,20 +49,27 @@ def test_partial_known_future_is_filled_and_scores_stay_inside_observed_bounds()
     model = ForecastModel.fit(location, actual, known, wins)
     extreme = np.array([[200.0, -20.0]])
     blank = np.full((1, 9), np.nan)
-    out = model.apply(extreme, blank, [[25, 2], [2, 25]], [{}], [4], draws=200)
+    out = model.apply(extreme, blank, [[25, 2], [2, 25]], [{}], [4])
     assert model.score_low[0] <= out[0]["expected_home_score"] <= model.score_high[0]
     assert model.score_low[1] <= out[0]["expected_away_score"] <= model.score_high[1]
 
 
-def test_monte_carlo_spread_prices_sum_and_market_sign_matches_the_margin():
+def test_spread_and_total_prices_are_calculated_directly_without_simulation():
+    from scipy.stats import norm
+
     model = ForecastModel.identity()
     means = np.array([[31.0, 21.0]])
-    out = model.apply(means, np.zeros((1, 9)), [[49, 6], [6, 49]], [{"home_spread": -7.0, "total_line": 52.0}], [9], draws=2000)
+    out = model.apply(means, np.zeros((1, 9)), [[49, 6], [6, 49]], [{"home_spread": -7.0, "total_line": 52.0}], [9])
     row = out[0]
     assert row["model_spread"] == pytest.approx(-10.0)
-    assert row["home_cover_probability"] + row["away_cover_probability"] + row["spread_push_probability"] == pytest.approx(1)
-    assert row["over_probability"] + row["under_probability"] + row["total_push_probability"] == pytest.approx(1)
-    assert row["monte_carlo_draws"] == 2000
+    margin_sd = np.sqrt(49 + 49 - 2 * 6)
+    total_sd = np.sqrt(49 + 49 + 2 * 6)
+    # Whole-number lines: a 7-point win and a 52-point total are pushes.
+    assert row["home_cover_probability"] == pytest.approx(norm.sf((7.5 - 10.0) / margin_sd))
+    assert row["spread_push_probability"] == pytest.approx(norm.cdf((7.5 - 10.0) / margin_sd) - norm.cdf((6.5 - 10.0) / margin_sd))
+    assert row["over_probability"] == pytest.approx(norm.sf((52.5 - 52.0) / total_sd))
+    assert row["under_probability"] == pytest.approx(norm.cdf((51.5 - 52.0) / total_sd))
+    assert "monte_carlo_draws" not in row
 
 
 def test_rest_uses_only_the_previous_kickoff():
@@ -219,21 +228,92 @@ def test_database_team_facts_enter_the_pregame_rates(tmp_path):
     assert matrix[1, 4] == pytest.approx(7.2)
 
 
-def test_previous_season_uses_every_recorded_game(tmp_path):
+def test_pregame_history_replays_bowl_games_after_the_regular_season(tmp_path):
     from cfb_forecast.features import pregame_history
 
-    completed = pd.DataFrame({
-        "game_id": [1, 2, 3],
-        "season": [2024, 2024, 2025],
-        "week": [1, 2, 1],
-        "home_id": [10, 10, 10],
-        "away_id": [20, 30, 40],
-        "home_points": [10.0, 30.0, 21.0],
-        "away_points": [7.0, 14.0, 17.0],
-        "start_date": pd.to_datetime(["2024-09-01T18:00:00Z", "2024-09-08T18:00:00Z", "2025-09-01T18:00:00Z"]),
-    })
+    # Postseason games restart week numbering at 1; the December bowl must not
+    # feed the same team's September week-3 rates.
+    completed = pd.DataFrame(
+        {
+            "game_id": [1, 2, 3],
+            "season": [2025, 2025, 2025],
+            "week": [1, 1, 3],
+            "season_type": ["regular", "postseason", "regular"],
+            "home_id": [10, 10, 10],
+            "away_id": [20, 40, 30],
+            "home_points": [35.0, 70.0, 21.0],
+            "away_points": [10.0, 0.0, 28.0],
+            "start_date": pd.to_datetime(
+                ["2025-09-01T18:00:00Z", "2025-12-20T18:00:00Z", "2025-09-15T18:00:00Z"]
+            ),
+        }
+    )
     matrix = pregame_history(completed, tmp_path, completed)
-    assert matrix is not None
-    assert np.isnan(matrix[0, 0])
-    assert matrix[1, 0] == pytest.approx(10.0)
-    assert matrix[2, 0] == pytest.approx(20.0)
+    assert matrix[2, 0] == pytest.approx(35.0)
+    assert matrix[1, 0] == pytest.approx(0.92 * 35.0 + 0.08 * 21.0)
+
+
+def test_postseason_week_one_is_not_early_season():
+    from types import SimpleNamespace
+    from cfb_forecast.ratings import early_season
+
+    assert early_season(SimpleNamespace(week=2, season_type="regular"))
+    assert not early_season(SimpleNamespace(week=1, season_type="postseason"))
+    assert not early_season(SimpleNamespace(week=7, season_type="regular"))
+    assert early_season(SimpleNamespace(week=3))
+
+
+def test_rest_days_count_games_against_non_fbs_opponents():
+    schedule = pd.DataFrame(
+        {
+            "game_id": [1, 2, 3],
+            "home_id": [1, 1, 1],
+            "away_id": [2, 99, 3],
+            "start_date": pd.to_datetime(
+                ["2025-09-01T18:00:00Z", "2025-09-08T18:00:00Z", "2025-09-15T18:00:00Z"]
+            ),
+            "fbs_game": [True, False, True],
+        }
+    )
+    rested = rest_days(schedule[schedule.game_id == 3], schedule)
+    assert rested.home_rest_days.iloc[0] == pytest.approx(7)
+
+
+def test_season_backtest_forecasts_bowls_separately_from_week_one(monkeypatch, tmp_path):
+    import cfb_forecast.season_backtest as season_backtest
+
+    schedule = pd.DataFrame(
+        {
+            "game_id": [1, 2],
+            "season": [2025, 2025],
+            "week": [1, 1],
+            "season_type": ["regular", "postseason"],
+            "start_date": pd.to_datetime(["2025-08-30T18:00:00Z", "2025-12-20T18:00:00Z"]),
+            "fbs_game": [True, True],
+            "completed": [True, True],
+            "home_points": [30.0, 24.0],
+            "away_points": [20.0, 27.0],
+        }
+    )
+    calls = []
+
+    def fake_forecast(**kwargs):
+        calls.append((kwargs["as_of"], kwargs["target_game_ids"]))
+        Path(kwargs["out_root"]).mkdir(parents=True, exist_ok=True)
+        return pd.DataFrame(
+            {
+                "game_id": kwargs["target_game_ids"],
+                "home_win_probability": 0.6,
+                "expected_home_score": 28.0,
+                "expected_away_score": 21.0,
+                "projected_home_margin": 7.0,
+                "projected_total": 49.0,
+            }
+        )
+
+    monkeypatch.setattr(season_backtest, "load_data", lambda root: (schedule, None, None))
+    monkeypatch.setattr(season_backtest, "forecast", fake_forecast)
+    reports, summary = season_backtest.run_season_backtest(tmp_path, tmp_path, tmp_path, 2025, lead_hours=48)
+    assert [ids for _, ids in calls] == [[1], [2]]
+    assert pd.Timestamp(calls[1][0]) == pd.Timestamp("2025-12-18T18:00:00Z")
+    assert summary["games"] == 2

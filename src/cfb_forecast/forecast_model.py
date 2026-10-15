@@ -6,8 +6,9 @@ market line, the total, rest, weather, and reported injuries), shift that
 location through one Koopman map. Partial values are filled from the games
 that already have them. Games in the same week are reconciled toward that
 week's slate. The shifted location is the Gaussian mean and the Poisson
-rate. The win probability is the logistic of that margin. Spread prices are
-Monte Carlo frequencies of integer scores drawn from that Gaussian.
+rate. The win probability is the logistic of that margin. Spread and total
+probabilities are calculated directly from that Gaussian, with continuity
+corrections for whole-number lines. No scores are simulated.
 """
 
 from __future__ import annotations
@@ -18,11 +19,11 @@ from scipy.special import expit
 from sklearn.linear_model import LogisticRegression
 
 from .analytic import score_summary
-from .simulate import checked_covariance, game_seed, win_probability
+from .simulate import checked_covariance, win_probability
 
 METHOD = (
     "hierarchical state, historical team and player rates, known-future Koopman map, "
-    "Gaussian scores, Poisson rates, logistic win probability, Monte Carlo spread"
+    "Gaussian scores, Poisson rates, logistic win probability, direct Gaussian spread and total"
 )
 HISTORY_COLUMNS = (
     "home_points_for",
@@ -337,7 +338,7 @@ class ForecastModel:
         design = (completed - self.input_center) / self.input_scale
         return design @ self.input_koopman
 
-    def apply(self, location, known_future, covariance, market_rows, game_ids, draws=4000, history=None):
+    def apply(self, location, known_future, covariance, market_rows, game_ids, history=None):
         location = np.asarray(location, float)
         known = np.asarray(known_future, float)
         covariance = checked_covariance(covariance)
@@ -367,26 +368,5 @@ class ForecastModel:
             summary["distribution_method"] = "forecast_model"
             summary["score_model"] = "gaussian_location_poisson_rate"
             summary["win_link"] = "logistic" if self.logistic_ready else "gaussian"
-            summary["monte_carlo_draws"] = int(draws)
-            if draws:
-                seed = game_seed(int(game_id))
-                samples = np.random.default_rng(seed).multivariate_normal(means, covariance, size=int(draws))
-                integer_margin = np.rint(samples[:, 0]).clip(min=0) - np.rint(samples[:, 1]).clip(min=0)
-                spread = market.get("home_spread")
-                if spread is not None and _finite(spread) is not None:
-                    threshold = -float(spread)
-                    home = float(np.mean(integer_margin > threshold))
-                    away = float(np.mean(integer_margin < threshold))
-                    summary["home_cover_probability"] = home
-                    summary["away_cover_probability"] = away
-                    summary["spread_push_probability"] = 1.0 - home - away
-                line = market.get("total_line")
-                if line is not None and _finite(line) is not None:
-                    total = np.rint(samples).clip(min=0).sum(axis=1)
-                    over = float(np.mean(total > float(line)))
-                    under = float(np.mean(total < float(line)))
-                    summary["over_probability"] = over
-                    summary["under_probability"] = under
-                    summary["total_push_probability"] = 1.0 - over - under
             rows.append(summary)
         return rows
