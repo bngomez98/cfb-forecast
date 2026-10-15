@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 
 from .data import load_data, normalize_schedule, sha256, timestamp
-from .forecast import forecast, advance_forecast_snapshot
+from .forecast import forecast, advance_forecast_snapshot, SnapshotReplayRequired
 from .holdout import freeze_holdout, settle_holdout, verify_holdout
 from .evaluate import metrics
 
@@ -179,9 +179,7 @@ def run_chronological_update(data_root, model_root, ledger_root, season: int,
                     save_distribution=True,
                     target_game_ids=due.game_id.astype(int).tolist(),
                 )
-            except ValueError as exc:
-                if "result(s) became available" not in str(exc):
-                    raise
+            except SnapshotReplayRequired:
                 shutil.rmtree(work)
                 work.mkdir(parents=True)
     if pred is None:

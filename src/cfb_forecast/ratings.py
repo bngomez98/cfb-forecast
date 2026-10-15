@@ -74,6 +74,10 @@ class DynamicRatings:
             self.cov[j] = (self.cov[j]+self.cov[j].T)/2
         self.latest_update = at
 
+def early_season(game):
+    """Weeks 1-4 of the regular season. Postseason games restart week numbering at 1."""
+    return int(game.week) <= 4 and str(getattr(game, "season_type", "regular")).lower() != "postseason"
+
 def cutoff_for_games(games, explicit=None):
     # Weekly Monday 00:00 UTC; optional verified archived forecast timestamps.
     dates = games.start_date
@@ -108,7 +112,7 @@ def build_features(games, Y, center, scale, config, explicit=None, warmup=2021):
         if typ==1:
             if states.latest_update is not None and states.latest_update >= at:
                 raise AssertionError("Result at or after forecast cutoff entered ratings")
-            F[k] = states.features(r.home_id,r.away_id,r.neutral_site,int(r.week)<=4)
+            F[k] = states.features(r.home_id,r.away_id,r.neutral_site,early_season(r))
             latest[k] = states.latest_update
         else:
             states.update(r.home_id,r.away_id,r.neutral_site,Y[k],at)

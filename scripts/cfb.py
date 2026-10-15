@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -12,9 +13,15 @@ ARTIFACTS = ROOT / "artifacts"
 
 
 def docker_run(image: str, command: list[str], writable_data: bool = False) -> None:
+    docker = shutil.which("docker")
+    if docker is None:
+        raise RuntimeError(
+            "Docker is unavailable in this environment. Start Docker Desktop, enable "
+            "Settings > Resources > WSL Integration for this distro, then reopen WSL."
+        )
     data_mode = "rw" if writable_data else "ro"
     args = [
-        "docker", "run", "--rm",
+        docker, "run", "--rm",
         "-v", f"{DATA}:/app/data:{data_mode}",
         "-v", f"{ARTIFACTS}:/app/artifacts:rw",
         image,

@@ -17,7 +17,7 @@ def normalize_market_history(frame, default_provider="unspecified", source=None)
     require_columns(frame, ["game_id", "observed_at"], "market snapshots")
     f = frame.copy()
     f["game_id"] = pd.to_numeric(f.game_id, errors="raise").astype("int64")
-    f["observed_at"] = pd.to_datetime(f.observed_at, utc=True, errors="raise")
+    f["observed_at"] = pd.to_datetime(f.observed_at, utc=True, errors="raise", format="mixed")
     if "provider" not in f:
         f["provider"] = default_provider
     f["provider"] = f.provider.fillna(default_provider).astype(str).str.strip()
@@ -200,16 +200,51 @@ def capture_sportsdataverse_snapshot(season, store_path, observed_at=None):
     return append_market_history(store_path,snap,default_provider="sportsdataverse_espn_resolved",source=url)
 
 
-def backfill_sportsdataverse_closing(seasons, out_path):
+def closing_lines(path):
+    """Closing spread and total per game from the backfilled benchmark table.
+
+    These are the last lines before kickoff. They are pregame facts for games
+    that have already been played, so the forecast uses them only for completed
+    games it learns from, never for the games it is forecasting.
+    """
+    path = Path(path) if path else None
+    if path is None or not path.exists():
+        return {}
+    raw = pd.read_csv(path)
+    if raw.empty or not {"game_id", "home_team_spread", "over_under"}.issubset(raw.columns):
+        return {}
+    if "game_spread_available" in raw:
+        raw = raw[raw.game_spread_available.astype(str).str.lower().isin(["true", "1"])]
+    lines = {}
+    for row in raw.drop_duplicates("game_id", keep="last").itertuples(index=False):
+        values = {}
+        for name, value in (("home_spread", row.home_team_spread), ("total_line", row.over_under)):
+            number = pd.to_numeric(value, errors="coerce")
+            if pd.notna(number) and np.isfinite(number):
+                values[name] = float(number)
+        if values:
+            lines[int(row.game_id)] = values
+    return lines
+
+
+def backfill_sportsdataverse_closing(seasons, out_path, skip_missing=False):
     """Download public resolved historical lines as a benchmark-only table.
 
     Historical rows are not assigned observed_at and must never be used as
-    point-in-time forecast inputs. They are closing/resolved market benchmarks.
+    point-in-time forecast inputs. They are closing/resolved market benchmarks;
+    the forecast reads them only for games that were already played.
     """
+    import urllib.error
     rows=[]; retrieved=datetime.now(timezone.utc).isoformat()
     for season in seasons:
         url=f"https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_cfb_betting/betting_{int(season)}.csv"
-        f=_download_csv(url).copy(); f["retrieved_at"]=retrieved; f["source_url"]=url; rows.append(f)
+        try:
+            f=_download_csv(url).copy()
+        except urllib.error.HTTPError as exc:
+            if skip_missing and exc.code==404:
+                continue
+            raise
+        f["retrieved_at"]=retrieved; f["source_url"]=url; rows.append(f)
     out=pd.concat(rows,ignore_index=True) if rows else pd.DataFrame()
     path=Path(out_path); path.parent.mkdir(parents=True,exist_ok=True); out.to_csv(path,index=False)
     return out

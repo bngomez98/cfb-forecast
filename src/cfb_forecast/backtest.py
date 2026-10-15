@@ -62,6 +62,8 @@ def run_backtest(data_root,out_root,archive_path=None,warmup=2021,train_start=20
     for year in range(warmup,test+1):
         if not (games.season==year).any():
             raise ValueError(f"No completed FBS-v-FBS games for required season {year}")
+    from .training_audit import save_training_audit
+    save_training_audit(out, games, summaries, paths, warmup, train_start, validation, test)
     Y=observations(games,summaries); center,scale=normalization(Y,games.season.eq(warmup).to_numpy())
     train=games.season.between(train_start,validation-1).to_numpy()
     val=games.season.eq(validation).to_numpy(); te=games.season.eq(test).to_numpy()
@@ -84,7 +86,7 @@ def run_backtest(data_root,out_root,archive_path=None,warmup=2021,train_start=20
                     p=win_probability(val_mu,sigma)
                     scores=metrics((Y[val,0,0]>Y[val,1,0]).astype(int),p)
                     trials.append({"variant":variant,"q":q,"carry":carry,"alpha":alpha,**scores})
-            print(f"computed chronological features q={q} carry={carry}",flush=True)
+            print(f"computed prior-result features q={q} carry={carry}",flush=True)
     pd.DataFrame(trials).to_csv(out/"validation_trials.csv",index=False)
     selected={v:min((r for r in trials if r["variant"]==v),key=lambda r:r["log_loss"]) for v in ("score","pbp")}
     chosen_variant=min(selected,key=lambda v:selected[v]["log_loss"])

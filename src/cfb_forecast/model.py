@@ -11,12 +11,18 @@ class ScoreHead:
         self.variant=variant; self.alpha=float(alpha); self.cols=feature_columns(variant)
         self.scaler=StandardScaler(); self.regressor=Ridge(alpha=self.alpha)
 
-    def fit(self,F,Y,mask):
+    def fit(self,F,Y,mask,sample_weight=None):
         x=F[mask][:,:,self.cols].reshape(-1,len(self.cols))
         y=Y[mask,:,0].reshape(-1)
         if len(y)<100 or not np.isfinite(x).all() or not np.isfinite(y).all():
             raise ValueError("Need at least 50 completed games with finite pregame features to fit")
-        self.regressor.fit(self.scaler.fit_transform(x),y)
+        weights=None
+        if sample_weight is not None:
+            game_weights=np.asarray(sample_weight,dtype=float)[mask]
+            if len(game_weights)!=int(mask.sum()) or not np.isfinite(game_weights).all() or (game_weights<=0).any():
+                raise ValueError("sample_weight must contain one positive finite value per game")
+            weights=np.repeat(game_weights,2)
+        self.regressor.fit(self.scaler.fit_transform(x),y,sample_weight=weights)
         return self
 
     def predict(self,F):
