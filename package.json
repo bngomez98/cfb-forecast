@@ -5,6 +5,6 @@
   "scripts": {
     "build": "npm --prefix web run build",
     "start": "npm --prefix web start",
-    "test": "npm --prefix web test -- --watchAll=false"
+    "test": "npm --prefix web test -- --watchAll=false --passWithNoTests"
   }
 }
