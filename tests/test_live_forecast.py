@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from cfb_forecast.live_forecast import forecast_live_2026, load_matchup_input
+from cfb_forecast.modeling.live_forecast import forecast_live_2026, load_matchup_input
 
 
 def live_payload():

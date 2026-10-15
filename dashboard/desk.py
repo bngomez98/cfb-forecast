@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from cfb_forecast.paths import data_root, model_root
-from cfb_forecast.pipeline_status import STAGES
+from cfb_forecast.pipeline.pipeline_status import STAGES
 
 def read_json(path, default=None):
     try:

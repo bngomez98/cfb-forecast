@@ -214,7 +214,7 @@ The Sunday workflow saves the downloaded data, models, past predictions and repo
 | `artifacts/cfb_forecast.sqlite` | The database: published forecasts in `forecast_log`, model versions in `learning_versions` and `training_examples`, and source records in `source_registry`, `source_retrievals` and `source_files`. The schema is `sql/schema.sql`. |
 | `artifacts/logs/datadog.jsonl` | One log line each time a forecast is published |
 
-Every completed run publishes the same forecast to the database, `artifacts/latest/forecast_board.json`, the website file, the dashboard's forecast log, the Datadog log file, and an email to `bngomez@ieee.org`. The email is sent only when `CFB_SMTP_HOST` and `CFB_SMTP_PASSWORD` are set, and Datadog receives the log only when `DD_API_KEY` is set (through `datadog/conf.yaml`). Otherwise both are kept on disk.
+Every completed run publishes the same forecast to the database, `artifacts/latest/forecast_board.json`, the website file, the dashboard's forecast log, the Datadog log file, and an email to `bngomez@ieee.org`. The email is sent only when `CFB_SMTP_HOST` and `CFB_SMTP_PASSWORD` are set, and Datadog receives the log only when `DD_API_KEY` is set (through `deploy/datadog/conf.yaml`). Otherwise both are kept on disk.
 
 To publish an existing run again without recalculating it:
 
