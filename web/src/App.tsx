@@ -57,6 +57,8 @@ type Board = {
   run_id?: string
 }
 type Validation = { status: string; games?: number; log_loss?: number; brier?: number; margin_mae?: number }
+type LearningResponse = { versions?: Array<Validation & { metrics?: Validation }> }
+type PipelineResponse = { manifest?: { run_id?: string; season?: number; as_of?: string }; learning?: Validation | null }
 type Page = 'forecast' | 'moneylines' | 'methodology' | 'data'
 type Range = 'week' | 'all'
 type Sort = 'kickoff' | 'confidence' | 'margin'
@@ -148,12 +150,25 @@ export function App() {
       const firstKickoff = board.forecasts.length ? new Date(Math.min(...board.forecasts.map(game => new Date(game.kickoff).getTime()))) : new Date()
       const start = new Date(Math.max(firstKickoff.getTime(), Date.now() - DAY))
       const end = new Date(start.getTime() + 8 * DAY)
-      const response = await fetch(`/api/live-results?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`, { cache: 'no-store' })
-      if (!response.ok) throw new Error(`Score service returned ${response.status}`)
-      const data = await response.json() as { updated_at?: string; results?: LiveResult[] }
+      const [scores, learning, pipeline] = await Promise.all([
+        fetch(`/api/live-results?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`, { cache: 'no-store' }),
+        fetch('/api/learning', { cache: 'no-store' }),
+        fetch('/api/pipeline', { cache: 'no-store' }),
+      ])
+      if (!scores.ok) throw new Error(`Score service returned ${scores.status}`)
+      const data = await scores.json() as { updated_at?: string; results?: LiveResult[] }
       if (!Array.isArray(data.results)) throw new Error('Score service returned an invalid result set')
       setLiveResults(Object.fromEntries(data.results.map(result => [result.game_id, result])))
       if (data.updated_at) setScoresUpdatedAt(new Date(data.updated_at))
+      if (learning.ok) {
+        const learningData = await learning.json() as LearningResponse
+        const latest = learningData.versions?.[0]
+        if (latest) setValidation(latest.metrics ?? latest)
+      }
+      if (pipeline.ok) {
+        const pipelineData = await pipeline.json() as PipelineResponse
+        if (pipelineData.learning) setValidation(pipelineData.learning)
+      }
     } catch (error) {
       setDataError(error instanceof Error ? error.message : 'Football data could not be loaded')
     } finally {
