@@ -250,7 +250,8 @@ def test_pregame_history_replays_bowl_games_after_the_regular_season(tmp_path):
     )
     matrix = pregame_history(completed, tmp_path, completed)
     assert matrix[2, 0] == pytest.approx(35.0)
-    assert matrix[1, 0] == pytest.approx(0.92 * 35.0 + 0.08 * 21.0)
+    # The bowl sees both regular-season games, averaged (35 and 21 points).
+    assert matrix[1, 0] == pytest.approx((35.0 + 21.0) / 2)
 
 
 def test_postseason_week_one_is_not_early_season():
