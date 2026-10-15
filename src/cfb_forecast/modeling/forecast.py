@@ -80,25 +80,23 @@ def _project_rows(targets, means, fitted, covariance, schedules, market_rows, hi
 
 
 def _out_of_fold_location(model, features, observed, mask, weights, seasons):
-    """Score locations for completed games, each from a head fitted without that game's season.
+    """Walk-forward locations using strictly earlier seasons to fit each head.
 
-    The line, rest and team-rate adjustments and the win-chance curve are fitted
-    on how far real scores landed from these locations. A head that had already
-    seen a game sits closer to its score than it would for a new game, which
-    makes the adjustments too small and the curve too sure of itself. Holding
-    out one season at a time keeps every location a genuine out-of-sample one.
-    Returns None when a season cannot be held out with enough games left.
+    Initial seasons without 50 earlier eligible games remain NaN. They can
+    train later heads, but must not train the residual adjustment on fitted
+    values or values learned from a future season.
     """
     rows = np.flatnonzero(mask)
     held = seasons[rows]
-    location = np.empty((len(rows), 2))
+    location = np.full((len(rows), 2), np.nan)
     for season in np.unique(held):
         hold = np.zeros(len(mask), dtype=bool)
         hold[rows[held == season]] = True
-        train = mask & ~hold
+        train = mask & (seasons < season)
         if int(train.sum()) < 50:
-            return None
-        head = ScoreHead(model["variant"], model["head"]["alpha"]).fit(features, observed, train, weights)
+            continue
+        fold_weights = weights / np.max(weights[train])
+        head = ScoreHead(model["variant"], model["head"]["alpha"]).fit(features, observed, train, fold_weights)
         location[held == season] = head.predict(features[hold])
     return location
 
@@ -221,21 +219,19 @@ def forecast(
     )
     fit_mask = np.isfinite(historical_F).all(axis=(1, 2)) & np.isfinite(Y).all(axis=(1, 2))
     if int(fit_mask.sum()) < 50:
-        raise ValueError("At least 50 completed historical games are required for a live score-head fit")
+        raise ValueError("At least 50 completed historical games are required for forecast history")
     age_days = (at - pd.to_datetime(past.result_available_at, utc=True)).dt.total_seconds().to_numpy() / 86400.0
     decay = float(model.get("reinforcement_decay", 0.002))
-    live_head = ScoreHead(model["variant"], model["head"]["alpha"]).fit(
-        historical_F, Y, fit_mask, np.exp(-decay * np.maximum(age_days, 0.0))
-    )
+    # The learning stage owns score-head promotion. Refitting here would bypass
+    # its holdout gate; the Bayesian team state above still updates every result.
+    live_head = ScoreHead.from_dict(model["head"])
     mu = live_head.predict(F)
     market = read_market_history(market_path) if market_path else None
     past_location = _out_of_fold_location(
         model, historical_F, Y, fit_mask, np.exp(-decay * np.maximum(age_days, 0.0)), past.season.to_numpy()
     )
-    location_fit = "out_of_fold_by_season"
-    if past_location is None:
-        past_location = live_head.predict(historical_F[fit_mask])
-        location_fit = "in_sample"
+    location_fit = "walk_forward_by_season"
+    adjustment_mask = np.isfinite(past_location).all(axis=1)
     past_games = past.loc[fit_mask].reset_index(drop=True)
     # Completed games learn from the last line before their kickoff. Captured
     # quotes come first; the backfilled closing table fills games never captured.
@@ -251,14 +247,15 @@ def forecast(
     ]
     history_past = pregame_history(past_games, data_root, past, database=database_path())
     fitted = ForecastModel.fit(
-        past_location,
-        Y[fit_mask][:, :, 0],
+        past_location[adjustment_mask],
+        Y[fit_mask][adjustment_mask][:, :, 0],
         # Rest days count every earlier kickoff, including games against non-FBS teams.
-        known_future_matrix(_known_frame(past_games, schedules, past_market, None)),
-        (past_games.home_points.to_numpy() > past_games.away_points.to_numpy()).astype(int),
-        weeks=past_games.season.astype(str) + "-" + past_games.week.astype(str),
-        history=history_past,
-    )
+        known_future_matrix(_known_frame(past_games, schedules, past_market, None))[adjustment_mask],
+        (past_games.home_points.to_numpy() > past_games.away_points.to_numpy()).astype(int)[adjustment_mask],
+        history=None if history_past is None else history_past[adjustment_mask],
+    ) if int(adjustment_mask.sum()) >= 30 else ForecastModel.identity()
+    if int(adjustment_mask.sum()) < 30:
+        location_fit = "insufficient_prior_seasons_identity_adjustment"
     market_rows = []
     history_rows = []
     for game in targets.itertuples(index=False):
@@ -289,6 +286,8 @@ def forecast(
             "model_variant": model["variant"],
             "head_training_through_season": model["training_through_season"],
             "second_stage_location": location_fit,
+            "adjustment_training_games": int(adjustment_mask.sum()),
+            "score_probability_family": "joint_gaussian",
         },
         history=history_future,
     )
@@ -339,6 +338,9 @@ def forecast(
         "latest_result_available_at": state.latest_update.isoformat(),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "distribution_files": distribution_files,
+        "score_probability_family": "joint_gaussian",
+        "forecast_model_schema": 3,
+        "adjustment_training_games": int(adjustment_mask.sum()),
         "target_game_ids": targets.game_id.astype(int).tolist(),
         "data_availability_check": avail["prospective_current_season_source_check"],
         "information_limit": "Downloaded record versions may postdate individual historical stat publication times. Prospective current-season source capture is checked separately in data_availability.json.",
@@ -441,8 +443,7 @@ def advance_forecast_snapshot(
             for r in targets.itertuples(index=False)
         ]
     )
-    # The forecast that saved this state refit its score head on every result
-    # before its cutoff; reuse that head so no-new-result advances match a replay.
+    # Reuse the exact selected head so advances match the original forecast.
     saved_head = prev / LOCATION_HEAD
     head = ScoreHead.from_dict(json.loads(saved_head.read_text())) if saved_head.exists() else ScoreHead.from_dict(model["head"])
     mu = head.predict(F)

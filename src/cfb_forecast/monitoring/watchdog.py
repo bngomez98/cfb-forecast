@@ -94,7 +94,7 @@ def watch(artifacts: str | Path, database: str | Path, model_path: str | Path | 
 def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Persist forecast artifacts in SQLite and watch for new runs")
     parser.add_argument("--artifacts", default="artifacts")
-    parser.add_argument("--database", default="artifacts/cfb_forecast.sqlite")
+    parser.add_argument("--database", default="data/cfb_forecast.sqlite")
     parser.add_argument("--model", default=None)
     parser.add_argument("--watch", action="store_true")
     parser.add_argument("--interval", type=float, default=30.0)

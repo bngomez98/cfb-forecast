@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from cfb_forecast.config import StateConfig
+from cfb_forecast.config import METRICS, StateConfig
 from cfb_forecast.storage.database import connect
 from cfb_forecast.ingest.features import feature_columns
 from cfb_forecast.modeling.learning import learn, validate_in_r
@@ -29,7 +29,7 @@ def training_files(tmp_path):
     pd.DataFrame(summaries).to_parquet(data / "adv_team_test.parquet", index=False)
     (data / "source_manifest.json").write_text("{}")
     cols = feature_columns("score")
-    model = dict(schema_version=1, variant="score", warmup_season=2021, train_start_season=2022, training_through_season=2022, center=[24, 6, 8, 5, .3], scale=[10, 1, 1, 1, .1], state_config=StateConfig().to_dict(), score_covariance=[[144, 0], [0, 144]], head=dict(variant="score", alpha=10, cols=cols, mean=[0] * len(cols), scale=[1] * len(cols), coef=[0] * len(cols), intercept=24))
+    model = dict(schema_version=1, variant="score", metric_names=list(METRICS), warmup_season=2021, train_start_season=2022, training_through_season=2022, center=[24, 6, 8, 5, .3], scale=[10, 1, 1, 1, .1], state_config=StateConfig().to_dict(), score_covariance=[[144, 0], [0, 144]], head=dict(variant="score", alpha=10, cols=cols, mean=[0] * len(cols), scale=[1] * len(cols), coef=[0] * len(cols), intercept=24))
     base = tmp_path / "base"
     write_model(base, model)
     return data, base, tmp_path / "learning", tmp_path / "model.sqlite3"
@@ -39,7 +39,7 @@ def test_sql_training_promotes_and_preserves_temporal_evidence(training_files):
     report = learn(*training_files, "2023-12-01T00:00Z")
     assert report["status"] == "promoted"
     assert report["gate_independent"] is True
-    assert report["probability_layer"] == "score_head_margin_through_fitted_logistic_curve"
+    assert report["probability_layer"] == "joint_gaussian_score_distribution"
     assert report["candidate"]["log_loss"] < report["incumbent"]["log_loss"]
     with closing(connect(training_files[-1])) as conn:
         rows = conn.execute("SELECT * FROM training_examples").fetchall()
@@ -79,6 +79,19 @@ def test_refit_that_forecasts_worse_is_retained(training_files, monkeypatch):
 def test_insufficient_results_do_not_create_candidate(training_files):
     report = learn(*training_files, "2023-08-10T00:00Z")
     assert report["status"] == "insufficient_new_results"
+    assert report["model_path"] == str(training_files[1].resolve())
+
+
+def test_refit_without_an_independent_gate_keeps_the_selected_head(training_files):
+    # Only 80 eligible games: the proposed half-split leaves fewer than 50
+    # training games and triggers the overlapping fallback.
+    model_file = training_files[1] / "model.json"
+    model = json.loads(model_file.read_text())
+    model["train_start_season"] = 2023
+    model_file.write_text(json.dumps(model))
+    report = learn(*training_files, "2023-12-01T00:00Z")
+    assert not report["gate_independent"]
+    assert report["status"] == "retained"
     assert report["model_path"] == str(training_files[1].resolve())
 
 

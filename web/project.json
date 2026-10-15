@@ -1,6 +1,6 @@
 {
   "name": "cfb-forecast-console",
-  "framework": "vite",
+  "framework": "create-react-app",
   "frontend": "react",
   "engine": "../src/cfb_forecast",
   "database": "../data/cfb_forecast.sqlite",
