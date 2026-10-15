@@ -85,6 +85,25 @@ The model is then refit through 2025 before predicting 2026, and the expected-po
 
 A separate team strength model (opponent-adjusted margins, with a 365-day half-life, an 8-game ridge penalty and a 3-point home edge) is also fitted and compared on 2025, and saved with the model when it scores better. Win chances always come from the forecasting model described above; `probability_source` in the forecast file says `forecast_model`.
 
+## Repository layout
+
+Each top-level folder has one job:
+
+| Folder | What it holds |
+|---|---|
+| `src/cfb_forecast/` | The Python package. Subfolders: `ingest/` (data collection), `modeling/` (ratings, forecast and context model), `odds/` (betting math and market lines), `evaluation/` (backtests and validation), `pipeline/` (Sunday run and publishing), `monitoring/` (data watchdog), `storage/` (SQLite). |
+| `tests/` | The pytest suite. |
+| `dashboard/` | The Streamlit dashboard and its Docker image. |
+| `web/` | The public React board, built by Vercel from `vercel.json`. |
+| `sql/` | The SQLite schema applied on connect. |
+| `r/` | The R weekly report. |
+| `scripts/` | Shell and Python helpers, grouped as `setup/` (install), `run/` (forecast and dashboard runs), `checks/` (dataset and source checks) and `workspace/` (workspace tools). |
+| `deploy/` | Deployment config: `caddy/` for the HTTPS proxy, `datadog/` for log intake, `bridge/` for Kubernetes manifests. |
+| `docs/` | `ARCHITECTURE.md` and `RESULTS.md`. |
+| `.github/` | GitHub Actions workflows and issue templates. |
+
+`Dockerfile`, `docker-compose*.yml`, `docker-bake.hcl`, `pyproject.toml` and `vercel.json` stay at the root because Docker, pip and Vercel look for them there. The CLI commands (`cfb-forecast`, `python -m cfb_forecast`) keep working after the move.
+
 ## Data sources
 
 | Source | What it provides | How it is used |
