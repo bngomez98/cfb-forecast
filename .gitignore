@@ -43,6 +43,7 @@ __pycache__/
 .pytest_tmp/
 artifacts/
 data/
+!data/source_manifest.json
 *.log
 *.pyc
 *.egg-info/
