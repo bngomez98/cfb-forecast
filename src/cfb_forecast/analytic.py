@@ -28,7 +28,8 @@ def score_summary(means, covariance, **market):
     spread = market.get("home_spread")
     if spread is not None:
         threshold = -float(spread)
-        integer = float(threshold).is_integer()
+        # A tied game goes to overtime, so a pick'em line (0) cannot push.
+        integer = float(threshold).is_integer() and threshold != 0
         lower, upper = (
             (threshold - 0.5, threshold + 0.5) if integer else (threshold, threshold)
         )
