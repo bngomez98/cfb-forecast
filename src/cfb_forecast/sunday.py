@@ -251,6 +251,14 @@ def sunday_run(
             fetch(data, [season], refresh=True)
             fetch(data, [season], raw_pbp=True)
             sync_results(data, season, work / "inputs" / "raw", timestamp(utc_now()))
+            # Closing lines teach the forecast how lines relate to final scores.
+            # Only completed games read them; upcoming games use captured quotes.
+            from .market import backfill_sportsdataverse_closing
+            backfill_sportsdataverse_closing(
+                range(HISTORY_START_SEASON, season + 1),
+                data / "market_closing_history.csv",
+                skip_missing=True,
+            )
         schedules, _, paths = load_data(data)
         now = timestamp(utc_now())
         if (schedules.completed & (schedules.start_date >= now)).any():

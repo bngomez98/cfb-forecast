@@ -317,3 +317,53 @@ def test_season_backtest_forecasts_bowls_separately_from_week_one(monkeypatch, t
     assert [ids for _, ids in calls] == [[1], [2]]
     assert pd.Timestamp(calls[1][0]) == pd.Timestamp("2025-12-18T18:00:00Z")
     assert summary["games"] == 2
+
+
+def test_pickem_line_cannot_push_because_ties_go_to_overtime():
+    model = ForecastModel.identity()
+    row = model.apply(np.array([[27.0, 24.0]]), np.zeros((1, 9)), [[49, 6], [6, 49]], [{"home_spread": 0.0}], [5])[0]
+    assert row["spread_push_probability"] == pytest.approx(0.0)
+    assert row["home_cover_probability"] == pytest.approx(row["gaussian_home_win_probability"])
+
+
+def test_closing_lines_skip_unavailable_spreads(tmp_path):
+    from cfb_forecast.market import closing_lines
+
+    path = tmp_path / "closing.csv"
+    pd.DataFrame(
+        {
+            "game_id": [1, 2],
+            "home_team_spread": [-7.5, -2.5],
+            "over_under": [55.5, 48.0],
+            "game_spread_available": [True, False],
+        }
+    ).to_csv(path, index=False)
+    assert closing_lines(path) == {1: {"home_spread": -7.5, "total_line": 55.5}}
+    assert closing_lines(tmp_path / "missing.csv") == {}
+
+
+def test_games_without_a_line_use_the_fit_that_never_saw_lines():
+    from cfb_forecast.forecast_model import KNOWN_COLUMNS, ForecastModel
+
+    rng = np.random.default_rng(7)
+    n = 400
+    location = np.column_stack([rng.normal(30, 3, n), rng.normal(25, 3, n)])
+    spread = rng.normal(-5, 8, n)
+    actual = location + np.column_stack([-spread / 2, spread / 2]) + rng.normal(0, 7, (n, 2))
+    known = np.full((n, len(KNOWN_COLUMNS)), np.nan)
+    known[:, KNOWN_COLUMNS.index("home_spread")] = spread
+    known[:, KNOWN_COLUMNS.index("home_rest_days")] = rng.integers(6, 9, n)
+    wins = (actual[:, 0] > actual[:, 1]).astype(int)
+    fitted = ForecastModel.fit(location, actual, known, wins)
+    assert "home_spread" in fitted.columns
+    assert fitted.no_line is not None and "home_spread" not in fitted.no_line.columns
+
+    target = known[:2].copy()
+    target[1, KNOWN_COLUMNS.index("home_spread")] = np.nan
+    rows = fitted.apply(location[:2], target, np.diag([100.0, 100.0]), [{}, {}], [1, 2])
+    assert rows[0]["uses_market_line"] and not rows[1]["uses_market_line"]
+    alone = fitted.no_line.apply(location[1:2], target[1:2], np.diag([100.0, 100.0]), [{}], [2])
+    assert rows[1]["projected_home_margin"] == pytest.approx(alone[0]["projected_home_margin"])
+
+    restored = ForecastModel.from_dict(fitted.to_dict())
+    assert restored.no_line is not None and restored.no_line.columns == fitted.no_line.columns

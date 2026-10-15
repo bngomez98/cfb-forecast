@@ -11,7 +11,7 @@ from .data import load_data, timestamp, sha256
 from .features import observations, pregame_history, load_history_facts
 from .ratings import DynamicRatings, build_features, early_season
 from .model import load_model, ScoreHead
-from .market import market_at_cutoff, market_history_summary, read_market_history
+from .market import closing_lines, market_at_cutoff, market_history_summary, read_market_history
 from .availability import availability_snapshot
 from .decision import moneyline_diagnostics
 from .forecast_model import METHOD, ForecastModel, known_future_matrix, rest_days
@@ -117,6 +117,7 @@ def forecast(
     target_game_ids=None,
     analytic=True,
     known_future=None,
+    closing_path=None,
 ):
     analytic = True
     save_distribution = False
@@ -206,10 +207,16 @@ def forecast(
     market = read_market_history(market_path) if market_path else None
     past_location = live_head.predict(historical_F[fit_mask])
     past_games = past.loc[fit_mask].reset_index(drop=True)
+    # Completed games learn from the last line before their kickoff. Captured
+    # quotes come first; the backfilled closing table fills games never captured.
+    closing = closing_lines(closing_path if closing_path is not None else Path(data_root) / "market_closing_history.csv")
     past_market = [
-        market_at_cutoff(market, game.game_id, game.start_date, game.start_date, provider=market_provider)
-        if market is not None and not market.empty
-        else {}
+        (
+            market_at_cutoff(market, game.game_id, game.start_date, game.start_date, provider=market_provider)
+            if market is not None and not market.empty
+            else {}
+        )
+        or closing.get(int(game.game_id), {})
         for game in past_games.itertuples(index=False)
     ]
     history_past = pregame_history(past_games, data_root, past, database=database_path())
