@@ -58,6 +58,7 @@ KNOWN_COLUMNS = (
     "home_reported_injuries",
     "away_reported_injuries",
 )
+MARKET_COLUMNS = ("home_spread", "total_line", "market_home_probability")
 RIDGE = 0.1
 MIN_GAMES = 30
 
@@ -142,6 +143,8 @@ class ForecastModel:
         self.input_center = np.zeros(0)
         self.input_scale = np.ones(0)
         self.input_koopman = np.zeros((0, 2))
+        # Fitted without betting lines, for games that have no line yet.
+        self.no_line = None
 
     def to_dict(self):
         return {
@@ -171,6 +174,7 @@ class ForecastModel:
                 if self.input_columns
                 else {}
             ),
+            **({"no_line": self.no_line.to_dict()} if self.no_line is not None else {}),
         }
 
     @classmethod
@@ -196,6 +200,8 @@ class ForecastModel:
             model.input_center = np.asarray(value["input_center"], float)
             model.input_scale = np.asarray(value["input_scale"], float)
             model.input_koopman = np.asarray(value["input_koopman"], float)
+        if value.get("no_line") is not None:
+            model.no_line = cls.from_dict(value["no_line"])
         return model
 
     @classmethod
@@ -311,6 +317,12 @@ class ForecastModel:
             model.logistic_intercept = float(link.intercept_[0])
             model.logistic_coef = float(link.coef_[0, 0])
             model.logistic_ready = True
+        if any(name in MARKET_COLUMNS for name in model.columns):
+            # A fit that leans on the line is biased when the line is missing,
+            # so games without one use a second fit that never saw lines.
+            without = known.copy()
+            without[:, [KNOWN_COLUMNS.index(name) for name in MARKET_COLUMNS]] = np.nan
+            model.no_line = cls.fit(location, actual, without, wins, weeks=weeks, history=history)
         return model
 
     def _shift(self, location, known):
@@ -341,9 +353,32 @@ class ForecastModel:
     def apply(self, location, known_future, covariance, market_rows, game_ids, history=None):
         location = np.asarray(location, float)
         known = np.asarray(known_future, float)
-        covariance = checked_covariance(covariance)
         if known.shape != (len(location), len(KNOWN_COLUMNS)):
             raise ValueError("Known-future features do not match the model columns")
+        market_index = [KNOWN_COLUMNS.index(name) for name in MARKET_COLUMNS]
+        has_line = np.isfinite(known[:, market_index]).any(axis=1)
+        if self.no_line is None or has_line.all():
+            return self._apply(location, known, covariance, market_rows, game_ids, history)
+        rows = [None] * len(location)
+        history = None if history is None else np.asarray(history, float)
+        for model, mask in [(self, has_line), (self.no_line, ~has_line)]:
+            index = np.flatnonzero(mask)
+            if not len(index):
+                continue
+            part = model._apply(
+                location[index],
+                known[index],
+                covariance,
+                [market_rows[i] for i in index],
+                [game_ids[i] for i in index],
+                None if history is None else history[index],
+            )
+            for i, row in zip(index, part):
+                rows[i] = row
+        return rows
+
+    def _apply(self, location, known, covariance, market_rows, game_ids, history=None):
+        covariance = checked_covariance(covariance)
         shifted = self._shift(location, known) + self._input_shift(history, len(location))
         if len(shifted) > 1 and self.reconcile:
             parent = shifted.mean(axis=0)
@@ -368,5 +403,6 @@ class ForecastModel:
             summary["distribution_method"] = "forecast_model"
             summary["score_model"] = "gaussian_location_poisson_rate"
             summary["win_link"] = "logistic" if self.logistic_ready else "gaussian"
+            summary["uses_market_line"] = any(name in MARKET_COLUMNS for name in self.columns)
             rows.append(summary)
         return rows
