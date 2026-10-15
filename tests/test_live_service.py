@@ -10,6 +10,7 @@ import pytest
 from cfb_forecast.modeling.analytic import score_summary
 from cfb_forecast.modeling.context_model import feature_columns
 from cfb_forecast.ingest.data import normalize_schedule, sha256
+from test_model_artifact_validation import model_value
 from cfb_forecast.odds.decision import american_to_decimal, moneyline_diagnostics
 from cfb_forecast.modeling.forecast import (
     archive_market,
@@ -127,7 +128,7 @@ def test_changed_source_requests_replay_before_loading_snapshot(tmp_path):
     for p in [prev, data, model]:
         p.mkdir()
     (model / "model.json").write_text(
-        json.dumps({"schema_version": 1, "training_through_season": 2025})
+        json.dumps({**model_value(), "training_through_season": 2025})
     )
     (data / "schedule_2026.csv").write_text("changed")
     manifest = {
@@ -348,7 +349,7 @@ def test_sunday_collects_inputs_before_validation_and_inference_and_preserves_ru
     model = tmp_path / "model"
     model.mkdir()
     (model / "model.json").write_text(
-        '{"schema_version":1,"training_through_season":2025}'
+        json.dumps({**model_value(), "training_through_season": 2025})
     )
 
     def collect(games, season, root):
