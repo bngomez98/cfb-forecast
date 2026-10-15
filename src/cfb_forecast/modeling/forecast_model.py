@@ -13,6 +13,9 @@ betting lines. No scores are simulated.
 
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass
+import math
+
 import numpy as np
 import pandas as pd
 
@@ -45,6 +48,31 @@ HISTORY_COLUMNS = (
     "home_epa",
     "away_epa",
 )
+PLAYER_METRICS = tuple(f"player_{role}_{metric}" for role in ("passing", "rushing", "receiving")
+                       for metric in ("yards_per_play", "epa", "usage_concentration"))
+HISTORY_COLUMNS += tuple(f"{side}_{metric}" for metric in PLAYER_METRICS for side in ("home", "away"))
+
+
+BASE_HISTORY_COLUMNS = HISTORY_COLUMNS
+BASE_METRICS = tuple(name.removeprefix("home_") for name in BASE_HISTORY_COLUMNS if name.startswith("home_"))
+TEMPORAL_TRANSFORMS = ("lag_1", "lag_2", "rolling_3_mean", "rolling_3_std", "rolling_5_mean", "rolling_5_std", "expanding_mean")
+TEMPORAL_COLUMNS = tuple(f"{side}_{metric}_{transform}" for metric in BASE_METRICS
+                         for transform in TEMPORAL_TRANSFORMS for side in ("home", "away"))
+HISTORY_COLUMNS += TEMPORAL_COLUMNS
+
+
+def history_matrix(values, rows):
+    """Accept legacy team-only arrays while new fits include observed player rates."""
+    if values is None:
+        return np.full((rows, len(HISTORY_COLUMNS)), np.nan)
+    array = np.asarray(values, float)
+    if array.ndim == 2 and array.shape[0] == rows and array.shape[1] in (20, len(BASE_HISTORY_COLUMNS)):
+        array = np.pad(array, ((0, 0), (0, len(HISTORY_COLUMNS) - array.shape[1])), constant_values=np.nan)
+    if array.shape != (rows, len(HISTORY_COLUMNS)):
+        raise ValueError("Historical team and player rates do not match the model columns")
+    return array
+
+
 KNOWN_COLUMNS = (
     "home_spread",
     "total_line",
@@ -59,6 +87,24 @@ KNOWN_COLUMNS = (
 MARKET_COLUMNS = ("home_spread", "total_line", "market_home_probability")
 RIDGE = 0.1
 MIN_GAMES = 30
+
+
+@dataclass(frozen=True)
+class AdjustmentConfig:
+    ridge: float = RIDGE
+    min_games: int = MIN_GAMES
+    min_feature_coverage: float = 0.2
+    use_temporal_features: bool = True
+
+    def __post_init__(self):
+        if type(self.use_temporal_features) is not bool:
+            raise ValueError("use_temporal_features must be boolean")
+        if not math.isfinite(self.ridge) or self.ridge <= 0:
+            raise ValueError("Adjustment ridge must be finite and positive")
+        if type(self.min_games) is not int or self.min_games < 30:
+            raise ValueError("Adjustment fitting requires at least 30 games")
+        if not 0 < self.min_feature_coverage <= 1:
+            raise ValueError("Feature coverage must be in (0, 1]")
 
 
 def _finite(value):
@@ -124,6 +170,7 @@ class ForecastModel:
     """Fitted parameters of the one forecasting model."""
 
     def __init__(self):
+        self.config = AdjustmentConfig()
         self.ready = False
         self.columns = []
         self.center = np.zeros(0)
@@ -150,6 +197,7 @@ class ForecastModel:
         return {
             "schema_version": 3,
             "method": METHOD,
+            "adjustment_config": asdict(self.config),
             "ready": self.ready,
             "missing_koopman": self.missing_koopman.tolist(),
             "input_missing_koopman": self.input_missing_koopman.tolist(),
@@ -183,6 +231,7 @@ class ForecastModel:
         if value.get("schema_version") not in (1, 2, 3):
             raise ValueError("Unsupported forecasting model schema")
         model = cls()
+        model.config = AdjustmentConfig(**value.get("adjustment_config", {}))
         model.ready = bool(value["ready"])
         model.missing_koopman = np.asarray(value.get("missing_koopman", []), float).reshape(-1, 2)
         model.input_missing_koopman = np.asarray(value.get("input_missing_koopman", []), float).reshape(-1, 2)
@@ -212,7 +261,7 @@ class ForecastModel:
         return cls()
 
     @classmethod
-    def fit(cls, location, actual, known_future, home_wins, weeks=None, history=None):
+    def fit(cls, location, actual, known_future, home_wins, weeks=None, history=None, config=None):
         location = np.asarray(location, float)
         actual = np.asarray(actual, float)
         known = np.asarray(known_future, float)
@@ -224,19 +273,18 @@ class ForecastModel:
         if wins.shape != (len(location),) or not np.isin(wins, [0, 1]).all():
             raise ValueError("Home wins must be a binary outcome per game")
         model = cls()
-        model.score_low = np.maximum(np.quantile(actual, 0.01, axis=0), 0.0)
-        model.score_high = np.maximum(np.quantile(actual, 0.99, axis=0), model.score_low + 1.0)
-        usable = np.isfinite(known).mean(axis=0) >= 0.2
+        model.config = config if isinstance(config, AdjustmentConfig) else AdjustmentConfig(**(config or {}))
+        usable = np.isfinite(known).mean(axis=0) >= model.config.min_feature_coverage
         model.columns = [name for name, keep in zip(KNOWN_COLUMNS, usable) if keep]
         history_values = None
         history_keep = None
         if history is not None:
-            history_values = np.asarray(history, float)
-            if history_values.shape != (len(location), len(HISTORY_COLUMNS)):
-                raise ValueError("Historical team and player rates do not match the model columns")
-            history_keep = np.isfinite(history_values).mean(axis=0) >= 0.2
+            history_values = history_matrix(history, len(location))
+            history_keep = np.isfinite(history_values).mean(axis=0) >= model.config.min_feature_coverage
+            if not model.config.use_temporal_features:
+                history_keep[len(BASE_HISTORY_COLUMNS):] = False
             model.input_columns = [name for name, keep in zip(HISTORY_COLUMNS, history_keep) if keep]
-        if (model.columns or model.input_columns) and len(location) >= MIN_GAMES:
+        if (model.columns or model.input_columns) and len(location) >= model.config.min_games:
             # A single regularized score-residual map. Missingness is observed
             # information, not an invented value of the missing football stat.
             blocks = []
@@ -261,13 +309,15 @@ class ForecastModel:
                 sections.extend([(prefix + "koopman", selected.shape[1]),
                                  (prefix + "missing_koopman", selected.shape[1])])
             design = np.concatenate(blocks, axis=1)
-            gram = design.T @ design + RIDGE * np.eye(design.shape[1])
+            gram = design.T @ design + model.config.ridge * np.eye(design.shape[1])
             coef = np.linalg.solve(gram, design.T @ (actual - location))
             offset = 0
             for name, width in sections:
                 setattr(model, name, coef[offset:offset + width])
                 offset += width
             model.ready = True
+            model.score_low = np.maximum(np.quantile(actual, 0.01, axis=0), 0.0)
+            model.score_high = np.maximum(np.quantile(actual, 0.99, axis=0), model.score_low + 1.0)
         # No slate-mean shrinkage: unrelated games cannot change a matchup.
         # Legacy logistic/reconciliation fields remain readable, but do not
         # override the score distribution or create a second winner model.
@@ -276,7 +326,7 @@ class ForecastModel:
             # so games without one use a second fit that never saw lines.
             without = known.copy()
             without[:, [KNOWN_COLUMNS.index(name) for name in MARKET_COLUMNS]] = np.nan
-            model.no_line = cls.fit(location, actual, without, wins, weeks=weeks, history=history)
+            model.no_line = cls.fit(location, actual, without, wins, weeks=weeks, history=history, config=model.config)
         return model
 
     def _shift(self, location, known):
@@ -294,12 +344,9 @@ class ForecastModel:
         return location + shift
 
     def _input_shift(self, history, rows):
-        if not self.input_columns:
+        if not self.ready or not self.input_columns:
             return np.zeros((rows, 2))
-        history = (np.full((rows, len(HISTORY_COLUMNS)), np.nan)
-                   if history is None else np.asarray(history, float))
-        if history.shape != (rows, len(HISTORY_COLUMNS)):
-            raise ValueError("Historical team and player rates do not match the model columns")
+        history = history_matrix(history, rows)
         index = [HISTORY_COLUMNS.index(name) for name in self.input_columns]
         selected = history[:, index]
         completed = np.where(np.isfinite(selected), selected, self.input_fill)
@@ -309,7 +356,7 @@ class ForecastModel:
             shift += (~np.isfinite(selected)).astype(float) @ self.input_missing_koopman
         return shift
 
-    def apply(self, location, known_future, covariance, market_rows, game_ids, history=None):
+    def _select_rows(self, location, known_future, covariance, market_rows, game_ids, history=None):
         location = np.asarray(location, float)
         known = np.asarray(known_future, float)
         if known.shape != (len(location), len(KNOWN_COLUMNS)):
@@ -336,12 +383,62 @@ class ForecastModel:
                 rows[i] = row
         return rows
 
+    def apply(self, location, known_future, covariance, market_rows, game_ids, history=None):
+        """Publish football-only and eligible market-conditioned series separately."""
+        rows = self._select_rows(location, known_future, covariance, market_rows, game_ids, history)
+        known = np.asarray(known_future, float)
+        market_index = [KNOWN_COLUMNS.index(name) for name in MARKET_COLUMNS]
+        has_line = np.isfinite(known[:, market_index]).any(axis=1)
+        football_model = self.no_line or self
+        without = known.copy()
+        without[:, market_index] = np.nan
+        football = football_model._apply(np.asarray(location, float), without, covariance,
+                                         market_rows, game_ids, history)
+        measures = ("home_win_probability", "expected_home_score", "expected_away_score",
+                    "projected_home_margin", "projected_total")
+        for index, row in enumerate(rows):
+            conditioned = bool(has_line[index] and self.ready and any(name in MARKET_COLUMNS for name in self.columns))
+            # A legacy market fit without a no-line artifact cannot claim a football-only result.
+            independent = self.no_line is not None or not any(name in MARKET_COLUMNS for name in self.columns)
+            for measure in measures:
+                row[f"football_only_{measure}"] = football[index][measure] if independent else None
+                row[f"market_conditioned_{measure}"] = row[measure] if conditioned else None
+            row["football_only_available"] = bool(independent)
+            row["market_conditioned_available"] = conditioned
+        return rows
+
+    def score_contributions(self, known, history, rows):
+        groups = {name: np.zeros((rows, 2)) for name in
+                  ("team", "player", "market", "rest", "weather", "availability")}
+        for columns, names, values, fill, center, scale, coefficients, missing_coefficients in (
+            (KNOWN_COLUMNS, self.columns, known, self.fill, self.center, self.scale, self.koopman, self.missing_koopman),
+            (HISTORY_COLUMNS, self.input_columns, history_matrix(history, rows), self.input_fill,
+             self.input_center, self.input_scale, self.input_koopman, self.input_missing_koopman),
+        ):
+            if not names or not self.ready:
+                continue
+            selected = values[:, [columns.index(name) for name in names]]
+            missing = ~np.isfinite(selected)
+            normalized = (np.where(missing, fill, selected) - center) / scale
+            for index, name in enumerate(names):
+                group = ("player" if "_player_" in name else "team") if columns is HISTORY_COLUMNS else (
+                    "market" if name in MARKET_COLUMNS else "rest" if name.endswith("rest_days") else
+                    "weather" if name.startswith("weather_") else "availability")
+                groups[group] += normalized[:, index, None] * coefficients[index]
+                if len(missing_coefficients):
+                    groups[group] += missing[:, index, None] * missing_coefficients[index]
+        return groups
+
     def _apply(self, location, known, covariance, market_rows, game_ids, history=None):
         covariance = checked_covariance(covariance)
-        shifted = self._shift(location, known) + self._input_shift(history, len(location))
-        shifted = np.clip(shifted, self.score_low, self.score_high)
+        known_shift = self._shift(location, known) - location
+        history_shift = self._input_shift(history, len(location))
+        unclipped = location + known_shift + history_shift
+        shifted = np.clip(unclipped, self.score_low, self.score_high) if self.ready else np.maximum(unclipped, 0.)
+        history_values = history_matrix(history, len(location))
+        contributions = self.score_contributions(known, history, len(location))
         rows = []
-        for means, known_row, market, game_id in zip(shifted, known, market_rows, game_ids):
+        for index, (means, known_row, market, game_id) in enumerate(zip(shifted, known, market_rows, game_ids)):
             summary = score_summary(means, covariance, **market)
             summary["gaussian_home_win_probability"] = summary["home_win_probability"]
             margin = float(means[0] - means[1])
@@ -356,5 +453,18 @@ class ForecastModel:
             summary["home_poisson_rate"] = float(means[0])
             summary["away_poisson_rate"] = float(means[1])
             summary["uses_market_line"] = any(name in MARKET_COLUMNS for name in self.columns)
+            for side, column in (("home", 0), ("away", 1)):
+                summary[f"{side}_base_score"] = float(location[index, column])
+                summary[f"{side}_known_future_score_adjustment"] = float(known_shift[index, column])
+                summary[f"{side}_history_score_adjustment"] = float(history_shift[index, column])
+                summary[f"{side}_score_bound_adjustment"] = float(shifted[index, column] - unclipped[index, column])
+            for group, shifts in contributions.items():
+                summary[f"home_{group}_score_adjustment"] = float(shifts[index, 0])
+                summary[f"away_{group}_score_adjustment"] = float(shifts[index, 1])
+            for name, value in zip(HISTORY_COLUMNS, history_values[index]):
+                summary[f"pregame_{name}"] = float(value) if np.isfinite(value) else None
+            summary["historical_feature_count"] = int(np.isfinite(history_values[index]).sum())
+            summary["historical_player_feature_count"] = int(np.isfinite(history_values[index, 20:len(BASE_HISTORY_COLUMNS)]).sum())
+            summary["historical_temporal_feature_count"] = int(np.isfinite(history_values[index, len(BASE_HISTORY_COLUMNS):]).sum())
             rows.append(summary)
         return rows

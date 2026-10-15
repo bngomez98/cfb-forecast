@@ -28,8 +28,8 @@ def model_root():
 
 
 def database_path():
-    """Return the canonical SQLite database path outside generated artifacts."""
-    return resolve_path(os.environ.get("CFB_DATABASE", data_root() / "cfb_forecast.sqlite"))
+    """Return the shared SQLite database used by pipelines and dashboards."""
+    return resolve_path(os.environ.get("CFB_DATABASE", artifacts_root() / "cfb_forecast.sqlite"))
 
 
 def market_path():

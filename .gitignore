@@ -54,3 +54,7 @@ web/node_modules/
 web/dist/
 web/tsconfig.tsbuildinfo
 
+
+# Local task scratch and React production output
+work/
+web/build/

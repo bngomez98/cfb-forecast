@@ -43,10 +43,20 @@ type Forecast = {
   market_spread?: number | null
   home_moneyline?: number | null
   away_moneyline?: number | null
+  home_book_moneyline?: number | null
+  away_book_moneyline?: number | null
+  market_provider?: string | null
+  market_observed_at?: string | null
   winner: string
   confidence: number
+  forecast_series?: Record<string, number | boolean | null>
+  model_details?: Record<string, number | null>
 }
 type Source = { name: string; url: string }
+type PlayerLeader = { athlete?: { displayName?: string }; displayValue?: string; value?: string | number }
+type LeaderGroup = { name?: string; displayName?: string; leaders?: PlayerLeader[] }
+type TeamStatistics = { team_id?: number; statistics?: Record<string, unknown>; opponent_statistics?: Record<string, unknown>; leaders?: LeaderGroup[]; named_provider_statistics?: Record<string, unknown> }
+type GameStatistics = { game_id: number; retrieved_at?: string; teams: Record<string, TeamStatistics> }
 type Board = {
   forecasts?: Forecast[]
   sources?: Source[]
@@ -55,11 +65,13 @@ type Board = {
   model?: string
   week?: number | null
   run_id?: string
+  slate_start?: string | null
+  slate_end?: string | null
+  validation?: { settled_games?: number; metrics?: Omit<Validation, "status"> }
+  statistics?: GameStatistics[]
 }
 type Validation = { status: string; games?: number; log_loss?: number; brier?: number; margin_mae?: number }
-type LearningResponse = { versions?: Array<Validation & { metrics?: Validation }> }
-type PipelineResponse = { manifest?: { run_id?: string; season?: number; as_of?: string }; learning?: Validation | null }
-type Page = 'forecast' | 'moneylines' | 'methodology' | 'data'
+type Page = 'forecast' | 'moneylines' | 'methodology' | 'data' | 'statistics'
 type Range = 'week' | 'all'
 type Sort = 'kickoff' | 'confidence' | 'margin'
 
@@ -67,6 +79,7 @@ const PAGES: { id: Page; label: string }[] = [
   { id: 'forecast', label: 'Game picks' },
   { id: 'moneylines', label: 'Odds & value' },
   { id: 'methodology', label: 'How it works' },
+  { id: 'statistics', label: 'Team & player stats' },
   { id: 'data', label: 'Track record' },
 ]
 const DAY = 24 * 60 * 60 * 1000
@@ -104,10 +117,10 @@ function bookSpreadFor(game: Forecast, side: 'home' | 'away') {
   return value > 0 ? `+${value}` : String(value)
 }
 function dayKey(value: string) {
-  return new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date(value))
+  return new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'America/Chicago' }).format(new Date(value))
 }
 function timeLabel(value: string) {
-  return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(new Date(value))
+  return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short', timeZone: 'America/Chicago' }).format(new Date(value))
 }
 function shortDate(value: Date) {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(value)
@@ -129,7 +142,7 @@ export function App() {
   const [validation, setValidation] = useState<Validation>({ status: 'awaiting_results' })
   const [loading, setLoading] = useState(false)
   const [query, setQuery] = useState('')
-  const [range, setRange] = useState<Range>('all')
+  const [range, setRange] = useState<Range>('week')
   const [sort, setSort] = useState<Sort>('kickoff')
   const [liveResults, setLiveResults] = useState<Record<number, LiveResult>>({})
   const [scoresUpdatedAt, setScoresUpdatedAt] = useState<Date | null>(null)
@@ -139,36 +152,33 @@ export function App() {
     setLoading(true)
     setDataError(null)
     try {
-      const published = await fetch('/api/season?season=2026', { cache: 'no-store' })
-      if (!published.ok) throw new Error(`Forecast service returned ${published.status}`)
-      const board = await published.json() as Board
+      let board: Board
+      try {
+        const published = await fetch('/api/season?season=2026', { cache: 'no-store' })
+        if (!published.ok) throw new Error(`Forecast service returned ${published.status}`)
+        board = await published.json() as Board
+        if (!Array.isArray(board.forecasts)) throw new Error('No published board')
+      } catch {
+        const saved = await fetch('/forecasts.json', { cache: 'no-store' })
+        if (!saved.ok) throw new Error(`Published forecast returned ${saved.status}`)
+        board = await saved.json() as Board
+      }
       if (!Array.isArray(board.forecasts)) throw new Error('Forecast service returned no season schedule')
       setBoardMeta(board)
       setForecasts(board.forecasts)
-      if (Array.isArray(board.sources)) setSources(board.sources)
+      setSources(Array.isArray(board.sources) ? board.sources : [])
+      setValidation({ status: board.validation?.settled_games ? 'settled' : 'awaiting_results',
+        ...board.validation?.metrics, games: board.validation?.settled_games ?? 0 })
 
       const firstKickoff = board.forecasts.length ? new Date(Math.min(...board.forecasts.map(game => new Date(game.kickoff).getTime()))) : new Date()
       const start = new Date(Math.max(firstKickoff.getTime(), Date.now() - DAY))
       const end = new Date(start.getTime() + 8 * DAY)
-      const [scores, learning, pipeline] = await Promise.all([
-        fetch(`/api/live-results?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`, { cache: 'no-store' }),
-        fetch('/api/learning', { cache: 'no-store' }),
-        fetch('/api/pipeline', { cache: 'no-store' }),
-      ])
+      const scores = await fetch(`/api/live-results?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`, { cache: 'no-store' })
       if (!scores.ok) throw new Error(`Score service returned ${scores.status}`)
       const data = await scores.json() as { updated_at?: string; results?: LiveResult[] }
       if (!Array.isArray(data.results)) throw new Error('Score service returned an invalid result set')
       setLiveResults(Object.fromEntries(data.results.map(result => [result.game_id, result])))
       if (data.updated_at) setScoresUpdatedAt(new Date(data.updated_at))
-      if (learning.ok) {
-        const learningData = await learning.json() as LearningResponse
-        const latest = learningData.versions?.[0]
-        if (latest) setValidation(latest.metrics ?? latest)
-      }
-      if (pipeline.ok) {
-        const pipelineData = await pipeline.json() as PipelineResponse
-        if (pipelineData.learning) setValidation(pipelineData.learning)
-      }
     } catch (error) {
       setDataError(error instanceof Error ? error.message : 'Football data could not be loaded')
     } finally {
@@ -189,7 +199,12 @@ export function App() {
     const start = updated ?? (chronological.length ? new Date(chronological[0].kickoff) : null)
     return start ? start.getTime() + 8 * DAY : null
   }, [updated, chronological])
-  const weekGames = useMemo(() => weekEnd == null ? chronological : chronological.filter(game => new Date(game.kickoff).getTime() < weekEnd), [chronological, weekEnd])
+  const weekGames = useMemo(() => chronological.filter(game => {
+    const kickoff = new Date(game.kickoff).getTime()
+    const start = boardMeta.slate_start ? Date.parse(boardMeta.slate_start) : updated?.getTime() ?? -Infinity
+    const end = boardMeta.slate_end ? Date.parse(boardMeta.slate_end) : weekEnd ?? Infinity
+    return kickoff >= start && kickoff < end
+  }), [chronological, boardMeta.slate_start, boardMeta.slate_end, updated, weekEnd])
   const shown = useMemo(() => {
     const text = query.trim().toLowerCase()
     const pool = range === 'week' ? weekGames : chronological
@@ -227,14 +242,14 @@ export function App() {
       <nav aria-label="Primary navigation">
         {PAGES.map(item => <button key={item.id} className={page === item.id ? 'active' : ''} aria-current={page === item.id ? 'page' : undefined} onClick={() => setPage(item.id)}>{item.label}</button>)}
       </nav>
-      <div className="model-status"><i aria-hidden="true" /> 2026 schedule live</div>
+      <div className="model-status"><i aria-hidden="true" /> {forecasts.length ? 'Published forecast' : 'Awaiting forecast'}</div>
     </header>
 
     <main id="top">
       {page === 'forecast' && <>
         <Hero weekName={weekName} updated={updated} games={range === 'all' ? chronological.length : weekGames.length} onRefresh={refresh} loading={loading} />
   <section className="content-section">
-  {dataError && <div className="notice" role="alert"><AlertCircle aria-hidden="true" /><div><strong>Live football data unavailable</strong><p>{dataError}. No substitute forecasts, scores, or inputs are displayed. Use Refresh data to try again.</p></div></div>}
+  {dataError && <div className="notice" role="alert"><AlertCircle aria-hidden="true" /><div><strong>Live football data unavailable</strong><p>{dataError}. The most recently loaded forecast remains visible. Live scores may be unavailable. Use Refresh data to try again.</p></div></div>}
   <div className="live-score-strip" role="status"><span><i aria-hidden="true" /> 2026 scores refresh every 60 seconds</span><small>{scoresUpdatedAt ? `Last checked ${scoresUpdatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Connecting to score feed'} · Published forecasts cover {chronological.length} scheduled games</small></div>
           <SeasonStatus totalGames={chronological.length} liveGames={seasonLive} finalGames={seasonFinal} nextGame={nextGame} />
           <div className="metric-grid" aria-label="Weekly forecast summary">
@@ -260,6 +275,7 @@ export function App() {
         sort={sort}
         setSort={setSort}
       />}
+      {page === 'statistics' && <StatisticsPage games={forecasts} statistics={boardMeta.statistics ?? []} />}
       {page === 'methodology' && <MethodologyPage model={boardMeta.model} />}
       {page === 'data' && <DataPage sources={sources} validation={validation} board={boardMeta} />}
     </main>
@@ -315,7 +331,7 @@ function BoardControls({ query, setQuery, range, setRange, sort, setSort, weekNa
     <label className="search-field"><Search aria-hidden="true" /><input type="search" placeholder="Search any team or matchup" value={query} onChange={event => setQuery(event.target.value)} aria-label="Search team" /></label>
     <div className="segmented" role="group" aria-label="Date range">
       <button className={range === 'week' ? 'active' : ''} onClick={() => setRange('week')}>{weekName}</button>
-      <button className={range === 'all' ? 'active' : ''} onClick={() => setRange('all')}>Full 2026 season</button>
+      <button className={range === 'all' ? 'active' : ''} onClick={() => setRange('all')}>All published games</button>
     </div>
     <label className="sort-field"><SlidersHorizontal aria-hidden="true" /><span className="sr-only">Sort forecasts</span><select value={sort} onChange={event => setSort(event.target.value as Sort)}><option value="kickoff">Sort: Kickoff</option><option value="confidence">Sort: Confidence</option><option value="margin">Sort: Margin</option></select><ChevronDown aria-hidden="true" /></label>
   </section>
@@ -338,7 +354,6 @@ function ForecastCard({ game, result }: { game: Forecast; result?: LiveResult })
   const away = 1 - home
   const pickHome = home >= 0.5
   const confidence = Math.max(home, away)
-  const projectedTotal = game.expected_home_score + game.expected_away_score
   const pickedTeam = pickHome ? game.home_team : game.away_team
   const detailsId = `game-details-${game.game_id}`
   const statusLabel = result?.status === 'final' ? 'Final' : result?.status === 'live' ? (result.status_detail ?? `${result.clock ?? ''} · Q${result.period ?? ''}`) : timeLabel(game.kickoff)
@@ -353,9 +368,9 @@ function ForecastCard({ game, result }: { game: Forecast; result?: LiveResult })
     </div>
     <div className="probability-track" aria-label={`${game.away_team} ${pct(away)}, ${game.home_team} ${pct(home)}`}><i style={{ width: `${away * 100}%` }} /><i style={{ width: `${home * 100}%` }} /></div>
     <dl className="game-details">
-      <div><dt>Projected spread</dt><dd>{pickedTeam} {spreadFor(game, pickHome ? 'home' : 'away')}</dd></div>
-      <div><dt>Projected total</dt><dd>{projectedTotal.toFixed(1)} pts</dd></div>
-      <div><dt>Fair odds</dt><dd>{oddsLabel(fairMoneyline(confidence))}</dd></div>
+      <div><dt>Model pick</dt><dd>{pickedTeam}</dd></div>
+      <div><dt>Win confidence</dt><dd>{pct(confidence, 1)}</dd></div>
+      <div><dt>Odds & statistics</dt><dd>See separate views</dd></div>
     </dl>
     <button className="details-toggle" onClick={() => setExpanded(value => !value)} aria-expanded={expanded} aria-controls={detailsId}>
       {expanded ? 'Hide details' : 'Explain this pick'}
@@ -364,8 +379,19 @@ function ForecastCard({ game, result }: { game: Forecast; result?: LiveResult })
     {expanded && <div className="pick-explainer" id={detailsId}>
       <p><strong>Why {pickedTeam}?</strong> We give them a {pct(confidence)} chance to win and predict a final score of {game.expected_away_score.toFixed(0)}–{game.expected_home_score.toFixed(0)}.</p>
       <dl>
-        <div><dt>Predicted spread</dt><dd>Our expected winning margin, shown in the same format as a sportsbook spread.</dd></div>
-        <div><dt>Fair odds</dt><dd>The price that matches our win estimate before a sportsbook adds its margin.</dd></div>
+        {['football_only', 'market_conditioned'].map(series => {
+          const probability = game.forecast_series?.[`${series}_home_win_probability`]
+          if (typeof probability !== 'number') return null
+          return <div key={series}><dt>{series.replace(/_/g, ' ')} home win chance</dt><dd>{pct(probability, 1)}</dd></div>
+        })}
+        <div><dt>Expected score</dt><dd>The average score implied by the model; individual game scores can vary.</dd></div>
+        <div><dt>Confidence</dt><dd>The estimated chance the selected team wins. It is not a guarantee.</dd></div>
+        {['base_score', 'team_score_adjustment', 'player_score_adjustment', 'market_score_adjustment', 'rest_score_adjustment', 'weather_score_adjustment', 'availability_score_adjustment', 'score_bound_adjustment', 'context_score_adjustment'].map(name => {
+          const homeValue = game.model_details?.[`home_${name}`]
+          const awayValue = game.model_details?.[`away_${name}`]
+          if (homeValue == null && awayValue == null) return null
+          return <div key={name}><dt>{name.replace(/_/g, ' ')}</dt><dd>{game.away_team}: {awayValue?.toFixed(2) ?? 'Unavailable'} · {game.home_team}: {homeValue?.toFixed(2) ?? 'Unavailable'} points</dd></div>
+        })}
       </dl>
     </div>}
   </article>
@@ -409,8 +435,8 @@ function MoneylineRow({ game }: { game: Forecast }) {
   return <article className="moneyline-row">
     <div className="moneyline-matchup"><span>{timeLabel(game.kickoff)}</span><strong>{game.away_team} <em>at</em> {game.home_team}</strong></div>
     <div className="dual-value"><span>{game.away_team} <b>{pct(away, 1)}</b></span><span>{game.home_team} <b>{pct(home, 1)}</b></span></div>
-    <div className="dual-value mono"><span>{oddsLabel(fairMoneyline(away))}</span><span>{oddsLabel(fairMoneyline(home))}</span></div>
-    <div className="dual-value mono muted"><span>{oddsLabel(game.away_moneyline)}</span><span>{oddsLabel(game.home_moneyline)}</span></div>
+    <div className="dual-value mono"><span>{oddsLabel(fairMoneyline(away))} · spread {spreadFor(game, 'away')}</span><span>{oddsLabel(fairMoneyline(home))} · spread {spreadFor(game, 'home')}</span></div>
+    <div className="dual-value mono muted"><span>{oddsLabel(game.away_book_moneyline)} · spread {bookSpreadFor(game, 'away')}</span><span>{oddsLabel(game.home_book_moneyline)} · spread {bookSpreadFor(game, 'home')}</span><small>{game.market_provider ?? 'No captured quote'}{game.market_observed_at ? ` · ${timeLabel(game.market_observed_at)}` : ''}</small></div>
   </article>
 }
 
@@ -460,6 +486,31 @@ function DataPage({ sources, validation, board }: { sources: Source[]; validatio
         <section><span className="section-eyebrow">INPUT FAMILIES</span><h2>What enters the forecast</h2><ul className="check-list"><li><b>Game results</b><span>Final scores and game-level team statistics</span></li><li><b>Efficiency</b><span>Points, yards per play, pass, rush, and first-down rates</span></li><li><b>Situation</b><span>Venue, neutral-site status, and days of rest</span></li><li><b>Market context</b><span>Spread and total only when captured before forecast time</span></li><li><b>Conditional context</b><span>Weather and injuries recorded, but gated by validation</span></li></ul></section>
         <section><span className="section-eyebrow">PUBLIC SOURCES</span><h2>Traceable inputs</h2>{sources.length ? <div className="source-list">{sources.map(source => <a key={source.name} href={source.url} target="_blank" rel="noreferrer"><span>{source.name.replace(/_/g, ' ')}</span><ArrowRight aria-hidden="true" /></a>)}</div> : <p className="source-empty">The current publication did not include source links. No source is inferred or substituted here.</p>}</section>
       </div>
+    </section>
+  </>
+}
+
+function StatisticsPage({ games, statistics }: { games: Forecast[]; statistics: GameStatistics[] }) {
+  const [selected, setSelected] = useState('')
+  const game = games.find(item => String(item.game_id) === selected) ?? games[0]
+  const snapshot = statistics.find(item => item.game_id === game?.game_id)
+  return <>
+    <PageHeader eyebrow="PREGAME EVIDENCE" title="Team & player statistics" description="Recorded inputs from the published forecast. Missing statistics remain unavailable." />
+    <section className="content-section">
+      <label>Matchup <select value={game?.game_id ?? ''} onChange={event => setSelected(event.target.value)}>
+        {games.map(item => <option key={item.game_id} value={item.game_id}>{item.away_team} at {item.home_team}</option>)}
+      </select></label>
+      {!snapshot ? <div className="empty-state"><Database /><h2>No saved statistics for this matchup</h2><p>Statistics appear after a run records its pregame inputs.</p></div> : <>
+        <p>Recorded {snapshot.retrieved_at ? shortDate(new Date(snapshot.retrieved_at)) : 'at an unknown time'}</p>
+        <div className="technical-grid">{['away', 'home'].map(side => {
+          const team = snapshot.teams[side]
+          const stats = { ...team?.statistics, ...team?.named_provider_statistics }
+          return <article key={side}><h2>{side === 'home' ? game.home_team : game.away_team}</h2>
+            <h3>Team statistics</h3>{Object.keys(stats).length ? <dl>{Object.entries(stats).map(([name, value]) => <div key={name}><dt>{name.replace(/_/g, ' ')}</dt><dd>{value == null ? 'Unavailable' : String(value)}</dd></div>)}</dl> : <p>Team statistics unavailable.</p>}
+            <h3>Player leaders</h3>{team?.leaders?.length ? <dl>{team.leaders.flatMap((group, groupIndex) => (group.leaders ?? []).map((player, playerIndex) => <div key={`${groupIndex}-${playerIndex}`}><dt>{group.displayName ?? group.name ?? 'Statistic'} · {player.athlete?.displayName ?? 'Unnamed player'}</dt><dd>{player.displayValue ?? player.value ?? 'Unavailable'}</dd></div>))}</dl> : <p>Player statistics unavailable.</p>}
+          </article>
+        })}</div>
+      </>}
     </section>
   </>
 }

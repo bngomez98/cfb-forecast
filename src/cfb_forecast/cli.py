@@ -9,7 +9,12 @@ def main():
     sub=parser.add_subparsers(dest="command",required=True)
     fetch=sub.add_parser("fetch",help="Download free schedules and PBP summaries")
     fetch.add_argument("--data",default="data"); fetch.add_argument("--seasons",nargs="+",type=int,required=True)
+    fetch.add_argument("--manifest", default=None, help="Pin source URLs and stored-file checksums to a JSON manifest")
     fetch.add_argument("--refresh",action="store_true"); fetch.add_argument("--raw-pbp",action="store_true")
+    db=sub.add_parser("update-database", help="Validate local inputs and update the shared schedule and source catalog")
+    db.add_argument("--data", default="data"); db.add_argument("--artifacts", default="artifacts")
+    db.add_argument("--database", default=None); db.add_argument("--season", type=int, required=True)
+    db.add_argument("--fetch-sources", action="store_true")
     bt=sub.add_parser("backtest",help="Chronological model selection and held-out evaluation")
     bt.add_argument("--data",default="data"); bt.add_argument("--out",default="artifacts/training")
     bt.add_argument("--archive",default=None)
@@ -105,22 +110,40 @@ def main():
     pp=sub.add_parser("player-ppg",help="Player season-to-date points per game from a player-game stats file")
     pp.add_argument("--player-games",required=True); pp.add_argument("--as-of",required=True); pp.add_argument("--season",type=int,default=None)
     pp.add_argument("--out",required=True); pp.add_argument("--min-games",type=int,default=1)
+    for command in (fc, wf, sr):
+        temporal = command.add_mutually_exclusive_group()
+        temporal.add_argument("--temporal-features", dest="use_temporal_features", action="store_true", default=None, help="Fit lag, rolling-window and expanding history variables")
+        temporal.add_argument("--no-temporal-features", dest="use_temporal_features", action="store_false", help="Ablate temporal variables while retaining team/player season rates")
+        command.add_argument("--adjustment-ridge", type=float, default=None, help="Positive ridge penalty for the joint score residual model")
+        command.add_argument("--adjustment-min-games", type=int, default=None, help="Minimum prior-season examples for adjustment fitting (at least 30)")
+        command.add_argument("--adjustment-min-coverage", type=float, default=None, help="Observed fraction required for each learned feature, in (0,1]")
     args=parser.parse_args()
+    overrides = {key: getattr(args, field) for field, key in
+                 (("adjustment_ridge", "ridge"), ("adjustment_min_games", "min_games"),
+                  ("adjustment_min_coverage", "min_feature_coverage"), ("use_temporal_features", "use_temporal_features"))
+                 if getattr(args, field, None) is not None}
+    model_options = {"adjustment_config": overrides} if overrides else {}
     from .paths import cli_path
-    for name in ("data", "artifacts", "model", "models", "out", "store", "ledger", "predictions", "archive", "market", "input", "previous", "forecast", "holdout", "frozen_batch", "run", "web", "database"):
+    for name in ("data", "artifacts", "model", "models", "out", "store", "ledger", "predictions", "archive", "market", "input", "previous", "forecast", "holdout", "frozen_batch", "run", "web", "database", "manifest"):
         value = getattr(args, name, None)
         if value is not None:
             setattr(args, name, str(cli_path(value)))
     if args.command=="fetch":
         from .ingest.data import fetch as run
-        run(args.data,args.seasons,args.refresh,args.raw_pbp)
+        run(args.data,args.seasons,args.refresh,args.raw_pbp,manifest_path=args.manifest)
+    elif args.command=="update-database":
+        import json
+        import os
+        from .pipeline.database_update import update_database
+        database = args.database or os.environ.get("CFB_DATABASE") or str(Path(args.artifacts) / "cfb_forecast.sqlite")
+        print(json.dumps(update_database(args.data, database, args.season, args.artifacts, args.fetch_sources), indent=2))
     elif args.command=="backtest":
         from .evaluation.backtest import run_backtest
         result,spec=run_backtest(args.data,args.out,args.archive,args.warmup,args.train_start,args.validation,args.test)
         print(result.to_string(index=False)); print("selected production variant:",spec["selected_variant"])
     elif args.command=="forecast":
         from .modeling.forecast import forecast
-        result=forecast(args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.draws,args.market_provider)
+        result=forecast(args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.draws,args.market_provider,**model_options)
         print(result[["away_team","home_team","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
     elif args.command=="forecast-advance":
         from .modeling.forecast import advance_forecast_snapshot
@@ -205,11 +228,11 @@ def main():
         print(pd.Series(report).to_string())
     elif args.command == "sunday-run":
         from .pipeline.sunday import sunday_run
-        report = sunday_run(args.data, args.artifacts, args.season, args.model, args.timezone, args.scheduled, not args.no_refresh)
+        report = sunday_run(args.data, args.artifacts, args.season, args.model, args.timezone, args.scheduled, not args.no_refresh, **model_options)
         print(pd.Series(report).to_string())
     elif args.command == "weekly-forecast":
         from .pipeline.weekly import run_weekly_forecast
-        result,manifest=run_weekly_forecast(args.data,args.model,args.out,args.season,args.week,args.as_of,args.market,args.draws)
+        result,manifest=run_weekly_forecast(args.data,args.model,args.out,args.season,args.week,args.as_of,args.market,args.draws,**model_options)
         print(pd.DataFrame([manifest]).to_string(index=False))
         print(result[["away_team","home_team","kickoff","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
     elif args.command == "capture-news":

@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from ..config import METRICS
 from .data import require_columns
-from ..modeling.forecast_model import HISTORY_COLUMNS
+from ..modeling.forecast_model import HISTORY_COLUMNS, PLAYER_METRICS, BASE_METRICS, TEMPORAL_TRANSFORMS
 
 def clean_plays(plays):
     cols = ["game_id", "game_play_number", "pos_team_id", "def_pos_team_id", "down", "distance", "statYardage", "rush", "pass", "sack", "kneel_down", "penalty_no_play", "period", "start.pos_score_diff"]
@@ -58,7 +58,7 @@ def _year_from_name(path):
 
 
 def _fingerprint(paths):
-    digest = hashlib.sha256()
+    digest = hashlib.sha256(b"history-facts-v2")
     for path in paths:
         stat = path.stat()
         digest.update(f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}".encode())
@@ -91,8 +91,10 @@ def _combine_facts(base, stored, keys):
         return base
     if base is None or len(base) == 0:
         return stored
-    combined = pd.concat([base, stored], ignore_index=True, sort=False)
-    return combined.drop_duplicates(keys, keep="last")
+    # Current on-disk measurements take precedence; SQLite fills absent fields.
+    fresh = base.drop_duplicates(keys, keep="last").set_index(keys)
+    saved = stored.drop_duplicates(keys, keep="last").set_index(keys)
+    return fresh.combine_first(saved).reset_index()
 
 
 def load_history_facts(data_root, database=None):
@@ -221,7 +223,7 @@ def load_history_facts(data_root, database=None):
     teams["team_id"] = teams.team_id.astype("int64")
     value_columns = [column for column in teams.columns if column not in {"game_id", "team_id", "season", "week"}]
     teams = teams.groupby(["game_id", "team_id"], as_index=False).agg(
-        {column: "mean" if column not in {"plays", "pass_yards", "rush_yards", "receiving_yards"} else "sum" for column in value_columns}
+        {column: "last" for column in value_columns}
         | {"season": "first", **({"week": "first"} if "week" in teams.columns else {})}
     )
     players = pd.concat(player_frames, ignore_index=True) if player_frames else pd.DataFrame()
@@ -261,162 +263,140 @@ def _schedule_kickoffs(data_root):
     return kickoffs.dropna(subset=["start_date"])
 
 
-def pregame_history(query, data_root, completed, database=None):
-    """Rates each team had recorded before the game, from parquet facts and final scores.
+def player_game_rates(players):
+    """Observed role efficiency and usage; no assumed starters or replacements."""
+    if players is None or players.empty:
+        return pd.DataFrame(columns=["game_id", "team_id", *PLAYER_METRICS])
+    required = ["game_id", "team_id", "position_group", "plays", "yards"]
+    require_columns(players, required, "player game facts")
+    frame = players.copy()
+    for column in ("plays", "yards", "epa"):
+        frame[column] = pd.to_numeric(frame[column], errors="coerce") if column in frame else np.nan
+        frame.loc[~np.isfinite(frame[column]), column] = np.nan
+    frame = frame[frame.plays.gt(0)].copy()
+    keys = ["game_id", "team_id", "position_group"]
+    frame["plays_squared"] = frame.plays ** 2
+    frame["epa_weighted"] = frame.epa * frame.plays
+    frame["epa_plays"] = frame.plays.where(frame.epa.notna())
+    frame["yards_plays"] = frame.plays.where(frame.yards.notna())
+    grouped = frame.groupby(keys)
+    totals = grouped[["plays", "plays_squared", "yards", "yards_plays", "epa_weighted", "epa_plays"]].sum(min_count=1)
+    totals["yards_per_play"] = totals.yards / totals.yards_plays
+    totals["epa"] = totals.epa_weighted / totals.epa_plays
+    totals["usage_concentration"] = totals.plays_squared / totals.plays ** 2
+    rates = totals[["yards_per_play", "epa", "usage_concentration"]].unstack("position_group")
+    rates.columns = [f"player_{role}_{metric}" for metric, role in rates.columns]
+    return rates.reindex(columns=PLAYER_METRICS).reset_index()
 
-    The current game does not update its own row. A team with no earlier game stays missing.
+
+def pregame_history(query, data_root, completed, database=None):
+    """Average observed games in the prior season and eligible current season.
+
+    Replay finals by result availability, with each query preceding results at
+    exactly its cutoff. Only the immediately preceding season supplies a prior.
+    Missing metrics remain NaN; player role rates enter the same score model.
     """
     if query is None or len(query) == 0 or completed is None or len(completed) == 0:
         return None
-    facts, _players = load_history_facts(data_root, database=database)
-    scored = _scoring_facts(completed)
-    if facts is None or len(facts) == 0:
-        facts = scored
-    elif len(scored):
-        facts = facts.merge(scored[["game_id", "team_id", "points_for", "points_against"]], on=["game_id", "team_id"], how="outer", suffixes=("", "_score"))
-        for column in ("points_for", "points_against"):
-            scored_column = f"{column}_score"
-            if scored_column in facts:
-                facts[column] = facts[scored_column].combine_first(facts[column]) if column in facts else facts[scored_column]
-                facts = facts.drop(columns=[scored_column])
-    if facts is None or len(facts) == 0:
-        return None
-    season = int(pd.to_numeric(query.season, errors="coerce").max())
-    past_ids = set(pd.to_numeric(completed.game_id, errors="coerce").dropna().astype("int64"))
-    if "season" in facts:
-        keep = facts.game_id.isin(past_ids) | (pd.to_numeric(facts.season, errors="coerce") < season)
-        facts = facts.loc[keep].copy()
+    facts, players = load_history_facts(data_root, database=database)
+    scores = _scoring_facts(completed)
+    facts = facts.copy() if facts is not None and len(facts) else pd.DataFrame(columns=["game_id", "team_id"])
+    # Schedule finals are authoritative for scoring, parquet for efficiency.
+    facts = facts.drop(columns=["points_for", "points_against"], errors="ignore").merge(
+        scores[["game_id", "team_id", "points_for", "points_against"]], on=["game_id", "team_id"], how="outer")
+    player_rates = player_game_rates(players)
+    if len(player_rates):
+        facts = facts.merge(player_rates, on=["game_id", "team_id"], how="outer")
+    schedules = [completed.copy()]
+    for path in sorted(Path(data_root).glob("schedule_*.csv")):
+        from .data import normalize_schedule
+        schedules.append(normalize_schedule(pd.read_csv(path)))
+    games = pd.concat(schedules, ignore_index=True, sort=False).drop_duplicates("game_id", keep="first")
+    games["start_date"] = pd.to_datetime(games.start_date, utc=True)
+    if "result_available_at" not in games:
+        games["result_available_at"] = games.start_date + pd.Timedelta(hours=8)
     else:
-        facts = facts.loc[facts.game_id.isin(past_ids)].copy()
+        games["result_available_at"] = pd.to_datetime(games.result_available_at, utc=True).fillna(games.start_date + pd.Timedelta(hours=8))
+    supplied = set(completed.game_id)
+    usable = games.game_id.isin(supplied)
+    if "result_usable" in games:
+        usable |= games.result_usable.fillna(False).astype(bool)
+    games = games[usable & games.result_available_at.gt(games.start_date)].copy()
+    # Include verified finals against non-FBS opponents in each team's rates.
+    all_scores = _scoring_facts(games)
+    facts = facts.drop(columns=["points_for", "points_against"], errors="ignore").merge(
+        all_scores[["game_id", "team_id", "points_for", "points_against"]],
+        on=["game_id", "team_id"], how="outer")
+    # Bind each fact to the verified scheduled participants and season.
+    facts = facts.drop(columns=["season", "week", "start_date", "result_available_at"], errors="ignore").merge(
+        games[["game_id", "season", "home_id", "away_id", "result_available_at"]], on="game_id", how="inner", validate="many_to_one")
+    facts = facts[facts.team_id.eq(facts.home_id) | facts.team_id.eq(facts.away_id)].copy()
     if facts.empty:
         return None
-    # Kickoff time is the only safe order: postseason games restart week numbering
-    # at 1, so a season/week sort would replay bowl games before October games.
-    order = pd.concat(
-        [completed[["game_id", "start_date"]], _schedule_kickoffs(data_root)],
-        ignore_index=True,
-    ).drop_duplicates("game_id")
-    order["game_id"] = pd.to_numeric(order.game_id, errors="coerce")
-    order["start_date"] = pd.to_datetime(order.start_date, utc=True)
-    facts = facts.drop(columns=["start_date"], errors="ignore").merge(order.dropna(subset=["game_id"]).astype({"game_id": "int64"}), on="game_id", how="left")
-    # A fact without a known kickoff cannot be placed before or after a game.
-    facts = facts.loc[facts.start_date.notna()].copy()
-    # remember() starts a new season's running rates from this column. It has no
-    # leading underscore because itertuples() renames such fields.
-    facts["rate_season"] = pd.to_numeric(facts.season, errors="coerce") if "season" in facts else season
-    facts = facts.sort_values(["start_date", "game_id"], kind="mergesort")
-    metrics = [
-        "points_for", "points_against", "yards_per_play", "success_rate", "explosive_rate",
-        "turnover_rate", "pass_yards", "rush_yards", "receiving_yards", "epa",
-    ]
+    metrics = list(BASE_METRICS)
     state = {}
-    emitted = {}
-    query_ids = {int(game_id): index for index, game_id in enumerate(pd.to_numeric(query.game_id, errors="coerce").astype("int64"))}
-    home_ids = pd.to_numeric(query.home_id, errors="coerce").astype("int64").to_numpy()
-    away_ids = pd.to_numeric(query.away_id, errors="coerce").astype("int64").to_numpy()
-    home_for = {int(game_id): int(home) for game_id, home in zip(query_ids, home_ids[list(query_ids.values())])}
-    away_for = {int(game_id): int(away) for game_id, away in zip(query_ids, away_ids[list(query_ids.values())])}
-    query_seasons = pd.to_numeric(query.season, errors="coerce").to_numpy()
-    season_for = {
-        game_id: (int(query_seasons[slot]) if np.isfinite(query_seasons[slot]) else None)
-        for game_id, slot in query_ids.items()
-    }
-
-    def snapshot(team_id, target_season=None):
-        record = state.get(int(team_id))
-        if not record:
-            return {}
-        # A team's first game of a new season starts from the previous season's
-        # mean alone; older seasons no longer count.
-        new_season = (
-            target_season is not None
-            and record["season"] is not None
-            and record["season"] < target_season
-        )
-        rates = {}
-        for metric in metrics:
-            season_n = record["n"].get(metric, 0)
-            prior_n = 0 if new_season else record["prior_n"].get(metric, 0)
-            total = prior_n + season_n
-            if total == 0:
-                continue
-            total_sum = 0.0
-            if prior_n and metric in record["prior"]:
-                total_sum += record["prior"][metric] * prior_n
-            if season_n and metric in record["sum"]:
-                total_sum += record["sum"][metric]
-            rates[metric] = total_sum / total
-        return rates
-
-    def remember(team_id, row):
-        team_id = int(team_id)
-        try:
-            season = int(row["rate_season"])
-        except (TypeError, ValueError, KeyError):
-            season = None
-        record = state.setdefault(team_id, {"season": season, "prior": {}, "prior_n": {}, "sum": {}, "n": {}})
-        if season is not None and record["season"] is not None and season != record["season"]:
-            record["prior"] = {
-                metric: record["sum"][metric] / record["n"][metric]
-                for metric in record["sum"]
-                if record["n"].get(metric)
-            }
-            record["prior_n"] = {metric: count for metric, count in record["n"].items() if count}
-            record["sum"] = {}
-            record["n"] = {}
-            record["season"] = season
-        elif record["season"] is None:
-            record["season"] = season
-        for metric in metrics:
-            if metric not in row.index:
-                continue
-            value = row[metric]
-            if pd.isna(value):
-                continue
-            record["sum"][metric] = record["sum"].get(metric, 0.0) + float(value)
-            record["n"][metric] = record["n"].get(metric, 0) + 1
-
-    for game_id, group in facts.groupby("game_id", sort=False):
-        game_id = int(game_id)
-        if game_id in query_ids:
-            home_team = home_for[game_id]
-            away_team = away_for[game_id]
-            emitted[game_id] = {
-                home_team: snapshot(home_team, season_for[game_id]),
-                away_team: snapshot(away_team, season_for[game_id]),
-            }
-        for row in group.itertuples(index=False):
-            remember(row.team_id, pd.Series(row._asdict()))
-    matrix = np.full((len(query), len(HISTORY_COLUMNS)), np.nan)
-    pairs = (
-        ("points_for", 0, 1),
-        ("points_against", 2, 3),
-        ("yards_per_play", 4, 5),
-        ("success_rate", 6, 7),
-        ("explosive_rate", 8, 9),
-        ("turnover_rate", 10, 11),
-        ("pass_yards", 12, 13),
-        ("rush_yards", 14, 15),
-        ("receiving_yards", 16, 17),
-        ("epa", 18, 19),
-    )
-    for game_id, slot in query_ids.items():
-        home = int(home_ids[slot])
-        away = int(away_ids[slot])
-        if game_id in emitted:
-            home_state = emitted[game_id].get(home, {})
-            away_state = emitted[game_id].get(away, {})
-        else:
-            home_state = snapshot(home, season_for[game_id])
-            away_state = snapshot(away, season_for[game_id])
-        for metric, home_column, away_column in pairs:
-            if metric in home_state:
-                matrix[slot, home_column] = home_state[metric]
-            if metric in away_state:
-                matrix[slot, away_column] = away_state[metric]
-    if not np.isfinite(matrix).any():
-        return None
-    return matrix
+    sequences = {}
+    column_index = {name: index for index, name in enumerate(HISTORY_COLUMNS)}
+    result = np.full((len(query), len(HISTORY_COLUMNS)), np.nan)
+    events = []
+    for index, game in enumerate(query.itertuples(index=False)):
+        cutoff = getattr(game, "cutoff_utc", getattr(game, "as_of", game.start_date))
+        cutoff = pd.Timestamp(cutoff)
+        if cutoff.tzinfo is None or pd.isna(cutoff) or cutoff >= game.start_date:
+            # A default historical query uses kickoff itself, before the final.
+            if not hasattr(game, "cutoff_utc") and not hasattr(game, "as_of"):
+                cutoff = game.start_date
+            else:
+                raise ValueError("History cutoff must be timezone-aware and before kickoff")
+        events.append((cutoff.value, 0, index))
+    groups = list(facts.groupby("game_id", sort=False))
+    for index, (_, rows) in enumerate(groups):
+        events.append((rows.result_available_at.iloc[0].value, 1, index))
+    queries = list(query.itertuples(index=False))
+    for _, kind, index in sorted(events):
+        if kind == 1:
+            for row in groups[index][1].to_dict("records"):
+                key = (int(row["team_id"]), int(row["season"]))
+                sums, counts = state.setdefault(key, ({}, {}))
+                sequence = sequences.setdefault(key, {metric: [] for metric in metrics})
+                for metric in metrics:
+                    value = pd.to_numeric(row.get(metric), errors="coerce")
+                    if pd.notna(value) and np.isfinite(value):
+                        sums[metric] = sums.get(metric, 0.) + float(value)
+                        counts[metric] = counts.get(metric, 0) + 1
+                        sequence[metric].append(float(value))
+                    else:
+                        # Keep the game's missing slot: lag 1 must not skip an unknown game.
+                        sequence[metric].append(np.nan)
+            continue
+        game = queries[index]
+        for side_index, team in enumerate((game.home_id, game.away_id)):
+            for metric_index, metric in enumerate(metrics):
+                total, count = 0., 0
+                for season in (int(game.season) - 1, int(game.season)):
+                    sums, counts = state.get((int(team), season), ({}, {}))
+                    total += sums.get(metric, 0.)
+                    count += counts.get(metric, 0)
+                if count:
+                    result[index, 2 * metric_index + side_index] = total / count
+                observations = []
+                for season in (int(game.season) - 1, int(game.season)):
+                    observations.extend(sequences.get((int(team), season), {}).get(metric, []))
+                values = np.asarray(observations, dtype=float)
+                features = {}
+                for lag in (1, 2):
+                    features[f"lag_{lag}"] = values[-lag] if len(values) >= lag else np.nan
+                for window in (3, 5):
+                    part = values[-window:]
+                    complete = len(part) == window and np.isfinite(part).all()
+                    features[f"rolling_{window}_mean"] = float(part.mean()) if complete else np.nan
+                    features[f"rolling_{window}_std"] = float(part.std(ddof=0)) if complete else np.nan
+                finite = values[np.isfinite(values)]
+                features["expanding_mean"] = float(finite.mean()) if len(finite) else np.nan
+                side = "home" if side_index == 0 else "away"
+                for transform in TEMPORAL_TRANSFORMS:
+                    result[index, column_index[f"{side}_{metric}_{transform}"]] = features[transform]
+    return result if np.isfinite(result).any() else None
 
 
 def feature_columns(variant):

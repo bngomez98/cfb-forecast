@@ -105,9 +105,9 @@ def detail_page(page):
         st.caption("Same-season and prior-season facts stored after each forecast run. Missing files stay missing.")
         try:
             from contextlib import closing
-            from cfb_forecast.storage.database import connect
+            import sqlite3
             from cfb_forecast.paths import database_path
-            with closing(connect(database_path())) as conn:
+            with closing(sqlite3.connect(database_path().as_uri() + "?mode=ro", uri=True)) as conn:
                 names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
                 if "team_game_facts" in names:
                     st.dataframe(pd.read_sql_query("SELECT * FROM team_game_facts ORDER BY season DESC, week DESC LIMIT 200", conn), hide_index=True, width="stretch")

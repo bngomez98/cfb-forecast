@@ -33,7 +33,7 @@ rather than committing a second source tree.
 | Play observation likelihoods | The design's Student-t EPA and Bernoulli success, explosive-play, and sack likelihoods are target equations; the production model does not jointly fit those likelihoods. |
 | Possession-based scoring | Section 9's joint possession count and conditional drive outcomes remain to be implemented. The current expected score is calculated by the score head. |
 | External ratings | Source collection exists; joint source-specific measurement-error estimation described in section 13 remains to be implemented. |
-| Football-only and market-conditioned forecasts | The current adjustment can consume eligible market inputs and has a no-line fit. It does not yet publish two independently evaluated forecast series as required by section 14. |
+| Football-only and market-conditioned forecasts | Production now saves football-only and market-conditioned scores/probabilities separately, using the no-line fit for the football-only series. Validation reports both series and their common-game comparison; missing quotes leave the conditioned series unavailable. |
 | Forecast evaluation | Saved forecasts are joined to final results. Performance improvements must be measured on held-out games; importing this design supplies no accuracy evidence. |
 
 This update imports the supplied design, records its implementation boundaries,

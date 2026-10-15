@@ -108,6 +108,8 @@ def apply_score_context(predictions, features, spec, covariance):
         market = {key: value for key, value in row.items()
                   if key in ("home_spread", "total_line", "home_decimal", "away_decimal")
                   and value is not None and pd.notna(value)}
+        row["home_context_score_adjustment"] = float(means[0] - row["expected_home_score"])
+        row["away_context_score_adjustment"] = float(means[1] - row["expected_away_score"])
         row.update(score_summary(means, covariance, **market))
         row.update(
             gaussian_home_win_probability=row["home_win_probability"],

@@ -11,10 +11,10 @@ from ..ingest.data import load_data, timestamp, sha256
 from ..ingest.features import observations, pregame_history, load_history_facts
 from .ratings import DynamicRatings, build_features, early_season
 from .model import load_model, ScoreHead
-from ..odds.market import closing_lines, market_at_cutoff, market_history_summary, read_market_history
+from ..odds.market import market_at_cutoff, market_history_summary, read_market_history
 from ..ingest.availability import availability_snapshot
 from ..odds.decision import moneyline_diagnostics
-from .forecast_model import METHOD, ForecastModel, known_future_matrix, rest_days
+from .forecast_model import METHOD, ForecastModel, AdjustmentConfig, known_future_matrix, rest_days
 from ..paths import database_path
 
 
@@ -101,14 +101,14 @@ def _out_of_fold_location(model, features, observed, mask, weights, seasons):
     return location
 
 
-def _store_history_facts(data_root, out):
+def _store_history_facts(data_root, out, database=None):
     try:
-        teams, players = load_history_facts(data_root, database=database_path())
+        teams, players = load_history_facts(data_root, database=database or database_path())
         if teams is None or len(teams) == 0:
             return
         from contextlib import closing
         from ..storage.database import connect, record_history_facts
-        with closing(connect(database_path())) as conn:
+        with closing(connect(database or database_path())) as conn:
             record_history_facts(conn, teams, players)
     except Exception as exc:
         (Path(out) / "history_database_error.txt").write_text(str(exc))
@@ -140,6 +140,8 @@ def forecast(
     analytic=True,
     known_future=None,
     closing_path=None,
+    database=None,
+    adjustment_config=None,
 ):
     analytic = True
     save_distribution = False
@@ -148,6 +150,7 @@ def forecast(
     if end <= at:
         raise ValueError("Forecast window must end after as-of time")
     model = load_model(model_root)
+    adjustment_settings = AdjustmentConfig(**{**model.get("adjustment_config", {}), **(adjustment_config or {})})
     if model.get("adaptive_training_cutoff") and timestamp(model["adaptive_training_cutoff"]) > at:
         raise ValueError("Adaptive model was trained after the requested forecast cutoff")
     if model.get("adaptive_latest_result") and timestamp(model["adaptive_latest_result"]) >= at:
@@ -213,7 +216,7 @@ def forecast(
             for r in targets.itertuples(index=False)
         ]
     )
-    historical_F, _, _ = build_features(
+    historical_F, historical_cutoffs, _ = build_features(
         past, Y, model["center"], model["scale"],
         StateConfig(**model["state_config"]), warmup=model["warmup_season"]
     )
@@ -233,19 +236,15 @@ def forecast(
     location_fit = "walk_forward_by_season"
     adjustment_mask = np.isfinite(past_location).all(axis=1)
     past_games = past.loc[fit_mask].reset_index(drop=True)
-    # Completed games learn from the last line before their kickoff. Captured
-    # quotes come first; the backfilled closing table fills games never captured.
-    closing = closing_lines(closing_path if closing_path is not None else Path(data_root) / "market_closing_history.csv")
+    # Historical prices must be captured before the same cutoff as the team state.
+    # Untimestamped backfilled closing prices cannot stand in for pregame evidence.
+    past_cutoffs = historical_cutoffs.loc[fit_mask].reset_index(drop=True)
     past_market = [
-        (
-            market_at_cutoff(market, game.game_id, game.start_date, game.start_date, provider=market_provider)
-            if market is not None and not market.empty
-            else {}
-        )
-        or closing.get(int(game.game_id), {})
-        for game in past_games.itertuples(index=False)
+        market_at_cutoff(market, game.game_id, cutoff, game.start_date, provider=market_provider)
+        if market is not None and not market.empty else {}
+        for game, cutoff in zip(past_games.itertuples(index=False), past_cutoffs)
     ]
-    history_past = pregame_history(past_games, data_root, past, database=database_path())
+    history_past = pregame_history(past_games.assign(cutoff_utc=historical_cutoffs.loc[fit_mask].to_numpy()), data_root, past, database=database or database_path())
     fitted = ForecastModel.fit(
         past_location[adjustment_mask],
         Y[fit_mask][adjustment_mask][:, :, 0],
@@ -253,8 +252,10 @@ def forecast(
         known_future_matrix(_known_frame(past_games, schedules, past_market, None))[adjustment_mask],
         (past_games.home_points.to_numpy() > past_games.away_points.to_numpy()).astype(int)[adjustment_mask],
         history=None if history_past is None else history_past[adjustment_mask],
-    ) if int(adjustment_mask.sum()) >= 30 else ForecastModel.identity()
-    if int(adjustment_mask.sum()) < 30:
+        config=adjustment_settings,
+    ) if int(adjustment_mask.sum()) >= adjustment_settings.min_games else ForecastModel.identity()
+    fitted.config = adjustment_settings
+    if int(adjustment_mask.sum()) < adjustment_settings.min_games:
         location_fit = "insufficient_prior_seasons_identity_adjustment"
     market_rows = []
     history_rows = []
@@ -269,7 +270,7 @@ def forecast(
             if market is not None and not market.empty
             else {"market_snapshot_count": 0}
         )
-    history_future = pregame_history(targets, data_root, past, database=database_path())
+    history_future = pregame_history(targets.assign(cutoff_utc=at), data_root, past, database=database or database_path())
     rows = _project_rows(
         targets,
         mu,
@@ -296,7 +297,7 @@ def forecast(
     totals = []
     out = Path(out_root)
     out.mkdir(parents=True, exist_ok=True)
-    _store_history_facts(data_root, out)
+    _store_history_facts(data_root, out, database=database)
     market_archive = archive_market(market_path, out)
     market_file = market_archive["market_file"]
     (out / "forecasts.json").write_text(json.dumps(rows, indent=2))
@@ -340,6 +341,12 @@ def forecast(
         "distribution_files": distribution_files,
         "score_probability_family": "joint_gaussian",
         "forecast_model_schema": 3,
+        "temporal_feature_policy": {"lags": [1, 2], "rolling_windows": [3, 5],
+                                    "rolling_functions": ["mean", "std"], "std_ddof": 0,
+                                    "expanding": "mean", "minimum_window_observations": "full window",
+                                    "order": "result availability", "missing_lag_slots": "preserved"},
+        "adjustment_config": fitted.to_dict()["adjustment_config"],
+        "historical_input_policy": "results and quotes available before each historical state cutoff; no backfilled closing lines",
         "adjustment_training_games": int(adjustment_mask.sum()),
         "target_game_ids": targets.game_id.astype(int).tolist(),
         "data_availability_check": avail["prospective_current_season_source_check"],
@@ -363,6 +370,7 @@ def advance_forecast_snapshot(
     save_distribution=True,
     target_game_ids=None,
     analytic=True,
+    database=None,
 ):
     """Advance an exact saved forecast state when no new result became eligible.
 
@@ -470,7 +478,7 @@ def advance_forecast_snapshot(
         & schedules.result_usable
         & (schedules.result_available_at < at)
     ]
-    history_future = pregame_history(targets, data_root, completed, database=database_path())
+    history_future = pregame_history(targets.assign(cutoff_utc=at), data_root, completed, database=database or database_path())
     rows = _project_rows(
         targets,
         mu,

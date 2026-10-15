@@ -108,3 +108,72 @@ They do not establish better forecasting accuracy. Compare unchanged code and
 candidate code on identical historical cutoffs and games before reporting gains.
 Historical source revisions and model-selection history still limit how closely
 a replay represents a genuinely prospective forecast.
+
+
+## Player-rate implementation
+
+The historical matrix includes 18 observed player-role inputs in addition to the
+20 existing team inputs. For each team and each passing/rushing/receiving role:
+
+```
+yards_per_play = sum(recorded yards) / sum(opportunities with observed yards)
+epa = sum(observed player EPA * opportunities) / sum(opportunities with observed EPA)
+usage_concentration = sum(player opportunities squared) / sum(opportunities) squared
+```
+
+These per-game values enter the prior-season/current-season running rates and
+the same ridge residual map as team statistics. A query event precedes final
+results at exactly its timestamp. Historical team state, team/player rates and
+captured market quotes share that query's information cutoff. Backfilled closing
+quotes are not substituted for captured historical quotes.
+
+The contribution export decomposes the fitted linear map, including learned
+missingness terms. A player's-group contribution is statistical attribution
+within the fitted model, not an injury replacement value or a causal estimate.
+Team and player point contributions plus known-future contributions and the
+explicit score-bound term add back to the published expected score. Gated live
+context can make a further margin adjustment while preserving the total.
+
+## Causal lag and window features
+
+The [Feature-engine forecasting guide](https://feature-engine.trainindata.com/en/1.8.x/user_guide/timeseries/forecasting/index.html)
+provides the lag, rolling-window and expanding-window feature families used here.
+The football adaptation operates per team, in result-availability order, rather
+than treating all teams as one regularly spaced series. It uses the prior and
+current season only, preserving missing game slots.
+
+For each of the 19 historical team/player metrics on each side, production now
+calculates lag 1, lag 2, 3-game and 5-game rolling means and population standard
+deviations (`ddof=0`), and an expanding mean. Rolling windows require a full window
+of observed values. A missing lag stays missing; it is not replaced by the next
+available earlier game. Finals at the query cutoff are excluded before every
+transformation. This adds 266 temporal columns to the 38 season-rate columns.
+
+These inputs participate in the existing joint ridge score-residual fit, with
+training-only normalization, per-field coverage checks and missingness terms.
+Their coefficients are saved with the selected input names. No `feature-engine`
+dependency is required because its regular-index transforms cannot directly
+express the game's per-team availability events and individual query cutoffs.
+
+Use `--no-temporal-features` to fit an ablation retaining the season-rate inputs,
+or `--temporal-features` to enable them explicitly. The effective
+`adjustment_config.use_temporal_features` and feature policy are saved in model
+and forecast artifacts. The defaults are engineering choices, not measured
+optimal settings. Legacy 20- and 38-column feature arrays are padded with missing
+new columns; saved name-based adjustment coefficients remain readable.
+
+## Two inspectable forecast series
+
+The model exports football-only and market-conditioned expected scores, margin,
+total and home win probability separately. Football-only inference uses the fit
+that never consumed market columns. Market-conditioned values are unavailable
+unless a fitted market adjustment and eligible target quote exist. A legacy
+market artifact lacking its no-line fit cannot claim a football-only prediction.
+Neither series changes the saved primary prediction after publication.
+
+Validation reports each series separately and compares them on the intersection
+of games with both saved probabilities. This avoids comparing different game
+populations and does not use later quotes to fill missing market predictions.
+The full player/unit posterior and possession likelihoods in the supplied design
+remain separate implementation work; these additions do not claim those
+likelihoods have been fitted.

@@ -111,6 +111,15 @@ CREATE TABLE IF NOT EXISTS source_files (
     metadata_json TEXT NOT NULL DEFAULT '{}'
 );
 
+
+CREATE TABLE IF NOT EXISTS source_rows (
+    row_id INTEGER PRIMARY KEY,
+    retrieval_id INTEGER NOT NULL REFERENCES source_retrievals(retrieval_id),
+    row_index INTEGER NOT NULL,
+    payload_json TEXT NOT NULL,
+    UNIQUE(retrieval_id, row_index)
+);
+
 CREATE TABLE IF NOT EXISTS teams (
     team_id INTEGER PRIMARY KEY,
     name TEXT NOT NULL

@@ -6,7 +6,7 @@ import json
 import numpy as np
 import pandas as pd
 
-from ..ingest.data import sha256, timestamp
+from ..ingest.data import timestamp
 from .evaluate import metrics, calibration, calibration_test, spread_regression
 
 
@@ -19,18 +19,19 @@ def validate_runs(run_root, schedules, as_of):
         & schedules.result_usable
         & (schedules.result_available_at <= at)
     ]
-    for path in sorted(root.glob("*/forecasts.csv")):
+    paths = list(root.glob("*/forecasts.csv"))
+    if root.name == "runs":
+        paths += list((root.parent / "weekly").glob("*/forecasts.csv"))
+    for path in sorted(paths):
         manifest_path = path.parent / "run_manifest.json"
         if not manifest_path.exists():
             continue
         manifest = json.loads(manifest_path.read_text())
-        if sha256(path) != manifest["prediction_sha256"]:
-            raise ValueError(f"Saved predictions changed: {path}")
-        for name, expected in manifest.get("input_hashes", {}).items():
-            evidence = path.parent / "inputs" / name
-            if not evidence.exists() or sha256(evidence) != expected:
-                raise ValueError(f"Saved pregame inputs changed: {evidence}")
+        from ..pipeline.integrity import verify_run_integrity
+        verify_run_integrity(path.parent, manifest)
         pred = pd.read_csv(path)
+        if pred.empty:
+            continue
         if (
             pd.to_datetime(pred.as_of, utc=True)
             >= pd.to_datetime(pred.kickoff, utc=True)
@@ -77,6 +78,24 @@ def validate_runs(run_root, schedules, as_of):
                     report["market_probability_metrics"] = metrics(
                         priced.home_win, priced.market_home_win_probability_no_vig
                     )
+            for series in ("football_only", "market_conditioned"):
+                column = f"{series}_home_win_probability"
+                if column in matched:
+                    subset = matched.dropna(subset=[column])
+                    if len(subset):
+                        report[f"{series}_metrics"] = metrics(subset.home_win, subset[column],
+                            subset[f"{series}_projected_home_margin"], subset.actual_margin,
+                            subset[f"{series}_projected_total"], subset.actual_total)
+                        report[f"{series}_metrics"]["games"] = int(len(subset))
+            series_columns = ["football_only_home_win_probability", "market_conditioned_home_win_probability"]
+            if all(column in matched for column in series_columns):
+                paired = matched.dropna(subset=series_columns)
+                if len(paired):
+                    report["paired_series_comparison"] = {
+                        "games": int(len(paired)),
+                        "football_only": metrics(paired.home_win, paired[series_columns[0]]),
+                        "market_conditioned": metrics(paired.home_win, paired[series_columns[1]]),
+                    }
             matched["hypothetical_profit_units"] = np.nan
             for side, outcome in [
                 ("home", matched.home_win),
@@ -112,6 +131,6 @@ def validate_runs(run_root, schedules, as_of):
         "settled_games": len(combined),
     }
     if len(combined):
-        summary["metrics"] = metrics(combined.home_win, combined.home_win_probability)
+        summary["metrics"] = metrics(combined.home_win, combined.home_win_probability, combined.projected_home_margin, combined.actual_margin, combined.projected_total, combined.actual_total)
         summary["calibration"] = calibration_test(combined.home_win, combined.home_win_probability)
     return combined, summary

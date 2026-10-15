@@ -273,3 +273,12 @@ CREATE INDEX IF NOT EXISTS idx_player_game_facts_team ON player_game_facts(team_
 CREATE INDEX IF NOT EXISTS idx_games_season_week ON games(season, week);
 CREATE INDEX IF NOT EXISTS idx_forecast_runs_season ON forecast_runs(season);
 CREATE INDEX IF NOT EXISTS idx_forecast_log_season_kickoff ON forecast_log(season, kickoff);
+
+
+CREATE TABLE IF NOT EXISTS source_rows (
+    row_id INTEGER PRIMARY KEY,
+    retrieval_id INTEGER NOT NULL REFERENCES source_retrievals(retrieval_id),
+    row_index INTEGER NOT NULL,
+    payload_json TEXT NOT NULL,
+    UNIQUE(retrieval_id, row_index)
+);

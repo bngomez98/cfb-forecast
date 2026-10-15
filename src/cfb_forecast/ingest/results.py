@@ -60,13 +60,12 @@ def _event_row(event, retrieved_at):
 def fetch_scoreboard(season, dates):
     rows = []
     for date in dates:
-        query = urllib.parse.urlencode({"dates": pd.Timestamp(date).strftime("%Y%m%d"), "limit": 500})
+        query = urllib.parse.urlencode({"dates": pd.Timestamp(date).strftime("%Y%m%d"), "groups": 80, "limit": 500})
         payload = _request_json(f"{ESPN_SCOREBOARD}?{query}")
         retrieved_at = datetime.now(timezone.utc).isoformat()
         for event in payload.get("events", []):
             row = _event_row(event, retrieved_at)
-            if row is not None:
-                row["season"] = int(season)
+            if row is not None and row["season"] == int(season):
                 rows.append(row)
     return pd.DataFrame(rows)
 

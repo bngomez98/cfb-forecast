@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import smtplib
+import tempfile
 import urllib.request
 from datetime import datetime, timezone
 from email.message import EmailMessage
@@ -17,7 +19,7 @@ from pathlib import Path
 import pandas as pd
 
 from ..storage.database import connect
-from ..paths import artifacts_root, database_path, project_root
+from ..paths import artifacts_root, project_root
 from ..ingest.sources import source_registry
 
 LOG = logging.getLogger("cfb_forecast.pipeline.publisher")
@@ -34,6 +36,21 @@ REQUIRED = (
 RECIPIENT = "bngomez@ieee.org"
 
 
+def atomic_write(path, content):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as handle:
+            temporary = Path(handle.name)
+            handle.write(content)
+        temporary.chmod(path.stat().st_mode & 0o777 if path.exists() else 0o644)
+        temporary.replace(path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -45,7 +62,7 @@ def _number(value):
         number = float(value)
     except (TypeError, ValueError):
         return None
-    if number != number:
+    if not math.isfinite(number):
         return None
     return number
 
@@ -68,6 +85,11 @@ def board_row(record: dict) -> dict:
     except ValueError:
         home_moneyline = None
         away_moneyline = None
+    def book_moneyline(side):
+        price = _number(record.get(f"{side}_ml_decimal"))
+        if price is None or price <= 1:
+            return None
+        return round(100 * (price - 1)) if price >= 2 else -round(100 / (price - 1))
     return {
         "game_id": int(record["game_id"]),
         "season": int(record["season"]),
@@ -82,6 +104,15 @@ def board_row(record: dict) -> dict:
         "home_cover_probability": _number(record.get("home_cover_probability")),
         "home_moneyline": home_moneyline,
         "away_moneyline": away_moneyline,
+        "home_book_moneyline": book_moneyline("home"),
+        "away_book_moneyline": book_moneyline("away"),
+        "market_observed_at": None if pd.isna(record.get("market_observed_at")) else record.get("market_observed_at"),
+        "market_provider": None if pd.isna(record.get("market_provider")) else record.get("market_provider"),
+        "forecast_series": {key: value for key, value in record.items()
+                            if key.startswith(("football_only_", "market_conditioned_"))},
+        "model_details": {key: _number(value) for key, value in record.items()
+                          if key.startswith("pregame_") or key.endswith("_score_adjustment")
+                          or key.endswith("_base_score") or key.endswith("_feature_count")},
         "winner": winner,
         "confidence": round(max(probability, 1.0 - probability), 4),
         "home_win_probability": round(probability, 4),
@@ -92,7 +123,29 @@ def board_frame(frame: pd.DataFrame) -> pd.DataFrame:
     missing = [column for column in REQUIRED if column not in frame.columns]
     if missing:
         raise ValueError(f"Forecast file is missing columns: {missing}")
+    for column in ("game_id", "season"):
+        values = pd.to_numeric(frame[column], errors="raise")
+        if not values.map(math.isfinite).all() or (values % 1 != 0).any():
+            raise ValueError(f"Published {column} must contain finite integers")
+    if frame.game_id.duplicated().any():
+        raise ValueError("Duplicate game IDs in published forecast")
+    for column in ("expected_home_score", "expected_away_score", "home_win_probability"):
+        values = pd.to_numeric(frame[column], errors="raise")
+        if not values.map(math.isfinite).all() or (values < 0).any():
+            raise ValueError(f"Invalid published forecast values: {column}")
+    if (frame.home_win_probability > 1).any():
+        raise ValueError("Published win probability must be between zero and one")
+    kickoff = pd.to_datetime(frame.kickoff, utc=True, errors="raise")
+    if kickoff.isna().any():
+        raise ValueError("Published kickoff is missing")
+    if "as_of" in frame:
+        cutoff = pd.to_datetime(frame.as_of, utc=True, errors="raise")
+        if cutoff.isna().any() or (cutoff >= kickoff).any():
+            raise ValueError("Published forecast cutoff must precede kickoff")
     rows = [board_row(record) for record in frame.to_dict("records")]
+    if not rows:
+        return pd.DataFrame(columns=[*REQUIRED, "winner", "confidence"])
+
     return pd.DataFrame(rows).sort_values(["kickoff", "game_id"]).reset_index(drop=True)
 
 
@@ -125,7 +178,23 @@ def register_sources(conn, season: int) -> int:
 
 
 def write_forecast_log(conn, run_id: str, rows: pd.DataFrame, logged_at: str) -> int:
-    for row in rows.to_dict("records"):
+    records = rows.to_dict("records")
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+    conn.execute("""CREATE TABLE IF NOT EXISTS published_run_membership (
+        run_id TEXT PRIMARY KEY, game_ids_json TEXT NOT NULL)""")
+    ids = sorted(int(row["game_id"]) for row in records)
+    saved = conn.execute("SELECT game_ids_json FROM published_run_membership WHERE run_id=?", (run_id,)).fetchone()
+    legacy_ids = sorted(row[0] for row in conn.execute("SELECT game_id FROM forecast_log WHERE run_id=?", (run_id,)))
+    if (saved is not None and json.loads(saved[0]) != ids) or (saved is None and legacy_ids and legacy_ids != ids):
+        raise ValueError(f"Published run membership is immutable: {run_id}")
+    # Check the entire batch before writing any row or replacing public files.
+    for row in records:
+        prior = conn.execute("SELECT payload_json FROM forecast_log WHERE run_id=? AND game_id=?",
+                             (run_id, int(row["game_id"]))).fetchone()
+        if prior is not None and any(row.get(key) != value for key, value in json.loads(prior[0]).items()):
+            raise ValueError(f"Published forecast is immutable: {run_id}/{row['game_id']}")
+    for row in records:
         conn.execute(
             """INSERT INTO forecast_log(
                  run_id, season, game_id, kickoff, home_team, away_team,
@@ -134,21 +203,7 @@ def write_forecast_log(conn, run_id: str, rows: pd.DataFrame, logged_at: str) ->
                  projected_home_margin, model_spread, market_spread, home_cover_probability,
                  home_moneyline, away_moneyline)
                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-               ON CONFLICT(run_id, game_id) DO UPDATE SET
-                 kickoff=excluded.kickoff,
-                 expected_home_score=excluded.expected_home_score,
-                 expected_away_score=excluded.expected_away_score,
-                 winner=excluded.winner,
-                 confidence=excluded.confidence,
-                 home_win_probability=excluded.home_win_probability,
-                 logged_at=excluded.logged_at,
-                 payload_json=excluded.payload_json,
-                 projected_home_margin=excluded.projected_home_margin,
-                 model_spread=excluded.model_spread,
-                 market_spread=excluded.market_spread,
-                 home_cover_probability=excluded.home_cover_probability,
-                 home_moneyline=excluded.home_moneyline,
-                 away_moneyline=excluded.away_moneyline""",
+               ON CONFLICT(run_id, game_id) DO NOTHING""",
             (
                 run_id, int(row["season"]), int(row["game_id"]), row["kickoff"],
                 row["home_team"], row["away_team"], row["expected_home_score"],
@@ -159,6 +214,8 @@ def write_forecast_log(conn, run_id: str, rows: pd.DataFrame, logged_at: str) ->
                 row.get("home_moneyline"), row.get("away_moneyline"),
             ),
         )
+    conn.execute("INSERT OR IGNORE INTO published_run_membership(run_id,game_ids_json) VALUES(?,?)",
+                 (run_id, json.dumps(ids)))
     conn.commit()
     return len(rows)
 
@@ -260,7 +317,7 @@ def publish_forecast_update(
     """Write the forecast board everywhere a completed run is shown."""
     run_dir = Path(run_dir)
     artifacts = Path(artifacts) if artifacts is not None else artifacts_root()
-    database = Path(database) if database is not None else database_path()
+    database = Path(database) if database is not None else Path(os.environ.get("CFB_DATABASE", artifacts / "cfb_forecast.sqlite"))
     web_json = Path(web_json) if web_json is not None else project_root() / "web" / "public" / "forecasts.json"
     prediction_path = run_dir / "forecasts.csv"
     if not prediction_path.exists():
@@ -268,48 +325,70 @@ def publish_forecast_update(
     frame = pd.read_csv(prediction_path)
     if any(column not in frame.columns for column in REQUIRED):
         return {"status": "skipped", "reason": "forecast file has no score board"}
-    if frame.empty:
-        return {"status": "skipped", "reason": "forecast file is empty"}
     rows = board_frame(frame)
     logged_at = utc_now()
     run_id = run_id or run_dir.name
-    season = int(season or rows.season.iloc[0])
-    manifest_path = run_dir / "weekly_manifest.json"
     manifest = {}
-    if manifest_path.exists():
-        loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
-        manifest = loaded[0] if isinstance(loaded, list) and loaded else loaded
+    for name in ("weekly_manifest.json", "run_manifest.json"):
+        manifest_path = run_dir / name
+        if manifest_path.exists():
+            loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest.update(loaded[0] if isinstance(loaded, list) and loaded else loaded)
+    season = int(season or manifest.get("season") or (rows.season.iloc[0] if len(rows) else 0))
+    if not season or (len(rows) and not rows.season.eq(season).all()):
+        raise ValueError("Published forecast must contain exactly the requested season")
+    from .integrity import verify_run_integrity
+    verify_run_integrity(run_dir, manifest)
     model = None
     if "prediction_method" in frame.columns and frame.prediction_method.notna().any():
         model = str(frame.prediction_method.dropna().iloc[0])
     sources = [{"name": name, "url": url} for name, url in source_registry(season).items()]
+    inputs_path = run_dir / "inputs" / "game_inputs.json"
+    game_inputs = json.loads(inputs_path.read_text()) if inputs_path.exists() else []
+    # Expose recorded team/player statistics, not rosters or injury narratives.
+    statistics = [{"game_id": item["game_id"], "retrieved_at": item.get("retrieved_at"),
+                   "teams": {side: {key: team.get(key) for key in
+                       ("team_id", "statistics", "opponent_statistics", "leaders", "named_provider_statistics")}
+                       for side, team in item.get("teams", {}).items()}}
+                  for item in game_inputs]
     board = {
         "run_id": run_id,
         "season": season,
         "week": manifest.get("week"),
-        "as_of": manifest.get("as_of") or logged_at,
+        "as_of": manifest.get("as_of") or (str(frame.as_of.iloc[0]) if "as_of" in frame and len(frame) else None),
         "logged_at": logged_at,
+        "slate_start": manifest.get("slate_start") or manifest.get("first_kickoff"),
+        "slate_end": manifest.get("slate_end"),
+        "validation": manifest.get("validation", {}),
         "games": int(len(rows)),
         "model": model,
         "sources": sources,
+        "statistics": statistics,
         "forecasts": rows.to_dict("records"),
     }
     log_dir = artifacts / "logs"
     _configure_log(log_dir)
+    conn = connect(database)
+    try:
+        stored = write_forecast_log(conn, run_id, rows, logged_at)
+        registered = register_sources(conn, season)
+    finally:
+        conn.close()
     latest = artifacts / "latest"
     latest.mkdir(parents=True, exist_ok=True)
-    frame.to_csv(latest / "forecasts.csv", index=False)
-    (latest / "forecast_board.json").write_text(json.dumps(board, indent=2), encoding="utf-8")
-    (latest / "run_manifest.json").write_text(json.dumps({
-        "status": "completed",
+    atomic_write(latest / "forecasts.csv", prediction_path.read_bytes())
+    atomic_write(latest / "forecast_board.json", json.dumps(board, indent=2, allow_nan=False).encode())
+    atomic_write(latest / "run_manifest.json", json.dumps({
+        **manifest,
+        "status": manifest.get("status", "completed"),
         "run_id": run_id,
         "season": season,
         "games": board["games"],
         "as_of": board["as_of"],
-        "completed_at": logged_at,
-    }, indent=2), encoding="utf-8")
+        "completed_at": manifest.get("completed_at", logged_at),
+    }, indent=2).encode())
     web_json.parent.mkdir(parents=True, exist_ok=True)
-    web_json.write_text(json.dumps(board, indent=2), encoding="utf-8")
+    atomic_write(web_json, json.dumps(board, indent=2, allow_nan=False).encode())
     with (log_dir / "forecast_updates.jsonl").open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({
             "logged_at": logged_at,
@@ -317,12 +396,6 @@ def publish_forecast_update(
             "season": season,
             "games": board["games"],
         }) + "\n")
-    conn = connect(database)
-    try:
-        registered = register_sources(conn, season)
-        stored = write_forecast_log(conn, run_id, rows, logged_at)
-    finally:
-        conn.close()
     source_ingest = None
     if fetch_sources:
         from ..ingest.sources import ingest_catalog

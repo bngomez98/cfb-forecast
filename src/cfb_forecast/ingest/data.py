@@ -21,6 +21,35 @@ def sha256(path):
             h.update(block)
     return h.hexdigest()
 
+def verify_source_file(path, receipt):
+    """Verify stored (decompressed for CSV) bytes against a source receipt."""
+    path = Path(path)
+    if "bytes" in receipt and path.stat().st_size != receipt["bytes"]:
+        raise ValueError(f"Source size mismatch: {path.name}")
+    if receipt.get("sha256") and sha256(path) != receipt["sha256"]:
+        raise ValueError(f"Source checksum mismatch: {path.name}")
+
+
+def read_source_manifest(path):
+    manifest = json.loads(Path(path).read_text())
+    if not isinstance(manifest, dict):
+        raise ValueError("Source manifest must be an object")
+    files = manifest.get("files", {})
+    if not isinstance(files, dict):
+        raise ValueError("Source manifest files must be an object")
+    for name, receipt in files.items():
+        if Path(name).name != name or not isinstance(receipt, dict):
+            raise ValueError(f"Invalid source manifest entry: {name}")
+        digest = receipt.get("sha256")
+        if digest is not None and (not isinstance(digest, str) or len(digest) != 64
+                                   or any(c not in "0123456789abcdef" for c in digest)):
+            raise ValueError(f"Invalid source checksum: {name}")
+        size = receipt.get("bytes")
+        if size is not None and (type(size) is not int or size < 0):
+            raise ValueError(f"Invalid source size: {name}")
+    return manifest
+
+
 def timestamp(value):
     t = pd.Timestamp(value)
     if t.tz is None:
@@ -45,7 +74,10 @@ def normalize_schedule(df):
     for c in ("completed", "neutral_site"):
         df[c] = booleans(df[c], c)
     for c in ("game_id", "home_id", "away_id", "season", "week"):
-        df[c] = pd.to_numeric(df[c], errors="raise").astype("int64")
+        numeric = pd.to_numeric(df[c], errors="raise")
+        if numeric.isna().any() or not np.isfinite(numeric).all() or (numeric % 1 != 0).any():
+            raise ValueError(f"{c}: IDs, seasons and weeks must be finite integers")
+        df[c] = numeric.astype("int64")
     df["start_date"] = pd.to_datetime(df.start_date, utc=True, format="ISO8601", errors="raise")
     if df.game_id.duplicated().any():
         raise ValueError("Duplicate game IDs in schedule; refusing ambiguous outcomes")
@@ -53,7 +85,10 @@ def normalize_schedule(df):
         raise ValueError("A game cannot list the same team on both sides")
     for c in ("home_points", "away_points"):
         df[c] = pd.to_numeric(df[c], errors="coerce")
-    bad = df.completed & (df.home_points.isna() | df.away_points.isna() | (df.home_points < 0) | (df.away_points < 0))
+    invalid_score = pd.Series(False, index=df.index)
+    for column in ("home_points", "away_points"):
+        invalid_score |= (~np.isfinite(df[column]) | (df[column] < 0) | (df[column] % 1 != 0))
+    bad = df.completed & invalid_score
     # Some lower-division/canceled source rows are marked completed with NA
     # scores. Quarantine their outcomes explicitly rather than guessing scores.
     df["invalid_completed_outcome"] = bad
@@ -82,6 +117,11 @@ def load_data(root):
     paths = sorted(root.glob("schedule_*.csv")) + sorted(root.glob("schedule_*.parquet"))
     if not paths:
         raise FileNotFoundError(f"No schedule files in {root}; run the fetch command")
+    manifest_path = root / "source_manifest.json"
+    receipts = read_source_manifest(manifest_path).get("files", {}) if manifest_path.exists() else {}
+    for path in paths + sorted(root.glob("adv_team_*.parquet")) + sorted(root.glob("adv_team_*.csv")):
+        if path.name in receipts:
+            verify_source_file(path, receipts[path.name])
     schedules = normalize_schedule(pd.concat([read_frame(p) for p in paths], ignore_index=True))
     paths_adv = sorted(root.glob("adv_team_*.parquet")) + sorted(root.glob("adv_team_*.csv"))
     adv = pd.concat([read_frame(p) for p in paths_adv], ignore_index=True) if paths_adv else pd.DataFrame(columns=ADV_FIELDS)
@@ -99,10 +139,12 @@ def load_data(root):
         raise ValueError("Duplicate (game_id, pos_team_id) PBP summary rows")
     return schedules, adv, paths + paths_adv
 
-def fetch(root, seasons, refresh=False, raw_pbp=False):
+def fetch(root, seasons, refresh=False, raw_pbp=False, manifest_path=None):
     root = Path(root); root.mkdir(parents=True, exist_ok=True)
+    pinned = read_source_manifest(manifest_path).get("files", {}) if manifest_path is not None else None
     manifest_path = root / "source_manifest.json"
-    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {"files": {}}
+    manifest = read_source_manifest(manifest_path) if manifest_path.exists() else {"files": {}}
+    manifest.setdefault("files", {})
     for year in seasons:
         jobs = [(f"schedule_{year}.csv", f"{RELEASE}/cfb_schedules/cfb_schedules_{year}.csv.gz"),
                 (f"adv_team_{year}.parquet", f"{RELEASE}/espn_cfb_adv_team/adv_team_{year}.parquet")]
@@ -110,7 +152,17 @@ def fetch(root, seasons, refresh=False, raw_pbp=False):
             jobs.append((f"pbp_{year}.parquet", f"{RELEASE}/espn_cfb_pbp/play_by_play_{year}.parquet"))
         for name, url in jobs:
             target = root / name
+            expected = pinned.get(name) if pinned is not None else None
+            if pinned is not None:
+                if not expected or not expected.get("url") or not expected.get("sha256"):
+                    raise ValueError(f"Pinned manifest requires a URL and checksum for {name}")
+                url = expected["url"]
             if target.exists() and not refresh:
+                receipt = expected or manifest["files"].get(name, {})
+                verify_source_file(target, receipt)
+                if expected:
+                    manifest["files"][name] = dict(expected)
+                    manifest_path.write_text(json.dumps(manifest, indent=2))
                 print(f"cached {name}", flush=True); continue
             tmp = target.with_suffix(".download")
             saved = False
@@ -121,16 +173,18 @@ def fetch(root, seasons, refresh=False, raw_pbp=False):
                         for block in iter(lambda: response.read(1024 * 1024), b""):
                             f.write(block)
                     if name.startswith("schedule_"):
-                        frame = pd.read_csv(tmp, compression="gzip")
+                        frame = pd.read_csv(tmp, compression="gzip" if url.endswith(".gz") else None)
                         normalize_schedule(frame); frame.to_csv(tmp, index=False)
                     else:
                         import pyarrow.parquet as pq
                         pq.ParquetFile(tmp)  # fail on HTML / incomplete downloads
+                    if expected:
+                        verify_source_file(tmp, expected)
                     saved = True
                     break
                 except urllib.error.HTTPError as exc:
                     tmp.unlink(missing_ok=True)
-                    if exc.code == 404:
+                    if exc.code == 404 and pinned is None:
                         manifest["files"][name] = {"url": url, "status": "unavailable", "http_status": 404}
                         manifest_path.write_text(json.dumps(manifest, indent=2))
                         print(f"unavailable {name}", flush=True)
@@ -146,7 +200,12 @@ def fetch(root, seasons, refresh=False, raw_pbp=False):
             if not saved:
                 continue
             tmp.replace(target)
-            manifest["files"][name] = {"url": url, "sha256": sha256(target), "downloaded_at": datetime.now(timezone.utc).isoformat(), "bytes": target.stat().st_size}
+            receipt = {"url": url, "sha256": sha256(target), "downloaded_at": datetime.now(timezone.utc).isoformat(), "bytes": target.stat().st_size}
+            if expected:
+                receipt["snapshot_downloaded_at"] = expected.get("downloaded_at")
+                if "provenance" in expected:
+                    receipt["provenance"] = expected["provenance"]
+            manifest["files"][name] = receipt
             manifest_path.write_text(json.dumps(manifest, indent=2))
             print(f"downloaded {name}", flush=True)
     return manifest
