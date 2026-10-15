@@ -300,7 +300,10 @@ def pregame_history(query, data_root, completed, database=None):
     order["start_date"] = pd.to_datetime(order.start_date, utc=True)
     facts = facts.drop(columns=["start_date"], errors="ignore").merge(order.dropna(subset=["game_id"]).astype({"game_id": "int64"}), on="game_id", how="left")
     # A fact without a known kickoff cannot be placed before or after a game.
-    facts = facts.loc[facts.start_date.notna()]
+    facts = facts.loc[facts.start_date.notna()].copy()
+    # remember() starts a new season's running rates from this column. It has no
+    # leading underscore because itertuples() renames such fields.
+    facts["rate_season"] = pd.to_numeric(facts.season, errors="coerce") if "season" in facts else season
     facts = facts.sort_values(["start_date", "game_id"], kind="mergesort")
     metrics = [
         "points_for", "points_against", "yards_per_play", "success_rate", "explosive_rate",
@@ -313,15 +316,27 @@ def pregame_history(query, data_root, completed, database=None):
     away_ids = pd.to_numeric(query.away_id, errors="coerce").astype("int64").to_numpy()
     home_for = {int(game_id): int(home) for game_id, home in zip(query_ids, home_ids[list(query_ids.values())])}
     away_for = {int(game_id): int(away) for game_id, away in zip(query_ids, away_ids[list(query_ids.values())])}
+    query_seasons = pd.to_numeric(query.season, errors="coerce").to_numpy()
+    season_for = {
+        game_id: (int(query_seasons[slot]) if np.isfinite(query_seasons[slot]) else None)
+        for game_id, slot in query_ids.items()
+    }
 
-    def snapshot(team_id):
+    def snapshot(team_id, target_season=None):
         record = state.get(int(team_id))
         if not record:
             return {}
+        # A team's first game of a new season starts from the previous season's
+        # mean alone; older seasons no longer count.
+        new_season = (
+            target_season is not None
+            and record["season"] is not None
+            and record["season"] < target_season
+        )
         rates = {}
         for metric in metrics:
             season_n = record["n"].get(metric, 0)
-            prior_n = record["prior_n"].get(metric, 0)
+            prior_n = 0 if new_season else record["prior_n"].get(metric, 0)
             total = prior_n + season_n
             if total == 0:
                 continue
@@ -336,7 +351,7 @@ def pregame_history(query, data_root, completed, database=None):
     def remember(team_id, row):
         team_id = int(team_id)
         try:
-            season = int(row["_season"])
+            season = int(row["rate_season"])
         except (TypeError, ValueError, KeyError):
             season = None
         record = state.setdefault(team_id, {"season": season, "prior": {}, "prior_n": {}, "sum": {}, "n": {}})
@@ -367,8 +382,8 @@ def pregame_history(query, data_root, completed, database=None):
             home_team = home_for[game_id]
             away_team = away_for[game_id]
             emitted[game_id] = {
-                home_team: snapshot(home_team),
-                away_team: snapshot(away_team),
+                home_team: snapshot(home_team, season_for[game_id]),
+                away_team: snapshot(away_team, season_for[game_id]),
             }
         for row in group.itertuples(index=False):
             remember(row.team_id, pd.Series(row._asdict()))
@@ -385,7 +400,6 @@ def pregame_history(query, data_root, completed, database=None):
         ("receiving_yards", 16, 17),
         ("epa", 18, 19),
     )
-    final_rates = {team_id: snapshot(team_id) for team_id in state}
     for game_id, slot in query_ids.items():
         home = int(home_ids[slot])
         away = int(away_ids[slot])
@@ -393,8 +407,8 @@ def pregame_history(query, data_root, completed, database=None):
             home_state = emitted[game_id].get(home, {})
             away_state = emitted[game_id].get(away, {})
         else:
-            home_state = final_rates.get(home, {})
-            away_state = final_rates.get(away, {})
+            home_state = snapshot(home, season_for[game_id])
+            away_state = snapshot(away, season_for[game_id])
         for metric, home_column, away_column in pairs:
             if metric in home_state:
                 matrix[slot, home_column] = home_state[metric]

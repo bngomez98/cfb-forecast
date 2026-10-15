@@ -250,7 +250,30 @@ def test_pregame_history_replays_bowl_games_after_the_regular_season(tmp_path):
     )
     matrix = pregame_history(completed, tmp_path, completed)
     assert matrix[2, 0] == pytest.approx(35.0)
-    assert matrix[1, 0] == pytest.approx(0.92 * 35.0 + 0.08 * 21.0)
+    # Every same-season game counts equally: the bowl sees both regular-season games.
+    assert matrix[1, 0] == pytest.approx((35.0 + 21.0) / 2)
+
+
+def test_pregame_history_starts_from_the_previous_season_only(tmp_path):
+    from cfb_forecast.features import pregame_history
+
+    # 2024 is two seasons back, so only 2025 sets the starting mean for 2026.
+    completed = pd.DataFrame(
+        {
+            "game_id": [1, 2, 3, 4],
+            "season": [2024, 2025, 2025, 2026],
+            "week": [1, 1, 2, 1],
+            "home_id": [10, 10, 10, 10],
+            "away_id": [20, 30, 40, 50],
+            "home_points": [10.0, 30.0, 40.0, 0.0],
+            "away_points": [0.0, 0.0, 0.0, 0.0],
+            "start_date": pd.to_datetime(
+                ["2024-09-01T18:00:00Z", "2025-09-01T18:00:00Z", "2025-09-08T18:00:00Z", "2026-09-01T18:00:00Z"]
+            ),
+        }
+    )
+    matrix = pregame_history(completed.tail(1), tmp_path, completed.head(3))
+    assert matrix[0, 0] == pytest.approx(35.0)
 
 
 def test_postseason_week_one_is_not_early_season():
