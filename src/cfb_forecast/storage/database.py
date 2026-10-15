@@ -490,7 +490,7 @@ def persist_completed_run(database, model_path, records, receipt, schedules, at)
 def main() -> int:
     import argparse
     parser = argparse.ArgumentParser(description="Initialize the CFB Forecast SQLite database")
-    parser.add_argument("--database", default="artifacts/cfb_forecast.sqlite")
+    parser.add_argument("--database", default="data/cfb_forecast.sqlite")
     args = parser.parse_args()
     initialize(args.database)
     print(args.database)
