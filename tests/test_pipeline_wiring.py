@@ -122,6 +122,7 @@ def test_database_loop_ingests_validates_and_cross_checks(tmp_path, monkeypatch)
     report = dbflow.run(db, data, 2026)
     assert report["ingest"]["results"] == 2 and report["ingest"]["external_checks"] == 1
     assert report["validation"] == {"runs": 2, "games": 4}
+    assert report["recomputed"] == {"status": "verified", "runs": 2}
     with closing(sqlite3.connect(db)) as conn:
         assert conn.execute("SELECT COUNT(*) FROM forecast_validation WHERE run_id='late'").fetchone()[0] == 0
         wins = dict(conn.execute("SELECT game_id, home_win FROM forecast_validation WHERE run_id='daily-1'").fetchall())

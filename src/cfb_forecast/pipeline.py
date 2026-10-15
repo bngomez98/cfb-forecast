@@ -194,7 +194,7 @@ def stage_sunday(ctx):
 
 
 def stage_database(ctx):
-    """Store outcomes in SQLite, validate every logged forecast against them, and cross-check in R."""
+    """Store outcomes in SQLite, validate every logged forecast against them, and recompute from stored rows."""
     from . import dbflow
     from .paths import database_path
 
@@ -241,7 +241,7 @@ FORECAST = Stage("forecast", stage_forecast, True, "Forecast every remaining upc
 BACKTEST = Stage("backtest", stage_backtest, False, "Point-in-time backtest: re-forecast every completed week from its pre-kickoff state, compare with final scores")
 VERIFY = Stage("verify", stage_verify, True, "Check that the forecast outputs exist")
 
-DATABASE = Stage("database", stage_database, False, "Store outcomes in SQLite, validate logged forecasts against them, recompute the metrics in R")
+DATABASE = Stage("database", stage_database, False, "Store outcomes in SQLite, validate logged forecasts against them, recompute the metrics from stored rows")
 SUNDAY = Stage("sunday", stage_sunday, True, "Sunday service: collect sources, validate, learn, forecast the week, publish")
 
 PLANS = {

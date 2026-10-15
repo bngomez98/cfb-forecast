@@ -274,7 +274,7 @@ CREATE INDEX IF NOT EXISTS idx_games_season_week ON games(season, week);
 CREATE INDEX IF NOT EXISTS idx_forecast_runs_season ON forecast_runs(season);
 CREATE INDEX IF NOT EXISTS idx_forecast_log_season_kickoff ON forecast_log(season, kickoff);
 
--- Database loop: ingested outcomes, per-forecast validation, and the independent R recomputation.
+-- Database loop: ingested outcomes, per-forecast validation, and the independent recomputation from stored rows.
 CREATE TABLE IF NOT EXISTS external_results (
   id INTEGER PRIMARY KEY,
   season INTEGER NOT NULL,
@@ -303,7 +303,7 @@ CREATE TABLE IF NOT EXISTS forecast_validation (
   PRIMARY KEY(run_id, game_id)
 );
 
-CREATE TABLE IF NOT EXISTS r_validation (
+CREATE TABLE IF NOT EXISTS db_validation (
   run_id TEXT NOT NULL,
   computed_at TEXT NOT NULL,
   games INTEGER NOT NULL,

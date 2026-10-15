@@ -130,8 +130,8 @@ flowchart LR
 ```mermaid
 flowchart LR
   src[Sources: schedule, ESPN, cfbtrack and other web pages] --> db1[(SQLite: results, external_results, team and player facts)]
-  db1 --> r[R: r/validate_db.R]
-  r --> db2[(r_validation)]
+  db1 --> re[Python recomputes from stored rows]
+  re --> db2[(db_validation)]
   db1 --> py[Python forecast model reads the stored history]
   py --> log[(forecast_log)]
   log --> val[Validate each logged pregame forecast against stored finals]
@@ -140,7 +140,7 @@ flowchart LR
 
 1. Outcomes (schedule finals plus any final that two or more web sources agree on, such as cfbtrack.com) and the source cross-check are written to `results` and `external_results`.
 2. Every pregame forecast ever logged to `forecast_log`, Sunday or daily, is joined to those outcomes into `forecast_validation` (forecasts logged after kickoff never count) and summarised in `weekly_validation`.
-3. R recomputes log loss, Brier score and margin error from `forecast_validation` with DBI/RSQLite and writes `r_validation`; Python refuses any disagreement. Without `Rscript` this step reports `unavailable`, unless `CFB_REQUIRE_R=1`.
+3. Python reads `forecast_validation` back out of SQLite, recomputes log loss, Brier score and margin error independently, stores them in `db_validation`, and refuses any disagreement with the metrics computed at validation time. Nothing here needs R.
 4. The next forecast reads the stored team and player history from the same database and logs its output, which the next run validates.
 
 **Scheduler.** Times are UTC unless noted. Outside the season nothing is due.

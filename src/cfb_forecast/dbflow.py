@@ -1,23 +1,20 @@
 """The database loop around the forecast.
 
-    sources -> SQLite -> R -> Python -> SQLite -> forecast -> SQLite (forecast_log) -> validation
+    sources -> SQLite -> Python -> SQLite -> forecast -> SQLite (forecast_log) -> validation
 
 1. ``ingest`` stores the schedule's outcomes (including finals that two or more web sources agree
    on, e.g. cfbtrack.com) and the source cross-check in SQLite.
 2. ``validate_logged_forecasts`` joins every pregame forecast ever logged (Sunday and daily) to the
    stored outcomes and writes one ``forecast_validation`` row per settled forecast, plus a
    ``weekly_validation`` summary per run.
-3. ``run_r_validation`` has R recompute log loss, Brier score and margin error from those rows
-   straight out of the database; Python refuses any disagreement.
+3. ``recompute_from_database`` reads those rows back out of the database, recomputes log loss, Brier
+   score and margin error independently, stores them in ``db_validation`` and refuses any disagreement.
 
 The forecast itself then reads the processed history from the same database (team and player facts),
 and logs its output to ``forecast_log``, which the next run validates.
 """
 from __future__ import annotations
 
-import os
-import shutil
-import subprocess
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
@@ -104,28 +101,37 @@ def validate_logged_forecasts(database, season):
     return {"runs": len(reports), "games": int(len(frame)), "metrics": reports}
 
 
-def run_r_validation(database, python_metrics):
-    """Have R recompute the metrics from the database and compare them with Python's."""
-    script = Path(__file__).resolve().parents[2] / "r" / "validate_db.R"
-    executable = shutil.which("Rscript")
-    if not executable or not script.exists():
-        if os.environ.get("CFB_REQUIRE_R") == "1":
-            raise RuntimeError("Rscript and r/validate_db.R are required (CFB_REQUIRE_R=1)")
-        return {"status": "unavailable", "reason": "Rscript or r/validate_db.R not found"}
-    done = subprocess.run([executable, str(script), str(database)], capture_output=True, text=True, timeout=300)
-    if done.returncode:
-        if os.environ.get("CFB_REQUIRE_R") == "1":
-            raise RuntimeError(f"R validation failed: {done.stderr[-500:]}")
-        return {"status": "failed", "error": done.stderr[-500:]}
+def recompute_from_database(database, python_metrics):
+    """Recompute log loss, Brier score and margin error from the stored rows alone and compare.
+
+    This reads ``forecast_validation`` back out of SQLite with plain SQL and recomputes each run's
+    metrics with a separate implementation (no shared code with ``evaluate.metrics``), stores them in
+    ``db_validation``, and refuses any disagreement with the metrics computed at validation time.
+    """
     with closing(connect(database)) as conn:
-        r = pd.read_sql_query("SELECT * FROM r_validation", conn).set_index("run_id")
-    for run_id, py in python_metrics.items():
-        if run_id not in r.index:
-            continue
-        for name in ("log_loss", "brier"):
-            if not np.isclose(r.loc[run_id, name], py[name], atol=1e-6):
-                raise ValueError(f"R/Python validation mismatch for {run_id}: {name} {r.loc[run_id, name]} vs {py[name]}")
-    return {"status": "verified", "runs": int(len(r))}
+        rows = conn.execute("SELECT run_id, home_win_probability, home_win, projected_home_margin, actual_margin FROM forecast_validation").fetchall()
+        by_run = {}
+        for run_id, p, y, pm, am in rows:
+            by_run.setdefault(run_id, []).append((float(p), int(y), pm, float(am)))
+        stamp = _now()
+        out = []
+        for run_id, items in by_run.items():
+            p = np.clip(np.array([i[0] for i in items]), 1e-9, 1 - 1e-9)
+            y = np.array([i[1] for i in items])
+            ll = float(-np.mean(y * np.log(p) + (1 - y) * np.log(1 - p)))
+            br = float(np.mean((p - y) ** 2))
+            err = [abs(i[2] - i[3]) for i in items if i[2] is not None]
+            mae = float(np.mean(err)) if len(err) == len(items) else None
+            out.append((run_id, stamp, len(items), ll, br, mae))
+            expected = python_metrics.get(run_id)
+            if expected:
+                for name, value in (("log_loss", ll), ("brier", br)):
+                    if not np.isclose(value, expected[name], atol=1e-6):
+                        raise ValueError(f"Database recomputation mismatch for {run_id}: {name} {value} vs {expected[name]}")
+        conn.execute("DELETE FROM db_validation")
+        conn.executemany("INSERT INTO db_validation(run_id, computed_at, games, log_loss, brier, margin_mae) VALUES(?,?,?,?,?,?)", out)
+        conn.commit()
+    return {"status": "verified", "runs": len(out)}
 
 
 def run(database, data_root, season):
@@ -133,5 +139,5 @@ def run(database, data_root, season):
     report = {"ingest": ingest(database, data_root, season)}
     validation = validate_logged_forecasts(database, season)
     report["validation"] = {k: v for k, v in validation.items() if k != "metrics"}
-    report["r"] = run_r_validation(database, validation.get("metrics", {})) if validation.get("runs") else {"status": "nothing_to_validate"}
+    report["recomputed"] = recompute_from_database(database, validation.get("metrics", {})) if validation.get("runs") else {"status": "nothing_to_validate"}
     return report
