@@ -36,5 +36,5 @@ def test_publish_writes_every_consumer_and_is_idempotent(tmp_path, monkeypatch):
     assert (art / "latest" / "forecast_board.json").exists()
     assert (art / "outbox" / "2026-week-7.eml").exists()
     assert len((art / "logs" / "datadog.jsonl").read_text().splitlines()) == 2
-    with sqlite3.connect(art / "cfb_forecast.sqlite") as conn:
+    with sqlite3.connect(art / "cfb_forecast.sqlite3") as conn:
         assert conn.execute("SELECT COUNT(*) FROM forecast_log").fetchone()[0] == 2

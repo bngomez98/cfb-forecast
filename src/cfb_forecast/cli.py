@@ -35,7 +35,7 @@ def main():
     mb=sub.add_parser("market-backfill-sdv",help="Download benchmark-only historical resolved/closing SportsDataverse lines")
     mb.add_argument("--seasons",nargs="+",type=int,required=True); mb.add_argument("--out",default="data/market_closing_history.csv")
     dv=sub.add_parser("distribution-backtest",help="Evaluate Gaussian score distributions on frozen held-out predictions")
-    dv.add_argument("--predictions",default="artifacts/backtest/predictions.csv"); dv.add_argument("--models",default="artifacts/backtest/models"); dv.add_argument("--out",default="artifacts/backtest/distribution_validation.csv")
+    dv.add_argument("--predictions",default="artifacts/training/predictions.csv"); dv.add_argument("--models",default="artifacts/training/models"); dv.add_argument("--out",default="artifacts/training/distribution_validation.csv")
     hf=sub.add_parser("holdout-freeze",help="Freeze a forecast batch and exact inputs before kickoff")
     hf.add_argument("--forecast",required=True); hf.add_argument("--data",default="data"); hf.add_argument("--model",default=str(model_root()))
     hf.add_argument("--out",default="artifacts/holdouts"); hf.add_argument("--batch-id",default=None); hf.add_argument("--freeze-at",default=None)

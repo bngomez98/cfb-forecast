@@ -21,7 +21,7 @@ def test_database_round_trips_forecast_inputs_and_keeps_missing_rates_missing(tm
     files(tmp_path)
     db = tmp_path / "f.sqlite"
     summary = update_database(tmp_path, tmp_path / "art", 2026, db, collect=False)
-    assert summary["games"] == 4 and summary["team_game_facts"] == 4
+    assert summary["games"] == 4 and summary["team_game_statistics"] == 4
     schedules, adv, _ = load_data(tmp_path)
     s2, a2, paths = load_data(db)
     assert paths == [db]
@@ -40,7 +40,7 @@ def test_update_is_idempotent_and_writes_both_team_rows(tmp_path):
     with sqlite3.connect(db) as conn:
         assert conn.execute("SELECT COUNT(*) FROM games").fetchone()[0] == 4
         assert conn.execute("SELECT COUNT(*) FROM game_teams").fetchone()[0] == 8
-        assert conn.execute("SELECT COUNT(*) FROM team_game_facts").fetchone()[0] == 4
+        assert conn.execute("SELECT COUNT(*) FROM team_game_statistics").fetchone()[0] == 4
 
 
 def test_sources_and_validation_rows_are_stored(tmp_path, monkeypatch):
@@ -57,4 +57,4 @@ def test_sources_and_validation_rows_are_stored(tmp_path, monkeypatch):
     with sqlite3.connect(db) as conn:
         assert conn.execute("SELECT status FROM source_retrievals WHERE name='collegefootballdata'").fetchone()[0] == "not_configured"
         assert conn.execute("SELECT source,game_id FROM source_rows").fetchone() == ("cfbtxt", 3)
-        assert conn.execute("SELECT COUNT(*) FROM source_registry WHERE name='cfbtrack'").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM sources WHERE source_id='cfbtrack'").fetchone()[0] == 1

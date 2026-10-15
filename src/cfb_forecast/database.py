@@ -6,174 +6,50 @@ import sqlite3
 from pathlib import Path
 from typing import Iterable
 
-SCHEMA = """
-PRAGMA foreign_keys = ON;
+def schema_text() -> str:
+    """The canonical schema, shipped inside the package so every install has it."""
+    from importlib import resources
+    return resources.files("cfb_forecast").joinpath("schema.sql").read_text()
 
-CREATE TABLE IF NOT EXISTS runs (
-    id INTEGER PRIMARY KEY,
-    run_key TEXT NOT NULL UNIQUE,
-    season INTEGER NOT NULL,
-    started_at TEXT,
-    completed_at TEXT,
-    status TEXT NOT NULL DEFAULT 'completed',
-    manifest_json TEXT NOT NULL DEFAULT '{}',
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
 
-CREATE TABLE IF NOT EXISTS models (
-    id INTEGER PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE,
-    path TEXT NOT NULL,
-    training_through_season INTEGER NOT NULL,
-    variant TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    manifest_json TEXT NOT NULL
-);
+# Tables renamed when the football-data design reused their names.
+LEGACY_RENAMES = (
+    ("sources", "run_sources", "run_id"),
+    ("forecasts", "run_forecasts", "model_id"),
+    ("team_game_facts", "team_game_statistics", None),
+    ("source_registry", None, None),
+)
 
-CREATE TABLE IF NOT EXISTS sources (
-    id INTEGER PRIMARY KEY,
-    run_id INTEGER REFERENCES runs(id) ON DELETE CASCADE,
-    provider TEXT NOT NULL,
-    url TEXT,
-    retrieved_at TEXT,
-    sha256 TEXT,
-    status TEXT NOT NULL,
-    metadata_json TEXT NOT NULL DEFAULT '{}'
-);
 
-CREATE TABLE IF NOT EXISTS forecasts (
-    id INTEGER PRIMARY KEY,
-    run_id INTEGER REFERENCES runs(id) ON DELETE CASCADE,
-    model_id INTEGER NOT NULL REFERENCES models(id),
-    game_id INTEGER NOT NULL,
-    season INTEGER NOT NULL,
-    home_team TEXT NOT NULL,
-    away_team TEXT NOT NULL,
-    kickoff TEXT NOT NULL,
-    as_of TEXT NOT NULL,
-    expected_home_score REAL NOT NULL,
-    expected_away_score REAL NOT NULL,
-    projected_home_margin REAL NOT NULL,
-    projected_total REAL NOT NULL,
-    home_win_probability REAL NOT NULL,
-    market_home_probability_no_vig REAL,
-    best_bet_side TEXT,
-    best_bet_edge REAL,
-    best_bet_ev_per_unit REAL,
-    recommended_stake_fraction REAL,
-    bet_status TEXT,
-    payload_json TEXT NOT NULL,
-    UNIQUE(model_id, game_id, as_of)
-);
+def _columns(conn, table):
+    return {r[1]: r[2] for r in conn.execute(f"PRAGMA table_info({table})")}
 
-CREATE TABLE IF NOT EXISTS results (
-    id INTEGER PRIMARY KEY,
-    game_id INTEGER NOT NULL,
-    season INTEGER NOT NULL,
-    home_points REAL,
-    away_points REAL,
-    completed INTEGER NOT NULL DEFAULT 0,
-    result_available_at TEXT,
-    source TEXT,
-    payload_json TEXT NOT NULL DEFAULT '{}',
-    UNIQUE(game_id, season)
-);
 
-CREATE INDEX IF NOT EXISTS idx_runs_season ON runs(season);
-CREATE INDEX IF NOT EXISTS idx_sources_run ON sources(run_id);
-CREATE INDEX IF NOT EXISTS idx_forecasts_season_kickoff ON forecasts(season, kickoff);
-CREATE INDEX IF NOT EXISTS idx_forecasts_game ON forecasts(game_id);
-CREATE INDEX IF NOT EXISTS idx_results_season ON results(season);
-
-CREATE TABLE IF NOT EXISTS forecast_log (
-    id INTEGER PRIMARY KEY,
-    run_id TEXT NOT NULL,
-    game_id INTEGER NOT NULL,
-    season INTEGER,
-    kickoff TEXT,
-    home_team TEXT NOT NULL,
-    away_team TEXT NOT NULL,
-    expected_home_score REAL,
-    expected_away_score REAL,
-    home_win_probability REAL,
-    predicted_winner TEXT,
-    confidence REAL,
-    published_at TEXT NOT NULL,
-    payload_json TEXT NOT NULL DEFAULT '{}',
-    UNIQUE(run_id, game_id)
-);
-CREATE INDEX IF NOT EXISTS idx_forecast_log_run ON forecast_log(run_id);
-
-CREATE TABLE IF NOT EXISTS games (
-    game_id INTEGER PRIMARY KEY,
-    season INTEGER NOT NULL,
-    week INTEGER,
-    start_date TEXT NOT NULL,
-    completed INTEGER NOT NULL,
-    neutral_site INTEGER NOT NULL,
-    fbs_game INTEGER NOT NULL,
-    result_usable INTEGER NOT NULL,
-    result_available_at TEXT,
-    home_id INTEGER NOT NULL,
-    away_id INTEGER NOT NULL,
-    home_team TEXT,
-    away_team TEXT,
-    home_points REAL,
-    away_points REAL
-);
-
-CREATE TABLE IF NOT EXISTS game_teams (
-    game_id INTEGER NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
-    team_id INTEGER NOT NULL,
-    team_name TEXT,
-    is_home INTEGER NOT NULL,
-    points REAL,
-    PRIMARY KEY(game_id, team_id)
-);
-
-CREATE TABLE IF NOT EXISTS team_game_facts (
-    game_id INTEGER NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
-    team_id INTEGER NOT NULL,
-    season INTEGER NOT NULL,
-    yards_per_play REAL,
-    yards_per_pass REAL,
-    yards_per_rush REAL,
-    first_downs_created_rate REAL,
-    PRIMARY KEY(game_id, team_id)
-);
-
-CREATE TABLE IF NOT EXISTS source_registry (
-    name TEXT PRIMARY KEY,
-    url TEXT NOT NULL,
-    role TEXT
-);
-
-CREATE TABLE IF NOT EXISTS source_retrievals (
-    id INTEGER PRIMARY KEY,
-    season INTEGER NOT NULL,
-    name TEXT NOT NULL,
-    url TEXT,
-    status TEXT,
-    retrieved_at TEXT,
-    sha256 TEXT,
-    bytes INTEGER,
-    receipt_json TEXT NOT NULL,
-    UNIQUE(season, name, retrieved_at)
-);
-
-CREATE TABLE IF NOT EXISTS source_rows (
-    id INTEGER PRIMARY KEY,
-    season INTEGER NOT NULL,
-    source TEXT NOT NULL,
-    game_id INTEGER,
-    row_json TEXT NOT NULL,
-    collected_at TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_games_season_start ON games(season, start_date);
-CREATE INDEX IF NOT EXISTS idx_team_game_facts_team ON team_game_facts(team_id, season);
-CREATE INDEX IF NOT EXISTS idx_source_rows_source ON source_rows(season, source);
-"""
+def migrate(conn) -> None:
+    """Bring an existing database up to the current schema without losing rows."""
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    for old, new, marker in LEGACY_RENAMES:
+        if old not in tables or (marker and marker not in _columns(conn, old)):
+            continue
+        if new and new not in tables:
+            conn.execute(f"ALTER TABLE {old} RENAME TO {new}")
+        elif new is None:
+            conn.execute(f"DROP TABLE {old}")
+    # Add columns introduced after a table was first created (nullable, no
+    # constraints) before the schema runs, so its indexes can reference them.
+    reference = sqlite3.connect(":memory:")
+    reference.executescript(schema_text())
+    existing = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    for (table,) in reference.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
+        if table not in existing:
+            continue
+        have = _columns(conn, table)
+        for name, kind in _columns(reference, table).items():
+            if name not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
+    reference.close()
+    conn.executescript(schema_text())
+    conn.commit()
 
 
 def connect(path: str | Path) -> sqlite3.Connection:
@@ -183,8 +59,7 @@ def connect(path: str | Path) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    schema_path = Path(__file__).resolve().parents[2] / "sql" / "schema.sql"
-    conn.executescript(schema_path.read_text() if schema_path.exists() else SCHEMA)
+    migrate(conn)
     return conn
 
 
@@ -227,7 +102,7 @@ def insert_forecasts(conn, model_id: int, rows: Iterable[dict], run_id: int | No
     count = 0
     for row in rows:
         cursor = conn.execute(
-            """INSERT OR IGNORE INTO forecasts(
+            """INSERT OR IGNORE INTO run_forecasts(
             run_id,model_id,game_id,season,home_team,away_team,kickoff,as_of,
             expected_home_score,expected_away_score,projected_home_margin,
             projected_total,home_win_probability,market_home_probability_no_vig,
@@ -247,8 +122,8 @@ def insert_forecasts(conn, model_id: int, rows: Iterable[dict], run_id: int | No
 
 def list_forecasts(conn: sqlite3.Connection, season: int | None = None):
     if season is None:
-        return conn.execute("SELECT * FROM forecasts ORDER BY kickoff").fetchall()
-    return conn.execute("SELECT * FROM forecasts WHERE season=? ORDER BY kickoff", (int(season),)).fetchall()
+        return conn.execute("SELECT * FROM run_forecasts ORDER BY kickoff").fetchall()
+    return conn.execute("SELECT * FROM run_forecasts WHERE season=? ORDER BY kickoff", (int(season),)).fetchall()
 
 
 def persist_completed_run(database, model_path, records, receipt, schedules, at):
@@ -264,8 +139,8 @@ def persist_completed_run(database, model_path, records, receipt, schedules, at)
             home_points=excluded.home_points,away_points=excluded.away_points,
             result_available_at=excluded.result_available_at,completed=1,source=excluded.source""",
             [(int(r.game_id), int(r.season), float(r.home_points), float(r.away_points), r.result_available_at.isoformat(), "validated_schedule") for r in completed.itertuples(index=False)])
-        conn.execute("DELETE FROM sources WHERE run_id=?", (run_id,))
-        conn.executemany("INSERT INTO sources(run_id,provider,sha256,status,metadata_json) VALUES(?,?,?,?,?)",
+        conn.execute("DELETE FROM run_sources WHERE run_id=?", (run_id,))
+        conn.executemany("INSERT INTO run_sources(run_id,provider,sha256,status,metadata_json) VALUES(?,?,?,?,?)",
             [(run_id, name, digest, "snapshotted", json.dumps({"as_of": receipt["as_of"]})) for name, digest in receipt["source_hashes"].items()])
         conn.commit()
 
@@ -273,7 +148,7 @@ def persist_completed_run(database, model_path, records, receipt, schedules, at)
 def main() -> int:
     import argparse
     parser = argparse.ArgumentParser(description="Initialize the CFB Forecast SQLite database")
-    parser.add_argument("--database", default="artifacts/cfb_forecast.sqlite")
+    parser.add_argument("--database", default="artifacts/cfb_forecast.sqlite3")
     args = parser.parse_args()
     initialize(args.database)
     print(args.database)

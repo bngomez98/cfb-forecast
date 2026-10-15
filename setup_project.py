@@ -21,7 +21,7 @@ PYPROJECT_FILE = PROJECT_ROOT / "pyproject.toml"
 VENV_DIR = PROJECT_ROOT / ".venv"
 DATA_DIR = Path(os.getenv("CFB_DATA_DIR", PROJECT_ROOT / "data"))
 ARTIFACTS_DIR = Path(os.getenv("CFB_ARTIFACTS_DIR", PROJECT_ROOT / "artifacts"))
-MODEL_DIR = Path(os.getenv("CFB_MODEL_DIR", ARTIFACTS_DIR / "backtest" / "model"))
+MODEL_DIR = Path(os.getenv("CFB_MODEL_DIR", ARTIFACTS_DIR / "training" / "model"))
 
 
 def run(command: list[str], *, check: bool = True) -> subprocess.CompletedProcess:
@@ -110,6 +110,17 @@ if report['overall'] != 'pass':
         wait_for_url("http://localhost:8000/awareness")
         print("API: http://localhost:8000")
         print("Dashboard: http://localhost:8501")
+
+
+def check_command(command: list[str], label: str) -> None:
+    """Fail with a readable message when a required external tool is missing or unhealthy."""
+    try:
+        result = subprocess.run(command, cwd=PROJECT_ROOT, capture_output=True, text=True)
+    except FileNotFoundError:
+        raise SystemExit(f"{label} failed: '{command[0]}' is not installed or not on PATH")
+    if result.returncode:
+        raise SystemExit(f"{label} failed:\n{(result.stderr or result.stdout).strip()}")
+    print(f"OK {label}")
 
 
 def wait_for_url(url: str, attempts: int = 30) -> None:

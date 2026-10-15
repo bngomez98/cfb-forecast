@@ -127,7 +127,7 @@ def _email(root, run_id, board, send):
 def publish_forecast_update(run_dir, run_id, artifacts=None, database=None, web_public=None, send_email=True):
     """Store one calculated board in SQLite and fan it out to every consumer."""
     root = Path(artifacts) if artifacts else artifacts_root()
-    database = database or os.environ.get("CFB_DATABASE") or root / "cfb_forecast.sqlite"
+    database = database or os.environ.get("CFB_DATABASE") or root / "cfb_forecast.sqlite3"
     web_public = Path(web_public) if web_public else project_root() / "web" / "public"
     records = _records(run_dir)
     board = board_rows(records)

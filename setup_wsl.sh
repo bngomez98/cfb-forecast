@@ -5,7 +5,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="${VENV_DIR:-${PROJECT_ROOT}/.venv}"
 DATA_DIR="${CFB_DATA_DIR:-${PROJECT_ROOT}/data}"
 ARTIFACTS_DIR="${CFB_ARTIFACTS_DIR:-${PROJECT_ROOT}/artifacts}"
-MODEL_DIR="${CFB_MODEL_DIR:-${ARTIFACTS_DIR}/backtest/model}"
+MODEL_DIR="${CFB_MODEL_DIR:-${ARTIFACTS_DIR}/training/model}"
 START_STACK="${START_STACK:-0}"
 RUN_TESTS="${RUN_TESTS:-1}"
 
@@ -41,7 +41,7 @@ from cfb_forecast.data import load_data
 from cfb_forecast.model import load_model
 
 root = Path(os.environ.get("CFB_DATA_DIR", "data"))
-model_root = Path(os.environ.get("CFB_MODEL_DIR", "artifacts/backtest/model"))
+model_root = Path(os.environ.get("CFB_MODEL_DIR", "artifacts/training/model"))
 schedules, summaries, paths = load_data(root)
 model = load_model(model_root)
 print(f"schedule rows: {len(schedules)}")

@@ -2,14 +2,14 @@
 #' @param path SQLite database path.
 #' @return A DBI connection.
 #' @export
-open_cfb_db <- function(path = "artifacts/cfb_forecast.sqlite") {
+open_cfb_db <- function(path = "artifacts/cfb_forecast.sqlite3") {
   DBI::dbConnect(RSQLite::SQLite(), path)
 }
 
 #' Read forecasts for a season.
 #' @export
 read_forecasts <- function(conn, season = NULL) {
-  sql <- "SELECT * FROM forecasts"
+  sql <- "SELECT * FROM run_forecasts"
   if (!is.null(season)) sql <- paste0(sql, " WHERE season = ", as.integer(season))
   sql <- paste0(sql, " ORDER BY kickoff")
   DBI::dbGetQuery(conn, sql)

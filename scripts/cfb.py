@@ -45,8 +45,8 @@ def run_pipeline(args: argparse.Namespace) -> None:
     ensure_data(args.image, args.season)
     docker_run(args.image, ["preflight", "--data", "/app/data", "--artifacts", "/app/artifacts", "--season", str(args.season)])
     docker_run(args.image, ["results-refresh", "--data", "/app/data", "--out", "/app/artifacts/results", "--season", str(args.season)])
-    docker_run(args.image, ["weekly-forecast", "--data", "/app/data", "--model", "/app/artifacts/backtest/model", "--out", "/app/artifacts", "--season", str(args.season), "--draws", str(args.draws)], writable_data=True)
-    docker_run(args.image, ["season-backtest", "--data", "/app/data", "--model", "/app/artifacts/backtest/model", "--out", "/app/artifacts/backtest", "--season", str(args.season), "--draws", str(args.draws), "--lead-hours", str(args.lead_hours)])
+    docker_run(args.image, ["weekly-forecast", "--data", "/app/data", "--model", "/app/artifacts/training/model", "--out", "/app/artifacts", "--season", str(args.season), "--draws", str(args.draws)], writable_data=True)
+    docker_run(args.image, ["season-backtest", "--data", "/app/data", "--model", "/app/artifacts/training/model", "--out", "/app/artifacts/backtest", "--season", str(args.season), "--draws", str(args.draws), "--lead-hours", str(args.lead_hours)])
     print(f"Weekly pipeline finished for {args.season}.")
     print(f"Dashboard: {args.dashboard_url}")
 
@@ -63,7 +63,7 @@ def backtest_season(args: argparse.Namespace) -> None:
     DATA.mkdir(parents=True, exist_ok=True)
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     ensure_data(args.image, args.season)
-    docker_run(args.image, ["season-backtest", "--data", "/app/data", "--model", "/app/artifacts/backtest/model", "--out", "/app/artifacts/backtest", "--season", str(args.season), "--draws", str(args.draws), "--lead-hours", str(args.lead_hours)])
+    docker_run(args.image, ["season-backtest", "--data", "/app/data", "--model", "/app/artifacts/training/model", "--out", "/app/artifacts/backtest", "--season", str(args.season), "--draws", str(args.draws), "--lead-hours", str(args.lead_hours)])
     print(f"Season backtest finished for {args.season}.")
 
 

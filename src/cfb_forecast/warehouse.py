@@ -10,8 +10,8 @@ import pandas as pd
 from .data import load_data
 from .database import connect
 from .external_cli import select_next_week
-from .external_sources import PUBLIC_SOURCES, collect_extended_sources
-from .sources import SOURCE_REGISTRY, source_registry, utc_now
+from .external_sources import collect_extended_sources
+from .sources import utc_now
 
 RATE_FIELDS = ("yards_per_play", "yards_per_pass", "yards_per_rush", "first_downs_created_rate")
 
@@ -31,7 +31,7 @@ def load_games(conn, schedules, season):
                           int(g.home_id), int(g.away_id), g.home_team, g.away_team, *points))
         team_rows.append((int(g.game_id), int(g.home_id), g.home_team, 1, points[0]))
         team_rows.append((int(g.game_id), int(g.away_id), g.away_team, 0, points[1]))
-    conn.executemany("""INSERT INTO games VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    conn.executemany("""INSERT INTO games(game_id,season,week,start_date,completed,neutral_site,fbs_game,result_usable,result_available_at,home_id,away_id,home_team,away_team,home_points,away_points) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(game_id) DO UPDATE SET week=excluded.week,start_date=excluded.start_date,
         completed=excluded.completed,neutral_site=excluded.neutral_site,fbs_game=excluded.fbs_game,
         result_usable=excluded.result_usable,result_available_at=excluded.result_available_at,
@@ -42,27 +42,43 @@ def load_games(conn, schedules, season):
     return len(game_rows)
 
 
-def load_team_facts(conn, schedules, adv, season):
-    seasons = schedules.loc[schedules.season == int(season), ["game_id", "season"]]
+def load_team_statistics(conn, schedules, adv, season, retrieval_id=None, source_id="sportsdataverse"):
+    """Per-game team rates from a source, kept separate per source; a missing rate stays NULL."""
+    seasons = schedules.loc[schedules.season == int(season), ["game_id", "season", "result_available_at"]]
     facts = adv.drop(columns=["season"], errors="ignore").merge(seasons, on="game_id", how="inner")
-    conn.executemany(f"""INSERT INTO team_game_facts(game_id,team_id,season,{','.join(RATE_FIELDS)})
-        VALUES(?,?,?,?,?,?,?) ON CONFLICT(game_id,team_id) DO UPDATE SET
-        {','.join(f'{f}=excluded.{f}' for f in RATE_FIELDS)}""",
-        [(int(r.game_id), int(r.pos_team_id), int(r.season), *(_none(getattr(r, f)) for f in RATE_FIELDS))
-         for r in facts.itertuples(index=False)])
+    conn.executemany(f"""INSERT INTO team_game_statistics(game_id,team_id,source_id,season,{','.join(RATE_FIELDS)},retrieval_id,available_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(game_id,team_id,source_id) DO UPDATE SET
+        {','.join(f'{f}=excluded.{f}' for f in RATE_FIELDS)},retrieval_id=excluded.retrieval_id,available_at=excluded.available_at""",
+        [(int(r.game_id), int(r.pos_team_id), source_id, int(r.season), *(_none(getattr(r, f)) for f in RATE_FIELDS),
+          retrieval_id, r.result_available_at.isoformat()) for r in facts.itertuples(index=False)])
     return len(facts)
 
 
+SOURCE_IDS = (("cfbtxt", "cfbtxt"), ("mrtimo", "mrtimo"), ("footballdb", "footballdb"), ("cfbtrack", "cfbtrack"), ("fanduel", "fanduel"),
+              ("collegefootballdata", "cfbd"), ("cfbd", "cfbd"), ("cfbfastr_registry", "cfbfastr_models"), ("cfbfastr", "sportsdataverse"))
+
+
+def source_id_for(name: str) -> str:
+    lowered = name.lower()
+    for prefix, source_id in SOURCE_IDS:
+        if lowered.startswith(prefix):
+            return source_id
+    return lowered
+
+
 def load_sources(conn, season, report):
+    """Record each collected source retrieval and keep its schedule-validation rows."""
+    from .ingest import record_retrieval
     now = report.get("collected_at") or utc_now()
-    roles = {s["name"]: s.get("role") for s in PUBLIC_SOURCES}
-    registry = {**source_registry(season), **{s["name"]: s["url"] for s in report["sources"] if s.get("url")}}
-    conn.executemany("INSERT INTO source_registry VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET url=excluded.url,role=excluded.role",
-                     [(n, u, roles.get(n)) for n, u in registry.items()])
     for s in report["sources"]:
-        conn.execute("""INSERT OR IGNORE INTO source_retrievals(season,name,url,status,retrieved_at,sha256,bytes,receipt_json)
-            VALUES(?,?,?,?,?,?,?,?)""", (int(season), s["name"], s.get("url"), s.get("status"), s.get("retrieved_at") or now,
-                                         s.get("sha256"), s.get("bytes"), json.dumps(s, default=str)))
+        source_id = source_id_for(s["name"])
+        if not conn.execute("SELECT 1 FROM sources WHERE source_id=?", (source_id,)).fetchone():
+            conn.execute("INSERT INTO sources(source_id,name,url,role) VALUES(?,?,?,?)", (source_id, s["name"], s.get("url") or "", s.get("role")))
+        record_retrieval(conn, source_id, s.get("url"), None, season=int(season), name=s["name"], status=s.get("status") or "unknown",
+                         retrieved_at=s.get("retrieved_at") or now, receipt=s)
+        if s.get("sha256"):
+            conn.execute("UPDATE source_retrievals SET sha256=?, bytes=? WHERE source_id=? AND season=? AND retrieved_at=? AND name=?",
+                         (s["sha256"], s.get("bytes"), source_id, int(season), s.get("retrieved_at") or now, s["name"]))
     rows = report.get("schedule_validation", [])
     conn.executemany("INSERT INTO source_rows(season,source,game_id,row_json,collected_at) VALUES(?,?,?,?,?)",
                      [(int(season), r.get("provider", "schedule_validation"), r.get("game_id"), json.dumps(r, default=str), now) for r in rows])
@@ -72,12 +88,12 @@ def load_sources(conn, season, report):
 def update_database(data_root, artifacts, season, database=None, collect=True):
     """Write one season into SQLite; a failed collection is reported, never faked."""
     artifacts = Path(artifacts)
-    database = database or artifacts / "cfb_forecast.sqlite"
+    database = database or artifacts / "cfb_forecast.sqlite3"
     schedules, adv, _ = load_data(data_root)
     summary = {"season": int(season), "database": str(database)}
     with closing(connect(database)) as conn:
         summary["games"] = load_games(conn, schedules, season)
-        summary["team_game_facts"] = load_team_facts(conn, schedules, adv, season)
+        summary["team_game_statistics"] = load_team_statistics(conn, schedules, adv, season)
         conn.commit()
         if collect:
             upcoming = select_next_week(schedules, season, utc_now())
@@ -100,8 +116,8 @@ def load_data_from_database(database, seasons=None):
         args = [int(s) for s in seasons]
     with closing(connect(database)) as conn:
         games = pd.read_sql_query(f"SELECT * FROM games {where} ORDER BY start_date, game_id", conn, params=args)
-        adv = pd.read_sql_query(f"SELECT game_id, team_id AS pos_team_id, {','.join(RATE_FIELDS)} FROM team_game_facts "
-                                f"{where} ORDER BY game_id, team_id", conn, params=args)
+        adv = pd.read_sql_query(f"SELECT game_id, team_id AS pos_team_id, {','.join(RATE_FIELDS)} FROM team_game_statistics "
+                                f"WHERE source_id='sportsdataverse'{where.replace('WHERE', ' AND')} ORDER BY game_id, team_id", conn, params=args)
     if games.empty:
         raise ValueError(f"No games in {database}; run update-database first")
     for c in ("completed", "neutral_site", "fbs_game"):

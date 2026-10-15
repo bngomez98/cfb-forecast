@@ -16,7 +16,7 @@ TABLES = ("games", "game_teams", "team_game_facts", "source_registry", "source_r
 
 
 def default_database():
-    return artifacts_root() / "cfb_forecast.sqlite"
+    return artifacts_root() / "cfb_forecast.sqlite3"
 
 
 def status(database):
@@ -36,7 +36,7 @@ def query(database, sql):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="cfb-db", description="Work directly with the forecast SQLite database")
-    parser.add_argument("--database", default=None, help="default: artifacts/cfb_forecast.sqlite")
+    parser.add_argument("--database", default=None, help="default: artifacts/cfb_forecast.sqlite3")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("init", help="Create the database and apply sql/schema.sql")
     sub.add_parser("status", help="Row counts for every table")

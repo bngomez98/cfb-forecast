@@ -144,6 +144,14 @@ def verify_data(data_dir: Path, season: int, raw_pbp: bool) -> None:
     verify_manifest(data_dir)
 
 
+def run(label: str, *args: str) -> None:
+    """Run one pipeline stage with this interpreter and stop the update if it fails."""
+    print(f"\n== {label} ==", flush=True)
+    result = subprocess.run([sys.executable, *args], cwd=ROOT)
+    if result.returncode:
+        raise SystemExit(f"FAILED: {label} (exit {result.returncode})")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("season", nargs="?", type=int, default=2026, help="Season; default: 2026")
@@ -186,7 +194,7 @@ def main() -> int:
     if not args.skip_results:
         run("Refresh ESPN results", "-m", "cfb_forecast", "results-refresh", "--data", str(data_dir), "--out", str(artifacts_dir / "results"), "--season", str(args.season))
     if not args.skip_forecast:
-        run("Generate weekly forecast", "-m", "cfb_forecast", "weekly-forecast", "--data", str(data_dir), "--model", str(artifacts_dir / "backtest" / "model"), "--out", str(artifacts_dir), "--season", str(args.season), "--draws", str(args.draws))
+        run("Generate weekly forecast", "-m", "cfb_forecast", "weekly-forecast", "--data", str(data_dir), "--model", str(artifacts_dir / "training" / "model"), "--out", str(artifacts_dir), "--season", str(args.season), "--draws", str(args.draws))
     if not args.skip_tests:
         run("Run tests", "-m", "pytest", "-q")
     if not args.skip_build:

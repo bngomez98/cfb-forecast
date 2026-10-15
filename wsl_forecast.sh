@@ -127,7 +127,7 @@ STAGE="forecast"
 say "Generating weekly forecast for season $SEASON"
 python -m cfb_forecast weekly-forecast \
   --data "$DATA_DIR" \
-  --model "$ARTIFACT_DIR/backtest/model" \
+  --model "$ARTIFACT_DIR/training/model" \
   --out "$ARTIFACT_DIR" \
   --season "$SEASON" \
   --draws "$DRAWS"
