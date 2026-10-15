@@ -83,6 +83,12 @@ def main():
     sb.add_argument("--draws",type=int,default=50000); sb.add_argument("--lead-hours",type=float,default=48.0)
     pf=sub.add_parser("preflight",help="Validate mounted data and artifact paths")
     pf.add_argument("--data",default="data"); pf.add_argument("--artifacts",default="artifacts"); pf.add_argument("--season",type=int,default=None)
+    pa=sub.add_parser("probability-audit",help="Evaluate prior-season calibration, constrained fitting, and stress sensitivity on exported predictions")
+    pa.add_argument("--input",required=True); pa.add_argument("--out",required=True)
+    pa.add_argument("--probability-column",default="score_p"); pa.add_argument("--outcome-column",default="home_win")
+    pa.add_argument("--min-games",type=int,default=100); pa.add_argument("--regularization",type=float,default=0.01)
+    pa.add_argument("--max-change",type=float,default=None); pa.add_argument("--stress-radius",type=float,default=0.1)
+    pa.add_argument("--model",default=None,help="Optionally write a separate candidate model next to the audit")
     pu=sub.add_parser("publish-update",help="Publish a completed forecast directory to SQLite, React, Streamlit, logs, and email")
     pu.add_argument("--run",required=True); pu.add_argument("--artifacts",default="artifacts")
     pu.add_argument("--database",default=None); pu.add_argument("--web",default=None); pu.add_argument("--run-id",default=None)
@@ -176,6 +182,11 @@ def main():
     elif args.command=="preflight":
         from .preflight import run_preflight
         run_preflight(args.data,args.artifacts,args.season)
+    elif args.command=="probability-audit":
+        from .probability import audit_probabilities
+        import json
+        summary=audit_probabilities(args.input,args.out,args.probability_column,args.outcome_column,args.min_games,args.regularization,args.model,args.max_change,args.stress_radius)
+        print(json.dumps(summary,indent=2,default=str))
     elif args.command=="publish-update":
         from .publisher import publish_forecast_update
         report = publish_forecast_update(args.run, args.artifacts, args.database, args.web, args.run_id, fetch_sources=args.fetch_sources)
