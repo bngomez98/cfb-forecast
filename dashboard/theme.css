@@ -68,6 +68,6 @@ p, li {line-height:1.6}
 .model-card p {font-size:15px;color:#bdcfcf;margin-bottom:0;line-height:1.7}
 
 @media(max-width:860px){.summary{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:620px){.block-container{padding:1.5rem 1rem 3rem}.cards{grid-template-columns:1fr}.summary{gap:8px}.summary-item{padding:12px 14px}.summary-item strong{font-size:22px}}
+@media(max-width:620px){.block-container{padding:4rem 1rem 3rem}.cards{grid-template-columns:1fr}.summary{gap:8px}.summary-item{padding:12px 14px}.summary-item strong{font-size:22px}}
 @media(max-width:380px){.row{grid-template-columns:minmax(0,1fr) 44px 92px;gap:8px}.chance{grid-template-columns:36px 1fr;gap:6px}}
 </style>
