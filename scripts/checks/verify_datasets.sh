@@ -57,11 +57,18 @@ if manifest.exists():
     for name, metadata in data.get("files", {}).items():
         path = root / name
         expected = metadata.get("sha256")
-        if path.exists() and expected:
-            digest = hashlib.sha256(path.read_bytes()).hexdigest()
-            if digest != expected:
-                raise SystemExit(f"SHA-256 mismatch: {name}")
-    print("OK source manifest checksums")
+        if expected and not path.exists():
+            raise SystemExit(f"Manifest file is missing: {name}")
+        if path.exists():
+            actual_bytes = path.stat().st_size
+            expected_bytes = metadata.get("bytes")
+            if expected_bytes is not None and actual_bytes != expected_bytes:
+                raise SystemExit(f"Byte-size mismatch: {name} (expected {expected_bytes}, got {actual_bytes})")
+            if expected:
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                if digest != expected:
+                    raise SystemExit(f"SHA-256 mismatch: {name}")
+    print("OK source manifest checksums and sizes")
 
 print("Dataset verification passed")
 PY
