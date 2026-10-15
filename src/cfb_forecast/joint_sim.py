@@ -71,7 +71,18 @@ class MatchupParameters:
     def __init__(self) -> None:
         self.alpha = 24.0                     # league-average points per team
         self.home_field = 2.5                 # venue coefficient (points)
-        self.w_points = np.ones(5)            # exposure weights per metric
+        #: Per-metric exposure weights applied to the *standardized* state
+        #: vectors; only the points metric carries direct scoring information,
+        #: the rest contribute at shrunk weight (hierarchical shrinkage).
+        self.w_points = np.array([1.0, 0.3, 0.3, 0.3, 0.3])
+        #: Points per drive contributed by one weighted standardized state
+        #: unit; re-estimated by fit_matchup_params via least squares against
+        #: realized margins.
+        self.state_points_per_drive = 0.6     # league default, re-estimated on fit
+        #: Per-team residual SD of the score head around its own means, fitted
+        #: from history; used to keep the engine's possession-count variance at
+        #: a realistic level instead of compounding state uncertainty twice.
+        self.score_head_sd = 13.7             # league default, re-estimated on fit
         self.interaction_scale = 0.0          # bilinear O^T W D strength
         self.possession_intercept = float(np.log(12.0))
         self.tempo_coef = 0.05                # log-drives per tempo differential
@@ -104,14 +115,20 @@ class MatchupParameters:
 
 
 def fit_matchup_params(actual_scores: np.ndarray, predicted_means: np.ndarray,
+                       state_diffs: np.ndarray | None = None,
+                       drives_per_team: float = 12.0,
                        games=None) -> MatchupParameters:
     """Estimate ``Psi`` from completed, point-in-time eligible games.
 
     ``actual_scores`` / ``predicted_means`` are ``(n, 2)`` arrays of final and
-    pregame-predicted (home, away) points.  Fitted quantities: league mean
-    ``alpha``, margin calibration slope folded into ``interaction_scale``
-    (hierarchical shrinkage keeps weak terms near zero), and the realized
-    scoring split used for the TD/FG drive mix.
+    pregame-predicted (home, away) points.  ``state_diffs`` is an ``(n, m)``
+    array of pregame standardized ``(offense - opponent defense)`` state
+    differentials per metric — the exact quantity the possession engine will
+    later receive as posterior draws.  Fitted quantities: league mean
+    ``alpha``, the regression's own predictive spread, the points-per-drive
+    conversion ``state_points_per_drive`` for that spread, a margin-calibration
+    slope folded into ``interaction_scale`` (hierarchical shrinkage keeps weak
+    terms near zero), and the realized scoring split used for the TD/FG mix.
     """
     params = MatchupParameters()
     actual = np.asarray(actual_scores, dtype=float)
@@ -124,9 +141,49 @@ def fit_matchup_params(actual_scores: np.ndarray, predicted_means: np.ndarray,
     denom = max(float(np.var(pred_margin)), 1e-6)
     slope = float(np.cov(pred_margin, margins)[0, 1] / denom)
     params.interaction_scale = float(np.clip(slope - 1.0, -0.5, 0.5))
+    # Predictive variance of the score head itself (residual around its own
+    # means); the engine reproduces this spread through possession counts and
+    # terminal-outcome randomness rather than bolted-on noise.
+    resid_h = actual[:, 0] - mu[:, 0]
+    resid_a = actual[:, 1] - mu[:, 1]
+    params.score_head_sd = float(np.sqrt(max((np.var(resid_h) + np.var(resid_a)) / 2.0, 1e-9)))
+    # Drive-count dispersion: Var(points) ~ (mu/drive)^2 * Var(N), so
+    # sigma_logN^2 ~= sd_points^2 / per-drive mean points.  This keeps the
+    # lognormal count draw in a narrow realistic band (~8-16 drives).
+    per_drive_points = max(params.alpha / drives_per_team, 1e-6)
+    var_n = min((params.score_head_sd / per_drive_points) ** 2, 0.35)
+    params.sigma_possession = np.array([[var_n, var_n * 0.15], [var_n * 0.15, var_n]])
+    # Convert one standardized state-differential unit into points per drive so
+    # the engine's per-drive mean stays in a realistic range (~1-4 pts/drive).
+    # The differential is defined from each side's perspective, so the home
+    # margin responds to (home differential - away differential); both sides
+    # are weighted by the same exposure vector the simulator will use.
+    if state_diffs is not None:
+        diff = np.asarray(state_diffs, dtype=float)
+        w = params.w_points[:diff.shape[-1]]
+        if diff.ndim == 3:          # (n, 2, m): home view, away view
+            x = (diff[:, 0] * w).sum(axis=1) - (diff[:, 1] * w).sum(axis=1)
+        elif diff.ndim == 2:        # (n, m): single-side differential
+            x = (diff * w).sum(axis=1)
+        else:
+            x = diff
+        scale = _fit_ppd_scale(margins, x, params.alpha, drives_per_team)
+        params.state_points_per_drive = float(np.clip(scale, 0.05, 3.0))
     high_scoring = (actual.max(axis=1) >= 21).mean()
     params.drive_td_base = float(np.clip(0.30 + 0.25 * high_scoring, 0.2, 0.7))
     return params
+
+
+def _fit_ppd_scale(margins: np.ndarray, combined_diff: np.ndarray, alpha: float,
+                   drives_per_team: float) -> float:
+    """Least-squares points-per-drive coefficient mapping the summed state
+    differential to the observed home-away margin."""
+    x = np.asarray(combined_diff, dtype=float)
+    y = np.asarray(margins, dtype=float)
+    denom = float(np.dot(x, x))
+    if denom < 1e-9:
+        return 0.25
+    return float(np.dot(x, y) / denom)
 
 
 def _usage_scales(rng: np.random.Generator, n_draws: int, priors=None) -> np.ndarray:
@@ -198,11 +255,15 @@ def simulate_game_draws(oh, dh, oa, da, params: MatchupParameters, neutral: bool
     off_a = (oa * w).sum(axis=1)
     dfn_h = (dh * w).sum(axis=1)
     dfn_a = (da * w).sum(axis=1)
-    # Learned matchup interaction: bilinear O_i^T W D_j term.
-    inter_h = params.interaction_scale * off_h * dfn_a / max(m, 1)
-    inter_a = params.interaction_scale * off_a * dfn_h / max(m, 1)
-    mu_h = params.alpha + scale_h * rest_h * (off_h - dfn_a) + venue + inter_h
-    mu_a = params.alpha + scale_a * rest_a * (off_a - dfn_h) - inter_a
+    # State differentials live in standardized units; convert to points per
+    # drive with the fitted exposure scale so mu stays a realistic scoring rate.
+    ppd = params.state_points_per_drive
+    # Learned matchup interaction: bilinear O_i^T W D_j term, kept in
+    # points-per-drive space by scaling both factors by `ppd`.
+    inter_h = params.interaction_scale * (ppd * off_h) * (ppd * dfn_a) / max(m, 1)
+    inter_a = params.interaction_scale * (ppd * off_a) * (ppd * dfn_h) / max(m, 1)
+    mu_h = params.alpha + scale_h * rest_h * ppd * (off_h - dfn_a) + venue + inter_h
+    mu_a = params.alpha + scale_a * rest_a * ppd * (off_a - dfn_h) - inter_a
 
     tempo_h = oh[:, 4] if m > 4 else np.zeros(draws)
     tempo_a = oa[:, 4] if m > 4 else np.zeros(draws)
@@ -210,7 +271,18 @@ def simulate_game_draws(oh, dh, oa, da, params: MatchupParameters, neutral: bool
         params.possession_intercept + params.tempo_coef * (tempo_h - tempo_a),
         params.possession_intercept + params.tempo_coef * (tempo_a - tempo_h),
     ])
-    counts = _mvn_sample(eta, params.sigma_possession, rng, draws)
+    # Possession-count noise absorbs the score head's own predictive spread.
+    # sigma_possession is fitted from history in fit_matchup_params; if it was
+    # never calibrated (league default), derive a bounded dispersion here so a
+    # lognormal count draw can never explode into unrealistic drive totals.
+    var_default = float(params.sigma_possession[0, 0])
+    if abs(var_default - 0.08) < 1e-12:      # uncalibrated league default
+        per_drive_mu = max(params.alpha / 12.0, 1e-6)
+        var_n = min((params.score_head_sd / per_drive_mu) ** 2, 0.35)
+        sigma_n = np.array([[var_n, var_n * 0.15], [var_n * 0.15, var_n]])
+    else:
+        sigma_n = params.sigma_possession
+    counts = _mvn_sample(eta, sigma_n, rng, draws)
     n_h = np.maximum(np.round(np.exp(counts[:, 0])).astype(int), 1)
     n_a = np.maximum(np.round(np.exp(counts[:, 1])).astype(int), 1)
     overflow = np.maximum((n_h + n_a) - params.max_shared_clock_drives, 0)
@@ -227,12 +299,15 @@ def simulate_game_draws(oh, dh, oa, da, params: MatchupParameters, neutral: bool
                             params.field_position_sd, size=draws)
 
     def _side(off_mu, n_drives, fp, precip_shift):
-        per_drive = off_mu / np.maximum(n_drives, 1)
+        # Per-drive expected points stay bounded near realistic CFB rates even
+        # when a side's posterior mean is extreme (weak/strong teams late in
+        # the replay); drives are shared, so inflation here would double-count.
+        per_drive = np.clip(off_mu / np.maximum(n_drives, 1), 0.3, 4.5)
         fg_prob = np.clip(params.points_to_fg - 0.01 * precip_shift, 0.05, 0.9)
         td_share = np.clip(params.drive_td_base + 0.010 * (fp - params.field_position_mean)
                            + 0.02 * precip_shift, 0.05, 0.9)
         ev_per_scoring_drive = td_share * 7.0 + (1 - td_share) * 3.0 * fg_prob * params.fg_made_rate
-        score_prob = np.clip(per_drive / np.maximum(ev_per_scoring_drive, 1e-9), 0.0, 0.95)
+        score_prob = np.clip(per_drive / np.maximum(ev_per_scoring_drive, 1e-9), 0.0, 0.85)
         p_td = score_prob * td_share
         p_fg = score_prob * (1 - td_share) * fg_prob
         p_to = np.clip(params.turnover_share * (1.5 - score_prob), 0.01, 0.45)
@@ -325,7 +400,8 @@ def market_conditioned(summary: dict, quote: dict, delta: dict | None = None) ->
         cond_var = var_fb * (1 - gain)
         out["edge_margin"] = mu_fb + float(spread)
     ml_h, ml_a = quote.get("home_moneyline"), quote.get("away_moneyline")
-    cond_p = float(norm.cdf(cond_mu / np.sqrt(max(cond_var, 1e-9))))
+    cond_p = p_fb if spread is None or (isinstance(spread, float) and np.isnan(spread)) \
+        else float(norm.cdf(cond_mu / np.sqrt(max(cond_var, 1e-9))))
     if ml_h is not None and ml_a is not None and not (np.isnan(ml_h) or np.isnan(ml_a)):
         fair = vig_free_probability(ml_h, ml_a)
         out["market_win_probability"] = fair

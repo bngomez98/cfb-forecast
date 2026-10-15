@@ -92,16 +92,22 @@ def analyze_sources_r(data_root, as_of, season, repo_root=None):
 def _grade(predictions, season_games, validated_at):
     actual = season_games[["game_id", "result_usable", "result_available_at",
                            "home_points", "away_points"]]
-    joined = predictions.merge(actual, on="game_id", how="left")
+    joined = predictions.merge(actual, on="game_id", how="left",
+                               suffixes=("", "_final"))
     ready = joined.result_usable.fillna(False) & (joined.result_available_at <= timestamp(validated_at))
     graded = joined[ready].copy()
     if graded.empty:
         return graded
-    graded["actual_home_win"] = (graded.home_points > graded.away_points).astype(int)
+    # A restored ledger frame may already carry forecast-time home_points/
+    # away_points columns; the merged finals then land in *_final.  Grading
+    # must use the actual results, never a same-named prediction column.
+    hp = "home_points_final" if "home_points_final" in graded.columns else "home_points"
+    ap = "away_points_final" if "away_points_final" in graded.columns else "away_points"
+    graded["actual_home_win"] = (graded[hp] > graded[ap]).astype(int)
     graded["correct"] = ((graded.home_win_probability >= 0.5).astype(int) == graded.actual_home_win).astype(int)
     graded["brier"] = (graded.home_win_probability - graded.actual_home_win) ** 2
-    graded["margin_error"] = graded.projected_home_margin - (graded.home_points - graded.away_points)
-    graded["total_error"] = graded.projected_total - (graded.home_points + graded.away_points)
+    graded["margin_error"] = graded.projected_home_margin - (graded[hp] - graded[ap])
+    graded["total_error"] = graded.projected_total - (graded[hp] + graded[ap])
     graded["validated_at"] = str(validated_at)
     return graded
 

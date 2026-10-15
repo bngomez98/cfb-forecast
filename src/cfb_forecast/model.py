@@ -67,7 +67,14 @@ class ScoreHead:
         return self
 
     def predict(self, F: np.ndarray) -> np.ndarray:
-        """Predict ``(n, 2)`` expected scores, floored at zero."""
+        """Predict ``(n, 2)`` expected scores, floored at zero.
+
+        Accepts a single pregame feature pair shaped ``(2, FEATURE_WIDTH)`` or
+        a stacked batch shaped ``(n, 2, FEATURE_WIDTH)``.
+        """
+        F = np.asarray(F, dtype=float)
+        if F.ndim == 2:
+            F = F[None, :, :]
         x = F[:, :, self.cols].reshape(-1, len(self.cols))
         if not np.isfinite(x).all():
             raise ValueError("Missing or invalid pregame features")

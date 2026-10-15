@@ -100,7 +100,10 @@ def score_games(data_root, model_root, as_of, through, season, target_game_ids=N
                                for r in hist_done.itertuples(index=False)])
             mu_hist = head.predict(F_hist)
             actual = hist_done[["home_points", "away_points"]].to_numpy(dtype=float)
-            params = fit_matchup_params(actual, mu_hist)
+            # Per-metric pregame (offense - opponent defense) differentials —
+            # feature columns [10:15] of each side's row (see ratings.features).
+            diffs = F_hist[:, :, 10:15]
+            params = fit_matchup_params(actual, mu_hist, state_diffs=diffs)
 
     # --- Market calibration from history available before the cutoff ---
     market = read_market_history(market_path) if market_path else pd.DataFrame()
