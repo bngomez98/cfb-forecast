@@ -126,7 +126,7 @@ export function App() {
   const [validation, setValidation] = useState<Validation>({ status: 'awaiting_results' })
   const [loading, setLoading] = useState(false)
   const [query, setQuery] = useState('')
-  const [range, setRange] = useState<Range>('week')
+  const [range, setRange] = useState<Range>('all')
   const [sort, setSort] = useState<Sort>('kickoff')
   const [liveResults, setLiveResults] = useState<Record<number, LiveResult>>({})
   const [scoresUpdatedAt, setScoresUpdatedAt] = useState<Date | null>(null)
@@ -214,9 +214,9 @@ export function App() {
 
     <main id="top">
       {page === 'forecast' && <>
-        <Hero weekName={weekName} updated={updated} games={weekGames.length} onRefresh={refresh} loading={loading} />
+        <Hero weekName={weekName} updated={updated} games={range === 'all' ? chronological.length : weekGames.length} onRefresh={refresh} loading={loading} />
         <section className="content-section">
-          <div className="live-score-strip" role="status"><span><i aria-hidden="true" /> Live 2026 scores refresh every 60 seconds</span><small>{scoresUpdatedAt ? `Last checked ${scoresUpdatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Connecting to score feed'}</small></div>
+          <div className="live-score-strip" role="status"><span><i aria-hidden="true" /> 2026 scores refresh every 60 seconds</span><small>{scoresUpdatedAt ? `Last checked ${scoresUpdatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Connecting to score feed'} · Published forecasts cover {chronological.length || 'the'} scheduled games</small></div>
           <div className="metric-grid" aria-label="Weekly forecast summary">
             <Metric icon={CalendarDays} label="Games in window" value={weekGames.length ? String(weekGames.length) : '—'} detail={`${weekName} slate`} />
             <Metric icon={Gauge} label="Average pick strength" value={weekGames.length ? pct(avgConfidence, 1) : '—'} detail="Average chance for the picked team" />
@@ -286,7 +286,7 @@ function BoardControls({ query, setQuery, range, setRange, sort, setSort, weekNa
     <label className="search-field"><Search aria-hidden="true" /><input type="search" placeholder="Search team" value={query} onChange={event => setQuery(event.target.value)} aria-label="Search team" /></label>
     <div className="segmented" role="group" aria-label="Date range">
       <button className={range === 'week' ? 'active' : ''} onClick={() => setRange('week')}>{weekName}</button>
-      <button className={range === 'all' ? 'active' : ''} onClick={() => setRange('all')}>Full board</button>
+      <button className={range === 'all' ? 'active' : ''} onClick={() => setRange('all')}>Full 2026 season</button>
     </div>
     <label className="sort-field"><SlidersHorizontal aria-hidden="true" /><span className="sr-only">Sort forecasts</span><select value={sort} onChange={event => setSort(event.target.value as Sort)}><option value="kickoff">Sort: Kickoff</option><option value="confidence">Sort: Confidence</option><option value="margin">Sort: Margin</option></select><ChevronDown aria-hidden="true" /></label>
   </section>
