@@ -173,7 +173,7 @@ CFB_ARTIFACTS_DIR=runtime/artifacts \
 streamlit run dashboard/app.py
 ```
 
-The first run downloads real SportsDataverse schedules and advanced team summaries for every season from 2000 through the season before the forecast season, then refreshes the forecast season and its play-by-play. It trains models from earlier seasons, measures historical performance, and calculates the coming week's slate.
+The first run downloads real SportsDataverse schedules and advanced team summaries for every season from 2000 through the season before the forecast season, then refreshes the forecast season and its play-by-play. Every run without `--no-refresh` also downloads the SportsDataverse ESPN closing spreads and totals for each season from 2000 through the forecast season into `data/market_closing_history.csv`, skipping seasons that have no file. It trains models from earlier seasons, measures historical performance, and calculates the coming week's slate.
 
 Later runs reuse the historical seasons already on disk and the trained models, and always refresh the current season.
 
@@ -220,6 +220,7 @@ SportsDataverse supplies:
 - Game schedules.
 - Final scores.
 - Per-game advanced team statistics.
+- Closing spreads and totals from the ESPN betting files. These are read only for games already played, so the model can learn how lines relate to final scores; an upcoming game never uses them.
 
 Historical records can contain later corrections. Historical results therefore do not reconstruct every original publication timestamp.
 
