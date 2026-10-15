@@ -7,9 +7,6 @@ import streamlit as st
 from cfb_forecast.paths import data_root, model_root
 from cfb_forecast.pipeline.pipeline_status import STAGES
 
-PAGES = ["Overview", "Forecast desk", "Lines", "Statistics", "Methodology", "Forecast log", "Calculation pipeline", "Historical training", "Weekly validation", "Game inputs", "Model research", "Sources"]
-
-
 def read_json(path, default=None):
     try:
         return json.loads(Path(path).read_text())
@@ -17,30 +14,30 @@ def read_json(path, default=None):
         return default
 
 
-def shell(root, manifest):
-    st.set_page_config(page_title="FieldQuant | College Football Intelligence", layout="wide")
+def shell():
+    st.set_page_config(page_title="FieldQuant | College Football Forecasts", layout="wide")
     st.html(Path(__file__).with_name("theme.css").read_text())
+    st.logo(str(Path(__file__).with_name("logo.svg")), size="large")
+
+
+def sidebar_footer(root):
     with st.sidebar:
-        st.html('<div class="brand"><span class="brand-mark">FQ</span><div>FieldQuant<small>FOOTBALL INTELLIGENCE</small></div></div>')
-        st.caption("WORKSPACE / FBS")
-        page = st.radio("Workspace", PAGES, label_visibility="collapsed")
-        st.divider()
-        st.caption("DATA, NOT GUESSWORK")
-        st.write("Real sources. Traceable forecasts.")
-        st.caption("Historical training and Sunday slate analysis. No simulated live score samples.")
-        with st.expander("Runtime directories"):
-            st.text(f"Data: {data_root()}\nArtifacts: {root}\nModel: {model_root()}")
-        if st.button("Refresh saved data", use_container_width=True):
+        if st.button("Reload saved forecasts", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
-        st.caption("Refresh reads saved artifacts; it does not start a model run.")
-    season = manifest.get("season", "2026")
-    status = str(manifest.get("status", "awaiting first run")).replace("_", " ")
-    st.html(f'<div class="topline"><span>RESEARCH DESK <span class="slash">/</span> COLLEGE FOOTBALL</span><span class="status-pill">{escape(status.upper())}</span></div>')
-    headings = {"Overview": ("An edge built on evidence.", "From historical play-by-play to the next kickoff. Every forecast has a paper trail."), "Calculation pipeline": ("Inside the forecast.", "Seven connected stages. Inspect the evidence behind every calculation."), "Historical training": ("The foundation of every forecast.", "Real season archives, chronological validation and traceable model inputs.")}
-    title, subtitle = headings.get(page, (page, "Source-backed analysis. Predictions and actual outcomes always remain separate."))
-    st.html(f'<div class="page-heading"><div class="eyebrow">FIELDQUANT / {escape(str(season))} SEASON</div><h1>{escape(title)}</h1><p class="subtitle">{escape(subtitle)}</p></div>')
-    return page
+        st.caption("Reload reads the saved files again. It does not start a new forecast.")
+        with st.expander("Where the files are"):
+            st.text(f"Data: {data_root()}\nArtifacts: {root}\nModel: {model_root()}")
+
+
+def heading(page):
+    headings = {
+        "Overview": "Project overview",
+        "Calculation pipeline": "How a forecast run is built",
+        "Historical training": "Seasons the forecast learned from",
+    }
+    title = headings.get(page, page)
+    st.html(f'<div class="intro"><h1>{escape(title)}</h1></div>')
 
 
 def training_root():

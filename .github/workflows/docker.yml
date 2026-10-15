@@ -7,9 +7,15 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A newer push to the same pull request replaces the older image build.
+concurrency:
+  group: docker-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
@@ -57,7 +63,7 @@ jobs:
           IMAGE_TAG: ${{ steps.meta.outputs.version }}
         run: |
           docker run --rm "$REGISTRY_IMAGE-dashboard:$IMAGE_TAG" \
-            sh -c 'cd dashboard && python -c "import streamlit, desk; from cfb_forecast.storage.database import connect"'
+            sh -c 'cd dashboard && python -c "import streamlit, desk, board, results, app; from cfb_forecast.storage.database import connect"'
 
       - name: Log in to GitHub Container Registry
         if: env.PUSH_IMAGES == 'true'

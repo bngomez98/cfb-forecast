@@ -52,6 +52,14 @@ OPTIONAL_LAYERS = {
 }
 
 
+def run(label: str, *args: str) -> None:
+    """Run ``python <args>`` from the project folder and stop on failure."""
+    print(f"\n==> {label}", flush=True)
+    result = subprocess.run([sys.executable, *args], cwd=ROOT)
+    if result.returncode != 0:
+        raise SystemExit(f"{label} failed with exit code {result.returncode}")
+
+
 def inventory_workspace(workspace: Path, output: Path) -> None:
     """Record every nested file while excluding generated/cache directories."""
     excluded = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", "build", "dist"}
