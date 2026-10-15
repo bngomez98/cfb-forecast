@@ -1,3 +1,4 @@
+import json
 import argparse
 from pathlib import Path
 import pandas as pd
@@ -65,7 +66,7 @@ def main():
     wf.add_argument("--data",default="data"); wf.add_argument("--model",default=str(model_root()))
     wf.add_argument("--out",default="artifacts"); wf.add_argument("--season",type=int,required=True)
     wf.add_argument("--week",type=int,default=None); wf.add_argument("--as-of",default=None)
-    wf.add_argument("--market",default=None); wf.add_argument("--draws",type=int,default=50000)
+    wf.add_argument("--market",default=None); wf.add_argument("--draws",type=int,default=50000); wf.add_argument("--publish",action="store_true")
     sr=sub.add_parser("sunday-run",help="Collect sources, train, validate and publish the Sunday slate")
     sr.add_argument("--data",default="data"); sr.add_argument("--model",default=None)
     sr.add_argument("--artifacts", "--out", dest="artifacts", default="artifacts")
@@ -81,11 +82,15 @@ def main():
     sb.add_argument("--data",default="data"); sb.add_argument("--model",default=str(model_root()))
     sb.add_argument("--out",default="artifacts/backtest"); sb.add_argument("--season",type=int,required=True)
     sb.add_argument("--draws",type=int,default=50000); sb.add_argument("--lead-hours",type=float,default=48.0)
+    pu=sub.add_parser("publish-update",help="Publish an existing calculated board to SQLite, the apps, Datadog and email")
+    pu.add_argument("--run",required=True); pu.add_argument("--run-id",required=True)
+    pu.add_argument("--artifacts",default="artifacts"); pu.add_argument("--database",default=None)
+    pu.add_argument("--no-email",action="store_true")
     pf=sub.add_parser("preflight",help="Validate mounted data and artifact paths")
     pf.add_argument("--data",default="data"); pf.add_argument("--artifacts",default="artifacts"); pf.add_argument("--season",type=int,default=None)
     args=parser.parse_args()
     from .paths import cli_path
-    for name in ("data", "artifacts", "model", "models", "out", "store", "ledger", "predictions", "archive", "market", "input", "previous", "forecast", "holdout", "frozen_batch"):
+    for name in ("data", "artifacts", "model", "models", "out", "store", "ledger", "predictions", "archive", "market", "input", "previous", "forecast", "run", "holdout", "frozen_batch"):
         value = getattr(args, name, None)
         if value is not None:
             setattr(args, name, str(cli_path(value)))
@@ -176,8 +181,11 @@ def main():
         from .sunday import sunday_run
         report = sunday_run(args.data, args.artifacts, args.season, args.model, args.timezone, args.scheduled, not args.no_refresh)
         print(pd.Series(report).to_string())
+    elif args.command == "publish-update":
+        from .publish import publish_forecast_update
+        print(json.dumps(publish_forecast_update(args.run,args.run_id,args.artifacts,args.database,send_email=not args.no_email),indent=2))
     elif args.command == "weekly-forecast":
         from .weekly import run_weekly_forecast
-        result,manifest=run_weekly_forecast(args.data,args.model,args.out,args.season,args.week,args.as_of,args.market,args.draws)
+        result,manifest=run_weekly_forecast(args.data,args.model,args.out,args.season,args.week,args.as_of,args.market,args.draws,args.publish)
         print(pd.DataFrame([manifest]).to_string(index=False))
         print(result[["away_team","home_team","kickoff","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))

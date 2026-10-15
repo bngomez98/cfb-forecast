@@ -450,6 +450,11 @@ def sunday_run(
         (work / "run_manifest.json").write_text(json.dumps(receipt, indent=2))
         shutil.move(str(work), final)
         publish_latest(root, final)
+        from .publish import publish_forecast_update
+        try:
+            receipt["publish"] = publish_forecast_update(final, run_id, root, database)
+        except Exception as error:  # the run is already saved; retry with publish-update
+            receipt["publish"] = {"error": f"{type(error).__name__}: {error}"}
         return receipt
     except Exception as error:
         if work.exists():

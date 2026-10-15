@@ -61,6 +61,7 @@ def run_weekly_forecast(
     as_of=None,
     market_path=None,
     draws=50000,
+    publish=False,
 ):
     """Forecast the next upcoming week, or an explicitly selected week."""
     data_root = Path(data_root)
@@ -121,4 +122,7 @@ def run_weekly_forecast(
     if latest.exists():
         shutil.rmtree(latest)
     shutil.copytree(destination, latest)
+    if publish:
+        from .publish import publish_forecast_update
+        manifest["publish"] = publish_forecast_update(destination, f"{int(season)}-week-{week}")
     return result, manifest

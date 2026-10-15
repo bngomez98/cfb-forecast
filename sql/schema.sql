@@ -100,3 +100,22 @@ CREATE INDEX IF NOT EXISTS idx_forecasts_game ON forecasts(game_id);
 CREATE INDEX IF NOT EXISTS idx_results_season ON results(season);
 CREATE INDEX IF NOT EXISTS idx_data_files_status ON data_files(status);
 CREATE INDEX IF NOT EXISTS idx_watchdog_events_time ON watchdog_events(observed_at);
+
+CREATE TABLE IF NOT EXISTS forecast_log (
+  id INTEGER PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  game_id INTEGER NOT NULL,
+  season INTEGER,
+  kickoff TEXT,
+  home_team TEXT NOT NULL,
+  away_team TEXT NOT NULL,
+  expected_home_score REAL,
+  expected_away_score REAL,
+  home_win_probability REAL,
+  predicted_winner TEXT,
+  confidence REAL,
+  published_at TEXT NOT NULL,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  UNIQUE(run_id, game_id)
+);
+CREATE INDEX IF NOT EXISTS idx_forecast_log_run ON forecast_log(run_id);
