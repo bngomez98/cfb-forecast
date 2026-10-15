@@ -50,7 +50,7 @@ flowchart TD
 
 **1. Team ratings.** Every FBS team has an offense rating and a defense rating for five stats: points, yards per play, yards per pass, yards per rush, and first-down rate. After each game, both teams' ratings move toward what happened. A rating the model is unsure about moves more than a well-established one, and a good game against a strong defense counts for more than the same game against a weak one. Home field is worth 2.5 points, and neutral sites get none. Each week every rating drifts slightly back toward average. 21 days before each season starts, ratings are pulled further back toward average to account for roster and coaching changes; how far is chosen by testing on the 2024 season.
 
-**2. Expected points.** A regression turns the two teams' ratings into expected points for each side. The learning stage proposes refits with recent games counting more. It keeps the current regression unless a candidate does at least as well on 30 or more independent later games. Forecasting uses that selected regression; the Bayesian team ratings still update as results arrive.
+**2. Expected points.** A regression turns the two teams' ratings into expected points for each side. The learning stage proposes refits with recent games counting more. It fits the candidate without the latest held-out games and checks its log loss on them: if the candidate is no worse than the current regression on those games, the status is `promoted` and the candidate takes over; otherwise the status is `retained` and the current regression stays in use. Forecasting uses whichever regression is selected; the Bayesian team ratings still update as results arrive.
 
 **3. Adjustments.** The expected margin and total are then shifted using:
 
@@ -84,7 +84,7 @@ The model is built from past seasons in this order:
 
 The model is then refit through 2025 before predicting 2026, and the expected-points regression is refit again at every forecast. Because 2025 was used to choose between models, it is not a fully untouched test of the final choice.
 
-A separate team strength model (opponent-adjusted margins, with a 365-day half-life, an 8-game ridge penalty and a 3-point home edge) is also fitted and compared on 2025, and saved with the model when it scores better. Win chances always come from the forecasting model described above; `probability_source` in the forecast file says `forecast_model`.
+A separate team strength model (opponent-adjusted margins, with a 365-day half-life, an 8-game ridge penalty and a 3-point home edge) is fitted alongside and kept for comparison. Win chances always come from the forecasting model described above, read off the fitted logistic curve from the score margin; the strength model never sets a win chance.
 
 ## Repository layout
 
@@ -254,7 +254,7 @@ The suggested stake is a quarter of the Kelly amount, capped at 1% of the bankro
 
 ## Checking the predictions
 
-When a week is graded, the project reports how often it picked the winner, its log loss and Brier score (two measures of how good the win chances were), how far off the margin was, and calibration by probability range. Spread results are reported only for games with a real recorded spread. These accuracy measures are kept separate from the betting results.
+When a week is graded, the project reports how often it picked the winner, its log loss and Brier score (two measures of how good the win chances were), how far off the margin was, and calibration by probability range. Each calibration bin also gets the 95% range luck alone would allow and a flag when the hit rate falls outside it, plus Spiegelhalter's z-test on the whole set. Log loss and Brier are tracked week by week on the results page so drift shows up over time. Spread results are reported only for games with a real recorded spread. These accuracy measures are kept separate from the betting results.
 
 ### Probability audit
 
