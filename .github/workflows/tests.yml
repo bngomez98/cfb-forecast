@@ -74,9 +74,7 @@ jobs:
       - run: python -m cfb_forecast --help
 
   dashboard:
-    runs-on: ubuntu-latest
-  package:
-    name: Build and install the package from scratch
+    name: Dashboard pages load and grade results
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -90,6 +88,17 @@ jobs:
       - name: Load every dashboard page module
         working-directory: dashboard
         run: python -c "import app, board, desk, results"
+
+  package:
+    name: Build and install the package from scratch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
       - name: Build the wheel and source archive
         run: |
           python -m pip install build
