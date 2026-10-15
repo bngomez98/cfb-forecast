@@ -10,7 +10,7 @@ from typing import Iterable
 
 import pandas as pd
 
-from .database import connect, insert_forecasts, register_model
+from ..storage.database import connect, insert_forecasts, register_model
 
 
 def _json_value(value):

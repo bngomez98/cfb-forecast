@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
-from .database import connect
+from ..storage.database import connect
 
 DEFAULT_PATTERNS = (
     "schedule_*.csv",
@@ -137,7 +137,7 @@ def watch(data_root: str | Path, database: str | Path, interval: float) -> None:
 
 def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Monitor CFB forecast datasets for missing or changed files")
-    from .paths import data_root, database_path
+    from ..paths import data_root, database_path
     parser.add_argument("--data", default=str(data_root()))
     parser.add_argument("--database", default=str(database_path()))
     parser.add_argument("--watch", action="store_true")

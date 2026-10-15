@@ -14,12 +14,12 @@ test = ["pytest>=8", "httpx>=0.27", "fastapi>=0.115"]
 api = ["fastapi>=0.115", "uvicorn>=0.30"]
 
 [tool.setuptools.package-data]
-cfb_forecast = ["*.R"]
+cfb_forecast = ["modeling/*.R"]
 
 [project.scripts]
 cfb-forecast = "cfb_forecast.cli:main"
 cfb-pipeline = "cfb_forecast.pipeline_cli:main"
-cfb-data-watchdog = "cfb_forecast.data_watchdog:main"
+cfb-data-watchdog = "cfb_forecast.monitoring.data_watchdog:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

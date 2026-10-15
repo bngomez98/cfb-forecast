@@ -6,8 +6,8 @@ Hyperparameters are fixed for an entire evaluated season.
 """
 import numpy as np
 import pandas as pd
-from .config import METRICS
-from .data import timestamp
+from ..config import METRICS
+from ..ingest.data import timestamp
 
 class DynamicRatings:
     def __init__(self, teams, center, scale, config):

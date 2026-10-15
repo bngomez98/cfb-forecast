@@ -12,8 +12,8 @@ from pathlib import Path
 import json
 
 from .data import timestamp
-from .market import capture_sportsdataverse_snapshot
-from .chronology import run_chronological_update
+from ..odds.market import capture_sportsdataverse_snapshot
+from ..evaluation.chronology import run_chronological_update
 
 
 def run_prospective_collection(

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import pandas as pd
-from .data import load_data, sha256
+from ..ingest.data import load_data, sha256
 
 
 def awareness_report(data_root, model_root, database_path):

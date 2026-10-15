@@ -8,14 +8,14 @@ from pathlib import Path
 import json
 import numpy as np
 import pandas as pd
-from .config import METRICS,StateConfig
-from .data import load_data,audit,sha256,timestamp
-from .features import observations,normalization
-from .ratings import build_features
-from .model import ScoreHead,residual_covariance,write_model
-from .simulate import win_probability
+from ..config import METRICS,StateConfig
+from ..ingest.data import load_data,audit,sha256,timestamp
+from ..ingest.features import observations,normalization
+from ..modeling.ratings import build_features
+from ..modeling.model import ScoreHead,residual_covariance,write_model
+from ..modeling.simulate import win_probability
 from .evaluate import metrics,calibration,paired_bootstrap
-from .baseline import evaluate_elo
+from ..modeling.baseline import evaluate_elo
 
 def verified_archive(path,games):
     if path is None:

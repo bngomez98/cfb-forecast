@@ -6,10 +6,10 @@ import json
 import shutil
 import pandas as pd
 
-from .data import load_data, timestamp
-from .forecast import forecast
-from .evaluate import metrics
-from .sources import SOURCE_REGISTRY
+from ..ingest.data import load_data, timestamp
+from ..modeling.forecast import forecast
+from ..evaluation.evaluate import metrics
+from ..ingest.sources import SOURCE_REGISTRY
 
 
 def validate_previous_week_forecast(forecast_dir, data_root, season, week):
@@ -54,8 +54,8 @@ def validate_previous_week_forecast(forecast_dir, data_root, season, week):
         result["spread_mae"] = float((settled.actual_margin - settled.projected_home_margin).abs().mean())
     (forecast_dir / "weekly_validation.json").write_text(json.dumps(result, indent=2))
     from contextlib import closing
-    from .database import connect, record_weekly_validation
-    from .paths import database_path
+    from ..storage.database import connect, record_weekly_validation
+    from ..paths import database_path
     with closing(connect(database_path())) as conn:
         record_weekly_validation(conn, result)
     return result

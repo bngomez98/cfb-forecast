@@ -100,103 +100,103 @@ def main():
         if value is not None:
             setattr(args, name, str(cli_path(value)))
     if args.command=="fetch":
-        from .data import fetch as run
+        from .ingest.data import fetch as run
         run(args.data,args.seasons,args.refresh,args.raw_pbp)
     elif args.command=="backtest":
-        from .backtest import run_backtest
+        from .evaluation.backtest import run_backtest
         result,spec=run_backtest(args.data,args.out,args.archive,args.warmup,args.train_start,args.validation,args.test)
         print(result.to_string(index=False)); print("selected production variant:",spec["selected_variant"])
     elif args.command=="forecast":
-        from .forecast import forecast
+        from .modeling.forecast import forecast
         result=forecast(args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.draws,args.market_provider)
         print(result[["away_team","home_team","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
     elif args.command=="forecast-advance":
-        from .forecast import advance_forecast_snapshot
+        from .modeling.forecast import advance_forecast_snapshot
         result=advance_forecast_snapshot(args.previous,args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.draws,args.market_provider)
         print(result[["away_team","home_team","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
     elif args.command=="market-import":
-        from .market import import_market_file
+        from .odds.market import import_market_file
         result=import_market_file(args.input,args.store,args.provider,args.source)
         print(f"market snapshots: {len(result)} -> {args.store}")
     elif args.command=="market-init":
-        from .market import empty_market_history
+        from .odds.market import empty_market_history
         print(empty_market_history(args.store))
     elif args.command=="market-snapshot-sdv":
-        from .market import capture_sportsdataverse_snapshot
+        from .odds.market import capture_sportsdataverse_snapshot
         r=capture_sportsdataverse_snapshot(args.season,args.store,args.observed_at); print(f"market snapshots: {len(r)} -> {args.store}")
     elif args.command=="market-backfill-sdv":
-        from .market import backfill_sportsdataverse_closing
+        from .odds.market import backfill_sportsdataverse_closing
         r=backfill_sportsdataverse_closing(args.seasons,args.out); print(f"closing-market rows: {len(r)} -> {args.out}")
     elif args.command=="distribution-backtest":
-        from .distribution import validate_heldout_distribution
+        from .modeling.distribution import validate_heldout_distribution
         import json
         preds=pd.read_csv(args.predictions); models={}
         for v in ["score","pbp"]:
             models[v]=json.loads((Path(args.models)/v/"heldout"/"model.json").read_text())
         r=validate_heldout_distribution(preds,models); Path(args.out).parent.mkdir(parents=True,exist_ok=True); r.to_csv(args.out,index=False); print(r.to_string(index=False))
     elif args.command=="holdout-freeze":
-        from .holdout import freeze_holdout
+        from .evaluation.holdout import freeze_holdout
         path,receipt=freeze_holdout(args.forecast,args.data,args.model,args.out,args.batch_id,args.freeze_at)
         print(path); print(pd.Series(receipt).to_string())
     elif args.command=="holdout-settle":
-        from .holdout import settle_holdout
+        from .evaluation.holdout import settle_holdout
         _,summary=settle_holdout(args.holdout,args.data)
         print(pd.Series(summary).to_string())
     elif args.command=="holdout-verify":
-        from .holdout import verify_holdout
+        from .evaluation.holdout import verify_holdout
         print(pd.Series(verify_holdout(args.holdout)).to_string())
     elif args.command=="chronology-update":
-        from .chronology import run_chronological_update
+        from .evaluation.chronology import run_chronological_update
         ledger,added,receipt=run_chronological_update(args.data,args.model,args.ledger,args.season,args.now,args.lead_hours,args.market,args.draws,args.market_provider,args.primary_lateness_minutes)
         if len(added):
             print(added[["away_team","home_team","kickoff","scheduled_cutoff","actual_forecast_at","actual_lead_hours","cutoff_delay_minutes","primary_cutoff_eligible","market_status"]].to_string(index=False))
         print(pd.Series(receipt).to_string())
     elif args.command=="chronology-verify":
-        from .chronology import verify_chronological_ledger
+        from .evaluation.chronology import verify_chronological_ledger
         print(pd.Series(verify_chronological_ledger(args.ledger)).to_string())
     elif args.command=="chronology-settle":
-        from .chronology import settle_chronological_ledger
+        from .evaluation.chronology import settle_chronological_ledger
         _,summary=settle_chronological_ledger(args.ledger,args.data,args.settled_at)
         print(pd.Series(summary).to_string())
     elif args.command=="chronology-bootstrap":
-        from .chronology import bootstrap_from_frozen_batch
+        from .evaluation.chronology import bootstrap_from_frozen_batch
         ledger,manifest=bootstrap_from_frozen_batch(args.frozen_batch,args.ledger,args.lead_hours,args.primary_lateness_minutes)
         print(ledger[["away_team","home_team","kickoff","scheduled_cutoff","actual_forecast_at","actual_lead_hours","cutoff_delay_minutes","primary_cutoff_eligible","market_status"]].to_string(index=False))
         print(f"chronological games: {len(ledger)}")
     elif args.command=="prospective-run":
-        from .collector import run_prospective_collection
+        from .ingest.collector import run_prospective_collection
         ledger,added,receipt=run_prospective_collection(args.data,args.model,args.ledger,args.season,args.now,args.lead_hours,args.market,args.market_provider,args.draws,args.primary_lateness_minutes,not args.skip_market_capture)
         if len(added):
             print(added[["away_team","home_team","kickoff","scheduled_cutoff","actual_forecast_at","actual_lead_hours","cutoff_delay_minutes","primary_cutoff_eligible","market_status"]].to_string(index=False))
         print(pd.Series(receipt).to_string())
     elif args.command=="results-refresh":
-        from .results import refresh_results
+        from .ingest.results import refresh_results
         results,manifest=refresh_results(args.data,args.out,args.season,args.week,args.start,args.end)
         print(pd.DataFrame([manifest]).to_string(index=False))
         print(results[["game_id","status","is_final","away_team","away_points","home_team","home_points"]].tail(20).to_string(index=False))
     elif args.command=="season-backtest":
-        from .season_backtest import run_season_backtest
+        from .evaluation.season_backtest import run_season_backtest
         metrics,summary=run_season_backtest(args.data,args.model,args.out,args.season,args.draws,args.lead_hours)
         print(pd.DataFrame([summary]).to_string(index=False))
         print(metrics.to_string(index=False))
     elif args.command=="preflight":
-        from .preflight import run_preflight
+        from .pipeline.preflight import run_preflight
         run_preflight(args.data,args.artifacts,args.season)
     elif args.command=="probability-audit":
-        from .probability import audit_probabilities
+        from .modeling.probability import audit_probabilities
         import json
         summary=audit_probabilities(args.input,args.out,args.probability_column,args.outcome_column,args.min_games,args.regularization,args.model,args.max_change,args.stress_radius)
         print(json.dumps(summary,indent=2,default=str))
     elif args.command=="publish-update":
-        from .publisher import publish_forecast_update
+        from .pipeline.publisher import publish_forecast_update
         report = publish_forecast_update(args.run, args.artifacts, args.database, args.web, args.run_id, fetch_sources=args.fetch_sources)
         print(pd.Series(report).to_string())
     elif args.command == "sunday-run":
-        from .sunday import sunday_run
+        from .pipeline.sunday import sunday_run
         report = sunday_run(args.data, args.artifacts, args.season, args.model, args.timezone, args.scheduled, not args.no_refresh)
         print(pd.Series(report).to_string())
     elif args.command == "weekly-forecast":
-        from .weekly import run_weekly_forecast
+        from .pipeline.weekly import run_weekly_forecast
         result,manifest=run_weekly_forecast(args.data,args.model,args.out,args.season,args.week,args.as_of,args.market,args.draws)
         print(pd.DataFrame([manifest]).to_string(index=False))
         print(result[["away_team","home_team","kickoff","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))

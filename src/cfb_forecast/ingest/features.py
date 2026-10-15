@@ -3,9 +3,9 @@ import hashlib
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from .config import METRICS
+from ..config import METRICS
 from .data import require_columns
-from .forecast_model import HISTORY_COLUMNS
+from ..modeling.forecast_model import HISTORY_COLUMNS
 
 def clean_plays(plays):
     cols = ["game_id", "game_play_number", "pos_team_id", "def_pos_team_id", "down", "distance", "statYardage", "rush", "pass", "sack", "kneel_down", "penalty_no_play", "period", "start.pos_score_diff"]
@@ -76,7 +76,7 @@ def _facts_from_database(database):
         return pd.DataFrame(), pd.DataFrame()
     try:
         from contextlib import closing
-        from .database import connect
+        from ..storage.database import connect
         with closing(connect(database)) as conn:
             names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             teams = pd.read_sql_query("SELECT * FROM team_game_facts", conn) if "team_game_facts" in names else pd.DataFrame()

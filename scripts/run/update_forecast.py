@@ -117,7 +117,7 @@ def verify_manifest(data_dir: Path) -> None:
 
 
 def verify_data(data_dir: Path, season: int, raw_pbp: bool) -> None:
-    from cfb_forecast.data import load_data
+    from cfb_forecast.ingest.data import load_data
 
     print("\n==> Verify integrated datasets", flush=True)
     schedules, advanced, loaded = load_data(data_dir)

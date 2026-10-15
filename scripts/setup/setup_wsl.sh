@@ -37,8 +37,8 @@ log "Checking source data and established model"
 python - <<'PY'
 import os
 from pathlib import Path
-from cfb_forecast.data import load_data
-from cfb_forecast.model import load_model
+from cfb_forecast.ingest.data import load_data
+from cfb_forecast.modeling.model import load_model
 
 root = Path(os.environ.get("CFB_DATA_DIR", "data"))
 model_root = Path(os.environ.get("CFB_MODEL_DIR", "artifacts/backtest/model"))
@@ -55,7 +55,7 @@ log "Running continuous-awareness check"
 CFB_DATA_DIR="$DATA_DIR" CFB_MODEL_DIR="$MODEL_DIR" CFB_DATABASE="${ARTIFACTS_DIR}/cfb_forecast.sqlite" \
 python - <<'PY'
 import os
-from cfb_forecast.awareness import awareness_report
+from cfb_forecast.monitoring.awareness import awareness_report
 
 report = awareness_report(
     os.environ["CFB_DATA_DIR"],

@@ -4,7 +4,7 @@ import json
 import numpy as np
 from sklearn.linear_model import Ridge
 from sklearn.preprocessing import StandardScaler
-from .features import feature_columns
+from ..ingest.features import feature_columns
 
 class ScoreHead:
     def __init__(self, variant="score", alpha=10.):

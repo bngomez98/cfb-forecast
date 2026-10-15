@@ -6,7 +6,7 @@ import json
 import numpy as np
 import pandas as pd
 
-from .data import sha256, timestamp
+from ..ingest.data import sha256, timestamp
 from .evaluate import metrics, calibration, spread_regression
 
 

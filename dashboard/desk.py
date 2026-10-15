@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from cfb_forecast.paths import data_root, model_root
-from cfb_forecast.pipeline_status import STAGES
+from cfb_forecast.pipeline.pipeline_status import STAGES
 
 PAGES = ["Overview", "Forecast desk", "Lines", "Statistics", "Methodology", "Forecast log", "Calculation pipeline", "Historical training", "Weekly validation", "Game inputs", "Model research", "Sources"]
 

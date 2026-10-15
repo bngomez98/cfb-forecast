@@ -75,8 +75,8 @@ def bootstrap_environment(skip_tests: bool, start_stack: bool) -> None:
     check_script = """
 from pathlib import Path
 import os
-from cfb_forecast.data import load_data
-from cfb_forecast.model import load_model
+from cfb_forecast.ingest.data import load_data
+from cfb_forecast.modeling.model import load_model
 schedules, summaries, paths = load_data(Path(os.environ['CFB_DATA_DIR']))
 model = load_model(Path(os.environ['CFB_MODEL_DIR']))
 print(f'schedule rows: {len(schedules)}')
@@ -90,7 +90,7 @@ print(f'model trained through: {model["training_through_season"]}')
     print("Running continuous-awareness check")
     awareness_script = """
 import os
-from cfb_forecast.awareness import awareness_report
+from cfb_forecast.monitoring.awareness import awareness_report
 report = awareness_report(os.environ['CFB_DATA_DIR'], os.environ['CFB_MODEL_DIR'], os.environ['CFB_DATABASE'])
 print(report)
 if report['overall'] != 'pass':

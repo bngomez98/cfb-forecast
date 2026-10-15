@@ -18,7 +18,7 @@ import os
 from pathlib import Path
 
 import pandas as pd
-from cfb_forecast.data import ADV_FIELDS, SCHEDULE_FIELDS, load_data, normalize_schedule
+from cfb_forecast.ingest.data import ADV_FIELDS, SCHEDULE_FIELDS, load_data, normalize_schedule
 
 root = Path(os.environ["DATA_DIR"])
 required_schedules = sorted(root.glob("schedule_*.csv"))

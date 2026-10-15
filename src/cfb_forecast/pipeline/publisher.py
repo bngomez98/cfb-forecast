@@ -16,11 +16,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from .database import connect
-from .paths import artifacts_root, database_path, project_root
-from .sources import source_registry
+from ..storage.database import connect
+from ..paths import artifacts_root, database_path, project_root
+from ..ingest.sources import source_registry
 
-LOG = logging.getLogger("cfb_forecast.publisher")
+LOG = logging.getLogger("cfb_forecast.pipeline.publisher")
 REQUIRED = (
     "game_id",
     "season",
@@ -62,7 +62,7 @@ def board_row(record: dict) -> dict:
     if model_spread is None:
         model_spread = -margin
     try:
-        from .decision import probability_to_american
+        from ..odds.decision import probability_to_american
         home_moneyline = probability_to_american(probability)
         away_moneyline = probability_to_american(1.0 - probability)
     except ValueError:
@@ -325,7 +325,7 @@ def publish_forecast_update(
         conn.close()
     source_ingest = None
     if fetch_sources:
-        from .sources import ingest_catalog
+        from ..ingest.sources import ingest_catalog
         source_ingest = ingest_catalog(season, artifacts / "source_ingest")
         (log_dir / "source_ingest.json").write_text(json.dumps(source_ingest, indent=2), encoding="utf-8")
     datadog = ship_datadog([{

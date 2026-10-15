@@ -7,10 +7,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from cfb_forecast.config import StateConfig
-from cfb_forecast.database import connect
-from cfb_forecast.features import feature_columns
-from cfb_forecast.learning import learn, validate_in_r
-from cfb_forecast.model import write_model
+from cfb_forecast.storage.database import connect
+from cfb_forecast.ingest.features import feature_columns
+from cfb_forecast.modeling.learning import learn, validate_in_r
+from cfb_forecast.modeling.model import write_model
 
 
 @pytest.fixture
@@ -78,7 +78,7 @@ def test_r_python_metrics_agree(tmp_path):
 
 
 def test_adaptive_model_cannot_predict_its_past(training_files, tmp_path):
-    from cfb_forecast.forecast import forecast
+    from cfb_forecast.modeling.forecast import forecast
     report = learn(*training_files, "2023-12-01T00:00Z")
     with pytest.raises(ValueError, match="trained after"):
         forecast(training_files[0], report["model_path"], tmp_path / "predictions", "2023-11-01T00:00Z", "2023-11-02T00:00Z", 2023)

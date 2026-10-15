@@ -2,8 +2,8 @@
 from pathlib import Path
 import json
 import pandas as pd
-from .data import load_data, timestamp
-from .forecast import forecast
+from ..ingest.data import load_data, timestamp
+from ..modeling.forecast import forecast
 
 
 def run_season_backtest(data_root, model_root, out_root, season, draws=50000, lead_hours=48):

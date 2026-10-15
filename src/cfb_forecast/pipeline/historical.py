@@ -7,8 +7,8 @@ from pathlib import Path
 import json
 import pandas as pd
 
-from .backtest import run_backtest
-from .forecast import forecast
+from ..evaluation.backtest import run_backtest
+from ..modeling.forecast import forecast
 
 
 def run_retrained_forecast(

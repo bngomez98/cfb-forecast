@@ -8,8 +8,8 @@ import pandas as pd
 from scipy.optimize import minimize
 from scipy.special import expit, logit
 
-from .data import require_columns, sha256
-from .evaluate import metrics, calibration, paired_bootstrap
+from ..ingest.data import require_columns, sha256
+from ..evaluation.evaluate import metrics, calibration, paired_bootstrap
 from .model import load_model, write_model
 
 

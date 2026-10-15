@@ -1,9 +1,9 @@
 """Evidence that historical team observations actually enter model fitting."""
 import json
 import numpy as np
-from .config import METRICS
-from .data import sha256
-from .features import observations
+from ..config import METRICS
+from ..ingest.data import sha256
+from ..ingest.features import observations
 
 
 def training_audit(games, summaries, paths, warmup, train_start, validation, test):

@@ -1,4 +1,4 @@
-from cfb_forecast.joint_forecast import JointSimulationConfig, simulate_joint_game
+from cfb_forecast.modeling.joint_forecast import JointSimulationConfig, simulate_joint_game
 
 
 def test_joint_forecast_returns_football_and_market_distributions():

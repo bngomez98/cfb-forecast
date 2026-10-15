@@ -7,7 +7,7 @@ import json
 import numpy as np
 import pandas as pd
 
-from .data import require_columns, timestamp
+from ..ingest.data import require_columns, timestamp
 
 NUMERIC = ["home_spread", "total_line", "home_decimal", "away_decimal", "home_ml_decimal", "away_ml_decimal"]
 KEYS = ["game_id", "provider", "observed_at"]

@@ -16,16 +16,16 @@ else:
 
 import pandas as pd
 
-from .backtest import run_backtest
-from .context_model import select_context_model, predict_context
-from .data import fetch, load_data, normalize_schedule, sha256, timestamp
-from .decision import american_to_decimal, moneyline_diagnostics
-from .forecast import forecast
-from .market import append_market_history
-from .results import _event_row
-from .sources import collect, collect_game_inputs, ESPN, utc_now
-from .strength import train_strength
-from .validation import validate_runs
+from ..evaluation.backtest import run_backtest
+from ..modeling.context_model import select_context_model, predict_context
+from ..ingest.data import fetch, load_data, normalize_schedule, sha256, timestamp
+from ..odds.decision import american_to_decimal, moneyline_diagnostics
+from ..modeling.forecast import forecast
+from ..odds.market import append_market_history
+from ..ingest.results import _event_row
+from ..ingest.sources import collect, collect_game_inputs, ESPN, utc_now
+from ..modeling.strength import train_strength
+from ..evaluation.validation import validate_runs
 
 
 def slate_window(now, timezone_name="America/Chicago"):
@@ -213,7 +213,7 @@ def sunday_run(
     local = started.to_pydatetime().astimezone(ZoneInfo(timezone_name))
     if scheduled and (local.weekday() != 6 or local.hour != 10):
         return {"status": "outside_sunday_schedule", "local_time": local.isoformat()}
-    from .paths import artifacts_root as default_artifacts, data_root as default_data, resolve_path
+    from ..paths import artifacts_root as default_artifacts, data_root as default_data, resolve_path
     root = resolve_path(artifacts_root) if artifacts_root is not None else default_artifacts()
     data = resolve_path(data_root) if data_root is not None else default_data()
     root.mkdir(parents=True, exist_ok=True)
@@ -246,14 +246,14 @@ def sunday_run(
         journal.stage("sources")
         if refresh:
             # Cached historical seasons are retained; the current season always refreshes.
-            from .config import HISTORY_START_SEASON
+            from ..config import HISTORY_START_SEASON
             fetch(data, list(range(HISTORY_START_SEASON, season)))
             fetch(data, [season], refresh=True)
             fetch(data, [season], raw_pbp=True)
             sync_results(data, season, work / "inputs" / "raw", timestamp(utc_now()))
             # Closing lines teach the forecast how lines relate to final scores.
             # Only completed games read them; upcoming games use captured quotes.
-            from .market import backfill_sportsdataverse_closing
+            from ..odds.market import backfill_sportsdataverse_closing
             backfill_sportsdataverse_closing(
                 range(HISTORY_START_SEASON, season + 1),
                 data / "market_closing_history.csv",
@@ -282,8 +282,8 @@ def sunday_run(
             json.dumps(validation_summary, indent=2)
         )
         from contextlib import closing
-        from .database import connect, record_weekly_validation
-        from .paths import resolve_path
+        from ..storage.database import connect, record_weekly_validation
+        from ..paths import resolve_path
         validation_database = resolve_path(os.environ.get("CFB_DATABASE", root / "cfb_forecast.sqlite"))
         with closing(connect(validation_database)) as validation_db:
             for report in validation_summary.get("runs", []):
@@ -330,7 +330,7 @@ def sunday_run(
         if model_root is not None and not (model_path / "model.json").exists():
             raise FileNotFoundError(f"Requested model does not exist: {model_path}")
         if not (model_path / "model.json").exists():
-            from .config import HISTORY_START_SEASON
+            from ..config import HISTORY_START_SEASON
             on_disk = [
                 year for year in range(HISTORY_START_SEASON, int(season))
                 if (data / f"schedule_{year}.csv").exists() and (data / f"adv_team_{year}.parquet").exists()
@@ -371,7 +371,7 @@ def sunday_run(
         model_meta = json.loads((model_path / "model.json").read_text())
         if model_meta["training_through_season"] >= season:
             raise ValueError("Model training must end before the forecast season")
-        from .learning import learn
+        from ..modeling.learning import learn
         database = resolve_path(os.environ.get("CFB_DATABASE", root / "cfb_forecast.sqlite"))
         learning = learn(data, model_path, root / "learning", database, at)
         model_path = Path(learning["model_path"])
@@ -477,7 +477,7 @@ def sunday_run(
             raise ValueError(
                 "A target game started during calculation; rerun with the remaining slate"
             )
-        from .database import persist_completed_run
+        from ..storage.database import persist_completed_run
         persist_completed_run(database, model_path, records, receipt, schedules, at)
         journal.finish()
         shutil.copy2(model_path / "model.json", work / "model.json")

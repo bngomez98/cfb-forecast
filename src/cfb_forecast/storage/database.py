@@ -292,7 +292,7 @@ def connect(path: str | Path) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    schema_path = Path(__file__).resolve().parents[2] / "sql" / "schema.sql"
+    schema_path = Path(__file__).resolve().parents[3] / "sql" / "schema.sql"
     conn.executescript(schema_path.read_text() if schema_path.exists() else SCHEMA)
     _ensure_forecast_columns(conn)
     return conn
@@ -470,7 +470,7 @@ def list_published_board(conn: sqlite3.Connection, season: int | None = None):
 
 def persist_completed_run(database, model_path, records, receipt, schedules, at):
     from contextlib import closing
-    from .data import sha256
+    from ..ingest.data import sha256
     with closing(connect(database)) as conn:
         run_id = register_run(conn, receipt["run_id"], receipt["season"], receipt)
         model_id = register_model(conn, sha256(Path(model_path) / "model.json"), str(model_path), receipt.get("learning", {}))

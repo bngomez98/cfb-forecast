@@ -8,8 +8,8 @@ import pandas as pd
 from scipy.linalg import solve
 from sklearn.linear_model import LogisticRegression
 
-from .data import load_data, sha256, timestamp
-from .evaluate import metrics, calibration
+from ..ingest.data import load_data, sha256, timestamp
+from ..evaluation.evaluate import metrics, calibration
 from .ratings import cutoff_for_games
 
 

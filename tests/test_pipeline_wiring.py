@@ -5,9 +5,9 @@ import pandas as pd
 import pytest
 
 from cfb_forecast import paths
-from cfb_forecast.data import load_data
-from cfb_forecast.pipeline_status import PipelineJournal
-from cfb_forecast.training_audit import training_audit
+from cfb_forecast.ingest.data import load_data
+from cfb_forecast.pipeline.pipeline_status import PipelineJournal
+from cfb_forecast.evaluation.training_audit import training_audit
 
 
 def archive(tmp_path):
@@ -31,7 +31,7 @@ def test_paths_ignore_calling_directory(monkeypatch, tmp_path):
 
 def test_scheduled_cli_calls_production_service(monkeypatch, tmp_path):
     from cfb_forecast.cli import main
-    import cfb_forecast.sunday as service
+    import cfb_forecast.pipeline.sunday as service
     captured = []
     monkeypatch.setattr(service, "sunday_run", lambda *args: captured.append(args) or {"status": "ok"})
     monkeypatch.setenv("CFB_PROJECT_ROOT", str(tmp_path))
@@ -77,7 +77,7 @@ def test_execution_journal_preserves_failure(tmp_path):
 
 
 def test_empty_slate_publication_replaces_latest(tmp_path):
-    from cfb_forecast.sunday import publish_latest
+    from cfb_forecast.pipeline.sunday import publish_latest
     old = tmp_path / "latest"
     old.mkdir()
     (old / "forecasts.csv").write_text("old predictions")

@@ -5,7 +5,7 @@ import pandas as pd
 from scipy.optimize import minimize
 from scipy.special import expit, logit
 
-from .evaluate import metrics
+from ..evaluation.evaluate import metrics
 
 
 def feature_columns(frame):
