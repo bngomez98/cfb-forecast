@@ -134,7 +134,7 @@ export function App() {
   async function refresh() {
     setLoading(true)
     try {
-      const published = await fetch('/forecasts.json', { cache: 'no-store' })
+      const published = await fetch('/api/season?season=2026', { cache: 'no-store' })
       let currentForecasts = forecasts
       if (published.ok) {
         const board = await published.json() as Board
@@ -144,6 +144,17 @@ export function App() {
           setForecasts(board.forecasts)
         }
         if (Array.isArray(board.sources)) setSources(board.sources)
+      } else {
+        const fallback = await fetch('/forecasts.json', { cache: 'no-store' })
+        if (fallback.ok) {
+          const board = await fallback.json() as Board
+          setBoardMeta(board)
+          if (Array.isArray(board.forecasts)) {
+            currentForecasts = board.forecasts
+            setForecasts(board.forecasts)
+          }
+          if (Array.isArray(board.sources)) setSources(board.sources)
+        }
       }
       const firstKickoff = currentForecasts.length ? new Date(Math.min(...currentForecasts.map(game => new Date(game.kickoff).getTime()))) : new Date()
       const start = new Date(Math.max(firstKickoff.getTime(), Date.now() - DAY))
