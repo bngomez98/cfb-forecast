@@ -2,16 +2,14 @@
 
 from pathlib import Path
 import json
-import os
-
 import pandas as pd
 import streamlit as st
+from cfb_forecast.paths import artifacts_root
+from board import how_it_works_page, odds_page, predictions_page
+from results import results_page
+from desk import heading, historical, overview, render_pipeline, shell, sidebar_footer, sources, training_root
 
-ROOT = Path(
-    os.environ.get(
-        "CFB_ARTIFACTS_DIR", str(Path(__file__).resolve().parents[1] / "artifacts")
-    )
-)
+ROOT = artifacts_root()
 
 
 def read_json(path, default=None):
@@ -31,81 +29,61 @@ def table(path):
     return read_csv(str(path), path.stat().st_mtime_ns)
 
 
-def main():
-    st.set_page_config(
-        page_title="FieldQuant | FBS Forecast Desk", page_icon="🏈", layout="wide"
-    )
-    st.title("FieldQuant · FBS Forecast Desk")
-    st.caption("2026 season · Sunday forecasts and validation · America/Chicago")
+def detail_page(page):
+    """Pages that show the saved run's files in full, for checking the work."""
     latest = ROOT / "latest"
     manifest = read_json(latest / "run_manifest.json", {})
-    if not (latest / "forecasts.csv").exists():
-        st.info(
-            "No completed forecast run is available. Run the Sunday service to collect real game inputs and calculate predictions."
-        )
-        st.code("python -m cfb_forecast sunday-run --season 2026")
+    heading(page)
+    if page == "Overview":
+        overview(ROOT, manifest)
         return
-    forecasts = table(latest / "forecasts.csv")
-    pages = [
-        "Forecast desk",
-        "Weekly validation",
-        "Game inputs",
-        "Model research",
-        "Sources",
-    ]
-    page = st.sidebar.radio("View", pages)
-    st.sidebar.caption(f"Run: {manifest.get('run_id', 'unknown')}")
-    st.sidebar.write(f"Calculated: {manifest.get('as_of', 'unknown')}")
-    if page == "Forecast desk":
-        st.subheader("Upcoming FBS games")
-        selected = st.multiselect(
-            "Teams", sorted(set(forecasts.home_team) | set(forecasts.away_team))
+    if page == "Calculation pipeline":
+        render_pipeline(ROOT)
+        return
+    if page == "Historical training":
+        historical()
+        return
+    if page == "Sources":
+        sources(ROOT, latest)
+        return
+    if page == "Forecast log":
+        board_path = latest / "forecast_board.json"
+        board = read_json(board_path, {})
+        rows = pd.DataFrame(board.get("forecasts", []))
+        if rows.empty:
+            st.info("No forecast log has been published yet.")
+            return
+        st.caption(f"Run {board.get('run_id', 'unknown')} · {board.get('games', len(rows))} games · {board.get('as_of', '')}")
+        st.dataframe(
+            rows[[column for column in ["kickoff", "away_team", "home_team", "expected_away_score", "expected_home_score", "winner", "confidence"] if column in rows.columns]],
+            hide_index=True,
+            width="stretch",
         )
+        return
+    forecasts = table(latest / "forecasts.csv") if (latest / "forecasts.csv").exists() else pd.DataFrame()
+    if page in {"Book prices", "Game inputs"} and forecasts.empty:
+        st.info("No upcoming forecasts in the latest completed run. Historical training, source receipts and pipeline evidence remain available in the sidebar.")
+        return
+    if page == "Book prices":
         view = forecasts.copy()
-        if selected:
-            view = view[view.home_team.isin(selected) | view.away_team.isin(selected)]
-        view["pick"] = view.apply(
-            lambda r: r.home_team if r.home_win_probability >= 0.5 else r.away_team,
-            axis=1,
-        )
-        view["pick_probability"] = view.home_win_probability.where(
-            view.home_win_probability >= 0.5, 1 - view.home_win_probability
-        )
-        a, b, c = st.columns(3)
-        a.metric("FBS games", len(view))
-        b.metric("Games with complete inputs", int(view.inputs_complete.sum()))
-        c.metric(
-            "Eligible moneyline candidates",
-            int((view.moneyline_candidate != "none").sum()),
-        )
         columns = [
             "kickoff",
             "away_team",
             "home_team",
-            "pick",
-            "pick_probability",
-            "expected_away_score",
-            "expected_home_score",
-            "projected_home_margin",
-            "projected_total",
+            "model_spread",
+            "market_spread",
             "home_spread",
-            "total_line",
-            "moneyline_candidate",
-            "decision_reason",
+            "home_moneyline",
+            "away_moneyline",
+            "home_ml_decimal",
+            "away_ml_decimal",
+            "projected_home_margin",
         ]
-        st.dataframe(
-            view[[c for c in columns if c in view]],
-            hide_index=True,
-            width="stretch",
-        )
-        st.caption(
-            "Score expectations and intervals come from the fitted distribution. They are predictions, never reported final results."
-        )
-        priced = view.dropna(
-            subset=[c for c in ["home_ml_decimal", "away_ml_decimal"] if c in view]
-        )
+        st.dataframe(view[[c for c in columns if c in view]], hide_index=True, width="stretch")
+        st.caption("Model spread is the forecast margin in sportsbook sign. Fair American moneylines come from the same win probability.")
+        priced = view.dropna(subset=[c for c in ["home_ml_decimal", "away_ml_decimal"] if c in view])
         if "home_ml_decimal" in priced and "away_ml_decimal" in priced and len(priced):
-            st.subheader("Moneyline comparison")
+            st.subheader("Recorded book prices")
             columns = [
                 "away_team",
                 "home_team",
@@ -120,21 +98,26 @@ def main():
                 "market_observed_at",
                 "market_provider",
             ]
-            st.dataframe(
-                priced[[c for c in columns if c in priced]],
-                hide_index=True,
-                width="stretch",
-            )
-            st.caption(
-                "Hypothetical exposure uses quarter Kelly, a 1% game cap, and a 5% slate cap. Incomplete injury, lineup, weather or stats inputs suppress recommendations. No wagers are placed."
-            )
-        st.download_button(
-            "Download predictions",
-            view.to_csv(index=False),
-            "fbs-predictions.csv",
-            "text/csv",
-        )
-    elif page == "Weekly validation":
+            st.dataframe(priced[[c for c in columns if c in priced]], hide_index=True, width="stretch")
+            st.caption("Hypothetical exposure uses quarter Kelly, a 1% game cap, and a 5% slate cap. No wagers are placed.")
+    elif page == "Statistics":
+        st.subheader("Recorded team and player rates")
+        st.caption("Same-season and prior-season facts stored after each forecast run. Missing files stay missing.")
+        try:
+            from contextlib import closing
+            from cfb_forecast.storage.database import connect
+            from cfb_forecast.paths import database_path
+            with closing(connect(database_path())) as conn:
+                names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                if "team_game_facts" in names:
+                    st.dataframe(pd.read_sql_query("SELECT * FROM team_game_facts ORDER BY season DESC, week DESC LIMIT 200", conn), hide_index=True, width="stretch")
+                else:
+                    st.info("team_game_facts is created on the next forecast run that reads parquet history.")
+                if "player_game_facts" in names:
+                    st.dataframe(pd.read_sql_query("SELECT * FROM player_game_facts ORDER BY season DESC, yards DESC LIMIT 200", conn), hide_index=True, width="stretch")
+        except Exception as exc:
+            st.warning(str(exc))
+    elif page == "Validation runs":
         report = read_json(latest / "previous_week_validation.json", {})
         batches = report.get("runs", [])
         if not batches:
@@ -222,25 +205,44 @@ def main():
     elif page == "Model research":
         st.subheader("Model selection and measured validation")
         st.json(read_json(latest / "context_model_selection.json", {}))
-        st.json(read_json(ROOT / "training" / "winner_model_selection.json", {}))
-        path = ROOT / "training" / "metrics.csv"
+        st.json(read_json(training_root() / "winner_model_selection.json", {}))
+        path = training_root() / "metrics.csv"
         if path.exists():
             st.dataframe(table(path), hide_index=True, width="stretch")
         st.caption(
             "Historical comparisons guide later deployment. Calibration and robustness experiments write separate candidates and do not silently replace the current model."
         )
-    else:
-        st.subheader("Source availability")
-        for receipt in read_json(latest / "inputs" / "provider_status.json", []):
-            st.write(f"{receipt['provider']}: {receipt['status']}")
-            st.write(receipt["url"])
-            if receipt.get("error"):
-                st.caption(receipt["error"])
-            if receipt.get("tables"):
-                with st.expander("Retrieved source tables"):
-                    st.json(receipt["tables"])
-        with st.expander("Run manifest"):
-            st.json(manifest)
+
+
+def _detail(title, slug):
+    return st.Page(lambda: detail_page(title), title=title, url_path=slug)
+
+
+def main():
+    shell()
+    pages = {
+        "Forecasts": [
+            st.Page(predictions_page, title="Predictions", default=True),
+            st.Page(odds_page, title="Odds", url_path="odds"),
+            st.Page(results_page, title="Results and accuracy", url_path="results"),
+            st.Page(how_it_works_page, title="How it works", url_path="how-it-works"),
+        ],
+        "Behind the scenes": [
+            _detail("Overview", "overview"),
+            _detail("Validation runs", "validation-runs"),
+            _detail("Book prices", "book-prices"),
+            _detail("Game inputs", "game-inputs"),
+            _detail("Statistics", "statistics"),
+            _detail("Forecast log", "forecast-log"),
+            _detail("Calculation pipeline", "pipeline"),
+            _detail("Historical training", "training"),
+            _detail("Model research", "research"),
+            _detail("Sources", "sources"),
+        ],
+    }
+    page = st.navigation(pages, expanded=True)
+    sidebar_footer(ROOT)
+    page.run()
 
 
 if __name__ == "__main__":

@@ -5,9 +5,9 @@ import argparse
 import json
 from pathlib import Path
 
-from .data import load_data, timestamp
-from .external_sources import collect_extended_sources
-from .sources import utc_now
+from .ingest.data import load_data, timestamp
+from .ingest.external_sources import collect_extended_sources
+from .ingest.sources import utc_now
 
 
 def select_next_week(schedules, season: int, now):

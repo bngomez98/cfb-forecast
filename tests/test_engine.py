@@ -2,13 +2,13 @@ import numpy as np
 import pandas as pd
 import pytest
 from cfb_forecast.config import StateConfig
-from cfb_forecast.data import normalize_schedule,timestamp
-from cfb_forecast.features import clean_plays
-from cfb_forecast.ratings import DynamicRatings,build_features
-from cfb_forecast.model import ScoreHead,residual_covariance
-from cfb_forecast.simulate import simulate_scores,win_probability
-from cfb_forecast.market import market_at_cutoff
-from cfb_forecast.evaluate import metrics
+from cfb_forecast.ingest.data import normalize_schedule,timestamp
+from cfb_forecast.ingest.features import clean_plays
+from cfb_forecast.modeling.ratings import DynamicRatings,build_features
+from cfb_forecast.modeling.model import ScoreHead,residual_covariance
+from cfb_forecast.modeling.simulate import simulate_scores,win_probability
+from cfb_forecast.odds.market import market_at_cutoff
+from cfb_forecast.evaluation.evaluate import metrics
 
 def fixture_games():
     return normalize_schedule(pd.DataFrame([
@@ -99,7 +99,7 @@ def test_missing_final_score_is_quarantined_without_inventing_an_outcome():
     assert pd.isna(clean.loc[0,"home_points"])
 
 def test_elo_is_independent_of_the_game_being_predicted():
-    from cfb_forecast.baseline import elo_features
+    from cfb_forecast.modeling.baseline import elo_features
     g=fixture_games(); F=elo_features(g)
     changed=g.copy(); changed.loc[1,["home_points","away_points"]]=[99,0]
     alt=elo_features(changed)
@@ -111,10 +111,17 @@ def test_timezone_required():
 
 def test_play_filters_and_success_thresholds():
     row=dict(game_id=1,pos_team_id=1,def_pos_team_id=2,down=1,distance=10,statYardage=5,rush=True,**{"pass":False},sack=False,kneel_down=False,penalty_no_play=False,period=1,**{"start.pos_score_diff":0})
-    p=pd.DataFrame([dict(row,game_play_number=1),dict(row,game_play_number=1),dict(row,game_play_number=2,down=2,statYardage=6),dict(row,game_play_number=3,kneel_down=True),dict(row,game_play_number=4,period=5)])
+    p=pd.DataFrame([
+        dict(row,game_play_number=1),
+        dict(row,game_play_number=1),
+        dict(row,game_play_number=2,down=2,statYardage=6),
+        dict(row,game_play_number=3,kneel_down=True),
+        dict(row,game_play_number=4,period=5),
+        dict(row,game_play_number=5,**{"start.pos_score_diff":30}),
+    ])
     clean=clean_plays(p)
-    assert len(clean)==2
-    np.testing.assert_array_equal(clean.success,[1,0])
+    assert len(clean)==4
+    np.testing.assert_array_equal(clean.success,[1,0,1,1])
 
 def test_single_class_evaluation_and_score_errors():
     r=metrics([1,1],[.8,.9],margin=[10,20],actual_margin=[7,21])
@@ -125,8 +132,8 @@ def test_single_class_evaluation_and_score_errors():
 def test_residual_covariance_calibration_rejects_tiny_sample():
     with pytest.raises(ValueError): residual_covariance(np.ones((2,2)),np.ones((2,2)))
 
-from cfb_forecast.distribution import probability_tables, discrete_crps
-from cfb_forecast.market import normalize_market_history, market_history_summary
+from cfb_forecast.modeling.distribution import probability_tables, discrete_crps
+from cfb_forecast.odds.market import normalize_market_history, market_history_summary
 
 
 def test_distribution_tables_sum_to_one_and_crps_prefers_truth():
@@ -158,7 +165,7 @@ def test_market_history_supports_multiple_providers_and_consensus_cutoff():
     assert s["market_current_spread"]==-5.5
     assert s["market_spread_move"]==-2.0
 
-from cfb_forecast.chronology import select_due_games
+from cfb_forecast.evaluation.chronology import select_due_games
 
 
 def test_chronological_due_games_respect_each_games_own_cutoff():
@@ -179,7 +186,7 @@ def test_chronological_due_games_never_include_started_games():
 
 def test_prospective_collection_records_market_failure_and_still_runs(monkeypatch, tmp_path):
     from pathlib import Path
-    import cfb_forecast.collector as collector
+    import cfb_forecast.ingest.collector as collector
     dummy_ledger=pd.DataFrame({"game_id":[1]})
     dummy_added=pd.DataFrame(columns=["game_id"])
     def fail_market(*args, **kwargs):
@@ -196,3 +203,21 @@ def test_prospective_collection_records_market_failure_and_still_runs(monkeypatc
     assert receipt["market_capture"]["status"]=="failed"
     assert receipt["chronology"]["status"]=="no_due_games"
     assert Path(receipt["receipt_path"]).exists()
+
+def test_state_update_matches_textbook_kalman_filter():
+    rng=np.random.default_rng(1); cfg=StateConfig()
+    center=np.array([28,5.5,7,4.5,.3]); scale=np.array([14,1.2,2,1.5,.08])
+    s=DynamicRatings([1,2,3,4],center,scale,cfg)
+    for j in range(5):
+        A=rng.normal(size=(8,8)); s.cov[j]=A@A.T/8+np.eye(8)*.3; s.mean[j]=rng.normal(size=8)*.5
+    s.clock=timestamp("2025-09-01T00:00Z"); before_mean,before_cov=s.mean.copy(),s.cov.copy()
+    values=np.array([[35,6.1,8.0,5.0,.35],[17,4.9,6.0,3.9,.27]])
+    s.update(1,2,False,values,"2025-09-01T00:00Z")
+    H=np.zeros((2,8)); H[0,0]=1; H[0,5]=-1; H[1,1]=1; H[1,4]=-1
+    R=np.array([[1,cfg.observation_correlation],[cfg.observation_correlation,1]])
+    for j in range(5):
+        home=np.array([1,-1])*cfg.home_margin/2/scale[0] if j==0 else np.zeros(2)
+        P=before_cov[j]; K=P@H.T@np.linalg.inv(H@P@H.T+R)
+        z=(values[:,j]-center[j])/scale[j]-home
+        np.testing.assert_allclose(s.mean[j],before_mean[j]+K@(z-H@before_mean[j]),atol=1e-12)
+        np.testing.assert_allclose(s.cov[j],(np.eye(8)-K@H)@P,atol=1e-12)

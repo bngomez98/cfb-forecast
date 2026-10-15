@@ -23,6 +23,21 @@ read_watchdog_events <- function(conn, limit = 100L) {
   ))
 }
 
+#' Read the published forecast log.
+#' @export
+read_forecast_log <- function(conn, season = NULL) {
+  sql <- "SELECT run_id, season, game_id, kickoff, away_team, home_team, expected_away_score, expected_home_score, winner, confidence, home_win_probability, logged_at FROM forecast_log"
+  if (!is.null(season)) sql <- paste0(sql, " WHERE season = ", as.integer(season))
+  sql <- paste0(sql, " ORDER BY logged_at, kickoff")
+  DBI::dbGetQuery(conn, sql)
+}
+
+#' Read the source catalog stored in SQLite.
+#' @export
+read_sources <- function(conn) {
+  DBI::dbGetQuery(conn, "SELECT source_key, provider, source_url, schema_version FROM source_registry ORDER BY source_key")
+}
+
 #' Close a CFB Forecast SQLite connection.
 #' @export
 close_cfb_db <- function(conn) DBI::dbDisconnect(conn)

@@ -13,13 +13,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates libgomp1 \
+    && apt-get install -y --no-install-recommends ca-certificates libgomp1 r-base-core \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml ./
 COPY src ./src
 COPY scripts ./scripts
-RUN --mount=type=cache,target=/root/.cache/pip python -m pip install .
+RUN --mount=type=cache,target=/root/.cache/pip python -m pip install '.[api]'
 
 COPY . .
 

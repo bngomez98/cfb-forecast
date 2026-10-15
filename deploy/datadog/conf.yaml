@@ -1,0 +1,5 @@
+logs:
+  - type: file
+    path: artifacts/logs/datadog.jsonl
+    service: cfb-forecast
+    source: python

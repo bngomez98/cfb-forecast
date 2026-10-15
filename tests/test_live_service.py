@@ -7,24 +7,25 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from cfb_forecast.analytic import score_summary
-from cfb_forecast.context_model import feature_columns
-from cfb_forecast.data import normalize_schedule, sha256
-from cfb_forecast.decision import american_to_decimal, moneyline_diagnostics
-from cfb_forecast.forecast import (
+from cfb_forecast.modeling.analytic import score_summary
+from cfb_forecast.modeling.context_model import feature_columns
+from cfb_forecast.ingest.data import normalize_schedule, sha256
+from test_model_artifact_validation import model_value
+from cfb_forecast.odds.decision import american_to_decimal, moneyline_diagnostics
+from cfb_forecast.modeling.forecast import (
     archive_market,
     SnapshotReplayRequired,
     advance_forecast_snapshot,
 )
-from cfb_forecast.probability import (
+from cfb_forecast.modeling.probability import (
     apply_calibration,
     fit_calibration,
     audit_probabilities,
     stress_calibration,
     forecast_probability,
 )
-from cfb_forecast.sunday import slate_window, select_slate
-from cfb_forecast.validation import validate_runs
+from cfb_forecast.pipeline.sunday import slate_window, select_slate
+from cfb_forecast.evaluation.validation import validate_runs
 
 
 def games():
@@ -82,7 +83,7 @@ def games():
 
 
 def test_week_selection_excludes_other_weeks(monkeypatch, tmp_path):
-    import cfb_forecast.weekly as weekly
+    import cfb_forecast.pipeline.weekly as weekly
 
     monkeypatch.setattr(weekly, "load_data", lambda root: (games(), None, None))
 
@@ -127,7 +128,7 @@ def test_changed_source_requests_replay_before_loading_snapshot(tmp_path):
     for p in [prev, data, model]:
         p.mkdir()
     (model / "model.json").write_text(
-        json.dumps({"schema_version": 1, "training_through_season": 2025})
+        json.dumps({**model_value(), "training_through_season": 2025})
     )
     (data / "schedule_2026.csv").write_text("changed")
     manifest = {
@@ -229,6 +230,26 @@ def test_constrained_fitting_and_stress_are_bounded():
     assert stress["stress_log_loss"] >= stress["baseline_log_loss"]
 
 
+def test_probability_audit_command_writes_reports(tmp_path, monkeypatch, capsys):
+    import sys
+    from cfb_forecast.cli import main
+
+    _, path = audit_fixture(tmp_path)
+    out = tmp_path / "audit"
+    monkeypatch.setattr(sys, "argv", [
+        "cfb-forecast", "probability-audit", "--input", str(path), "--out", str(out),
+        "--max-change", "0.05", "--stress-radius", "0.1",
+    ])
+    main()
+    summary = json.loads((out / "summary.json").read_text())
+    assert json.loads(capsys.readouterr().out)["games"] == summary["games"] == 240
+    assert summary["production_changed"] is False
+    assert summary["max_probability_change"] == 0.05
+    assert [row["season"] for row in summary["stress_tests"]] == [2025]
+    for name in ("predictions.csv", "metrics.csv", "calibration.csv", "candidate_calibrator.json"):
+        assert (out / name).exists()
+
+
 def test_context_features_exclude_outcomes_and_betting_prices():
     frame = pd.DataFrame(
         {
@@ -283,7 +304,7 @@ def test_validation_does_not_rewrite_predictions_and_grades_actual_prices(tmp_pa
 
 
 def test_named_sources_require_verified_season_and_preserve_identity():
-    from cfb_forecast.sources import TableParser, named_provider_features
+    from cfb_forecast.ingest.sources import TableParser, named_provider_features
 
     html = '<table><tr><th>Rank</th><th>Team</th><th>Conf</th><th>Games</th><th>Total Yards / Game</th></tr><tr><td>1</td><td><a href="/teams/194-ohio-state">Ohio State</a></td><td>Big Ten</td><td>6</td><td>503.5</td></tr></table>'
     parser = TableParser()
@@ -305,7 +326,7 @@ def test_named_sources_require_verified_season_and_preserve_identity():
 
 
 def test_stale_or_future_injury_reports_cannot_enter_live_inputs():
-    from cfb_forecast.sources import current_injuries
+    from cfb_forecast.ingest.sources import current_injuries
 
     reports = [
         {"date": "2020-11-21T18:31Z", "status": "Out"},
@@ -320,7 +341,7 @@ def test_stale_or_future_injury_reports_cannot_enter_live_inputs():
 def test_sunday_collects_inputs_before_validation_and_inference_and_preserves_run(
     monkeypatch, tmp_path
 ):
-    import cfb_forecast.sunday as service
+    import cfb_forecast.pipeline.sunday as service
 
     events = []
     monkeypatch.setattr(service, "utc_now", lambda: "2026-10-12T12:00:00Z")
@@ -328,7 +349,7 @@ def test_sunday_collects_inputs_before_validation_and_inference_and_preserves_ru
     model = tmp_path / "model"
     model.mkdir()
     (model / "model.json").write_text(
-        '{"schema_version":1,"training_through_season":2025}'
+        json.dumps({**model_value(), "training_through_season": 2025})
     )
 
     def collect(games, season, root):
@@ -366,10 +387,17 @@ def test_sunday_collects_inputs_before_validation_and_inference_and_preserves_ru
     monkeypatch.setattr(service, "capture_prices", prices)
     monkeypatch.setattr(service, "validate_runs", validate)
     monkeypatch.setattr(service, "forecast", infer)
+    import cfb_forecast.modeling.learning as learning
+    import cfb_forecast.storage.database as database
+    def train(*args):
+        events.append("learn")
+        return {"status": "retained", "model_path": str(model)}
+    monkeypatch.setattr(learning, "learn", train)
+    monkeypatch.setattr(database, "persist_completed_run", lambda *args: events.append("persist"))
     report = service.sunday_run(
         tmp_path / "data", tmp_path / "artifacts", 2026, model_root=model, refresh=False
     )
-    assert events == ["inputs", "prices", "validate", "forecast"]
+    assert events == ["inputs", "prices", "validate", "learn", "forecast", "persist"]
     prediction = tmp_path / "artifacts/runs" / report["run_id"] / "forecasts.csv"
     before = sha256(prediction)
     assert report["input_hashes"]["features.csv"]
@@ -378,11 +406,11 @@ def test_sunday_collects_inputs_before_validation_and_inference_and_preserves_ru
     )
     assert repeated["status"] == "already_completed"
     assert sha256(prediction) == before
-    assert len(events) == 4
+    assert len(events) == 6
 
 
 def test_strength_ratings_do_not_use_future_final_results():
-    from cfb_forecast.strength import strength_margin
+    from cfb_forecast.modeling.strength import strength_margin
 
     schedule = games()
     schedule.loc[
