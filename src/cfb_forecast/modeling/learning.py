@@ -163,19 +163,30 @@ def learn(data_root, base_root, output_root, database, as_of):
             if len(predictions) >= 30 and predictions.home_win.nunique() == 2
             else {"status": "not_applicable", "reason": "insufficient outcome variation for independent score calculation"}
         )
-        adopted = True
-        # The deployed head is continuously reinforced from every result available
-        # at this cutoff; the decay keeps recent team form influential without
-        # discarding long-run evidence.
-        production = dict(base)
-        production["head"] = ScoreHead(base["variant"], base["head"]["alpha"]).fit(F, Y, eligible, reinforcement_weights).to_dict()
-        production["reinforcement_decay"] = decay
-        production["adaptive_training_cutoff"] = at.isoformat()
-        production["adaptive_latest_result"] = games.result_available_at.max().isoformat()
-        production["learning_version"] = version
-        write_model(folder / "model", production)
-        report = {"version": version, "base_model_sha256": original_hash, "status": "promoted", "as_of": at.isoformat(), "model_path": str(folder / "model"), "model_sha256": file_hash(folder / "model" / "model.json"), "training_games": int(train.sum()), "refit_games": int(eligible.sum()), "reinforcement_decay": decay, "reinforcement_mode": "exponentially_weighted_continual_refit", "gate_games": int(gate.sum()), "gate_start": timestamp(boundary).isoformat(), "latest_result": games.result_available_at.max().isoformat(), "incumbent": incumbent, "candidate": evaluated, "r_validation": r_validation, "watchdog": watchdog, "source_hashes": sources, "probability_layer": "existing_strength_model" if base.get("win_strength_model") else "adaptive_score_head", "limitations": ["Historical Parquet statistics may be retrospectively revised", "Continual reinforcement reflects information available at each cutoff", "Retraining updates the statistical estimate but cannot eliminate future uncertainty"]}
-        conn.execute("UPDATE learning_versions SET status=?,report_json=? WHERE version=?", (report["status"], json.dumps(report), version))
+        # The refit replaces the incumbent only when, fitted without the gate
+        # games, it forecasts them at least as well. When there are too few later
+        # games to hold out, the gate overlaps the refit's own training games and
+        # cannot judge it, so the refit is adopted and the report says so.
+        gate_independent = not bool((gate & train).any())
+        adopted = not gate_independent or evaluated["log_loss"] <= incumbent["log_loss"]
+        if adopted:
+            # The deployed head is continuously reinforced from every result available
+            # at this cutoff; the decay keeps recent team form influential without
+            # discarding long-run evidence.
+            production = dict(base)
+            production["head"] = ScoreHead(base["variant"], base["head"]["alpha"]).fit(F, Y, eligible, reinforcement_weights).to_dict()
+            production["reinforcement_decay"] = decay
+            production["adaptive_training_cutoff"] = at.isoformat()
+            production["adaptive_latest_result"] = games.result_available_at.max().isoformat()
+            production["learning_version"] = version
+            write_model(folder / "model", production)
+            model_dir = folder / "model"
+        else:
+            model_dir = Path(base_root)
+        report = {"version": version, "base_model_sha256": original_hash, "status": "promoted" if adopted else "retained", "gate_independent": gate_independent, "as_of": at.isoformat(), "model_path": str(model_dir), "model_sha256": file_hash(model_dir / "model.json"), "training_games": int(train.sum()), "refit_games": int(eligible.sum()), "reinforcement_decay": decay, "reinforcement_mode": "exponentially_weighted_continual_refit", "gate_games": int(gate.sum()), "gate_start": timestamp(boundary).isoformat(), "latest_result": games.result_available_at.max().isoformat(), "incumbent": incumbent, "candidate": evaluated, "r_validation": r_validation, "watchdog": watchdog, "source_hashes": sources, "probability_layer": "score_head_margin_through_fitted_logistic_curve", "limitations": ["Historical Parquet statistics may be retrospectively revised", "Continual reinforcement reflects information available at each cutoff", "Retraining updates the statistical estimate but cannot eliminate future uncertainty"]}
+        if base.get("win_strength_model"):
+            report["strength_model_note"] = "A strength model is saved with the base model for comparison only; it does not set win chances."
+        conn.execute("UPDATE learning_versions SET status=?,model_path=?,report_json=? WHERE version=?", (report["status"], report["model_path"], json.dumps(report), version))
         conn.commit()
     (folder / "learning_report.json").write_text(json.dumps(report, indent=2))
     return report

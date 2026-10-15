@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from ..ingest.data import sha256, timestamp
-from .evaluate import metrics, calibration, spread_regression
+from .evaluate import metrics, calibration, calibration_test, spread_regression
 
 
 def validate_runs(run_root, schedules, as_of):
@@ -100,6 +100,7 @@ def validate_runs(run_root, schedules, as_of):
             calibration(matched.home_win, matched.home_win_probability).to_csv(
                 path.parent / "validation_calibration.csv", index=False
             )
+            report["calibration"] = calibration_test(matched.home_win, matched.home_win_probability)
             matched.to_csv(path.parent / "validation.csv", index=False)
             rows.append(matched)
         (path.parent / "validation.json").write_text(json.dumps(report, indent=2))
@@ -112,4 +113,5 @@ def validate_runs(run_root, schedules, as_of):
     }
     if len(combined):
         summary["metrics"] = metrics(combined.home_win, combined.home_win_probability)
+        summary["calibration"] = calibration_test(combined.home_win, combined.home_win_probability)
     return combined, summary

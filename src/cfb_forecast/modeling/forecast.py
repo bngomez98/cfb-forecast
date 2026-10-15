@@ -79,6 +79,30 @@ def _project_rows(targets, means, fitted, covariance, schedules, market_rows, hi
     return rows
 
 
+def _out_of_fold_location(model, features, observed, mask, weights, seasons):
+    """Score locations for completed games, each from a head fitted without that game's season.
+
+    The line, rest and team-rate adjustments and the win-chance curve are fitted
+    on how far real scores landed from these locations. A head that had already
+    seen a game sits closer to its score than it would for a new game, which
+    makes the adjustments too small and the curve too sure of itself. Holding
+    out one season at a time keeps every location a genuine out-of-sample one.
+    Returns None when a season cannot be held out with enough games left.
+    """
+    rows = np.flatnonzero(mask)
+    held = seasons[rows]
+    location = np.empty((len(rows), 2))
+    for season in np.unique(held):
+        hold = np.zeros(len(mask), dtype=bool)
+        hold[rows[held == season]] = True
+        train = mask & ~hold
+        if int(train.sum()) < 50:
+            return None
+        head = ScoreHead(model["variant"], model["head"]["alpha"]).fit(features, observed, train, weights)
+        location[held == season] = head.predict(features[hold])
+    return location
+
+
 def _store_history_facts(data_root, out):
     try:
         teams, players = load_history_facts(data_root, database=database_path())
@@ -205,7 +229,13 @@ def forecast(
     )
     mu = live_head.predict(F)
     market = read_market_history(market_path) if market_path else None
-    past_location = live_head.predict(historical_F[fit_mask])
+    past_location = _out_of_fold_location(
+        model, historical_F, Y, fit_mask, np.exp(-decay * np.maximum(age_days, 0.0)), past.season.to_numpy()
+    )
+    location_fit = "out_of_fold_by_season"
+    if past_location is None:
+        past_location = live_head.predict(historical_F[fit_mask])
+        location_fit = "in_sample"
     past_games = past.loc[fit_mask].reset_index(drop=True)
     # Completed games learn from the last line before their kickoff. Captured
     # quotes come first; the backfilled closing table fills games never captured.
@@ -258,6 +288,7 @@ def forecast(
             "prior_fbs_games": len(past),
             "model_variant": model["variant"],
             "head_training_through_season": model["training_through_season"],
+            "second_stage_location": location_fit,
         },
         history=history_future,
     )
