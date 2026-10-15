@@ -2,6 +2,22 @@
 
 A real-data forecasting service for the 2026 FBS season. Each Sunday at 10 AM America/Chicago, it gathers game information, validates previously saved predictions, and calculates forecasts for the coming Monday–Sunday slate. Predictions, actual results, and hypothetical betting returns remain separate records.
 
+## Joint football model (current design)
+
+Forecasts come from **one joint hierarchical Bayesian model** of the football system, fitted all at once
+over the database. The software itself has no statistical state; the time-varying state representations
+belong to teams, units, players, availability and possessions. See [ARCHITECTURE.md](ARCHITECTURE.md).
+
+```bash
+cfb-model ingest   --season 2022 2023 2024 2025 2026   # SportsDataverse files -> database (with retrieval records)
+cfb-model derive   --seasons 2022 2023 2024 2025 2026  # derived observations + schedule conditions
+cfb-model cycle    --season 2026                       # fit jointly, forecast the coming week, score finals
+cfb-model backtest --season 2025 --cutoffs 2025-09-28 2025-10-26 2025-11-23
+cfb-db status                                          # row counts of every table; cfb-db query "SELECT ..."
+```
+
+The older Sunday service described below (`sunday-run`, Gaussian score head) is retained for comparison.
+
 ## Actual project configuration
 
 | Field | Value |

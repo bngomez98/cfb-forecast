@@ -466,6 +466,8 @@ CREATE TABLE IF NOT EXISTS derived_team_observations (
   derivation_model_version TEXT NOT NULL,
   metric TEXT NOT NULL,
   value REAL,
+  sample_size INTEGER,
+  covariate REAL,
   input_definition TEXT,
   calculation_timestamp TEXT NOT NULL,
   PRIMARY KEY(game_id, team_id, derivation_model, derivation_model_version, metric)
@@ -478,6 +480,7 @@ CREATE TABLE IF NOT EXISTS derived_player_observations (
   derivation_model_version TEXT NOT NULL,
   metric TEXT NOT NULL,
   value REAL,
+  sample_size INTEGER,
   input_definition TEXT,
   calculation_timestamp TEXT NOT NULL,
   PRIMARY KEY(game_id, player_id, derivation_model, derivation_model_version, metric)
