@@ -199,17 +199,20 @@ export function App() {
   const strongPicks = weekGames.filter(game => Math.max(homeChance(game), 1 - homeChance(game)) >= 0.7).length
   const closest = weekGames.length ? [...weekGames].sort((a, b) => Math.abs(margin(a)) - Math.abs(margin(b)))[0] : null
   const weekName = boardMeta.week ? `Week ${boardMeta.week}` : 'This week'
+  const seasonLive = Object.values(liveResults).filter(result => result.status === 'live').length
+  const seasonFinal = Object.values(liveResults).filter(result => result.status === 'final').length
+  const nextGame = chronological.find(game => new Date(game.kickoff).getTime() > Date.now())
 
   return <div className="app-shell">
     <header className="topbar">
       <a className="brand" href="#top" onClick={() => setPage('forecast')} aria-label="FieldQuant home">
         <span className="brand-mark"><LineChart aria-hidden="true" /></span>
-        <span><strong>FIELDQUANT</strong><small>FBS FORECAST DESK</small></span>
+        <span><strong>FIELDQUANT</strong><small>2026 COLLEGE FOOTBALL</small></span>
       </a>
       <nav aria-label="Primary navigation">
         {PAGES.map(item => <button key={item.id} className={page === item.id ? 'active' : ''} aria-current={page === item.id ? 'page' : undefined} onClick={() => setPage(item.id)}>{item.label}</button>)}
       </nav>
-      <div className="model-status"><i aria-hidden="true" /> Picks updated</div>
+      <div className="model-status"><i aria-hidden="true" /> 2026 schedule live</div>
     </header>
 
     <main id="top">
@@ -218,10 +221,11 @@ export function App() {
   <section className="content-section">
   {dataError && <div className="notice" role="alert"><AlertCircle aria-hidden="true" /><div><strong>Live football data unavailable</strong><p>{dataError}. No substitute forecasts, scores, or inputs are displayed. Use Refresh data to try again.</p></div></div>}
   <div className="live-score-strip" role="status"><span><i aria-hidden="true" /> 2026 scores refresh every 60 seconds</span><small>{scoresUpdatedAt ? `Last checked ${scoresUpdatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Connecting to score feed'} · Published forecasts cover {chronological.length} scheduled games</small></div>
+          <SeasonPulse totalGames={chronological.length} liveGames={seasonLive} finalGames={seasonFinal} nextGame={nextGame} />
           <div className="metric-grid" aria-label="Weekly forecast summary">
             <Metric icon={CalendarDays} label="Games in window" value={weekGames.length ? String(weekGames.length) : '—'} detail={`${weekName} slate`} />
-            <Metric icon={Gauge} label="Average pick strength" value={weekGames.length ? pct(avgConfidence, 1) : '—'} detail="Average chance for the picked team" />
-            <Metric icon={Target} label="Strong picks" value={weekGames.length ? String(strongPicks) : '—'} detail="Games at 70% or higher" />
+            <Metric icon={Gauge} label="Average win chance" value={weekGames.length ? pct(avgConfidence, 1) : '—'} detail="Average chance for the favored team" />
+            <Metric icon={Target} label="Clear favorites" value={weekGames.length ? String(strongPicks) : '—'} detail="Games with a 70%+ win chance" />
             <Metric icon={CircleDot} label="Tightest matchup" value={closest ? `${Math.abs(margin(closest)).toFixed(1)} pts` : '—'} detail={closest ? `${closest.away_team} at ${closest.home_team}` : 'Awaiting slate'} />
           </div>
           <BoardControls query={query} setQuery={setQuery} range={range} setRange={setRange} sort={sort} setSort={setSort} weekName={weekName} />
@@ -257,13 +261,13 @@ function Hero({ weekName, updated, games, onRefresh, loading }: { weekName: stri
   return <section className="hero">
     <div className="hero-inner">
       <div className="eyebrow"><span>2026 FBS</span><span>{weekName}</span><span>{games} games</span></div>
-      <h1>Smarter picks for every game.</h1>
-      <p>See who is more likely to win, the predicted score, and what a fair price looks like—all in one place.</p>
+      <h1>Every 2026 college football game, in one place.</h1>
+      <p>Check the full FBS schedule, projected scores, win chances, fair moneylines, and live results as the season unfolds.</p>
       <div className="hero-actions">
         <button className="primary-action" onClick={() => document.querySelector('.forecast-board')?.scrollIntoView({ behavior: 'smooth' })}>View the board <ArrowRight aria-hidden="true" /></button>
         <button className="secondary-action" onClick={onRefresh} disabled={loading}><RefreshCw className={loading ? 'spin' : ''} aria-hidden="true" />{loading ? 'Refreshing' : 'Refresh data'}</button>
       </div>
-      <div className="run-meta"><ShieldCheck aria-hidden="true" /><span>Point-in-time forecast</span><i /> <span>{updated ? `Generated ${shortDate(updated)}` : 'No forecast published'}</span></div>
+      <div className="run-meta"><ShieldCheck aria-hidden="true" /><span>2026 season forecast</span><i /> <span>{updated ? `Generated ${shortDate(updated)}` : 'No forecast published'}</span></div>
     </div>
     <div className="hero-visual" aria-hidden="true">
       <div className="field-line line-one" /><div className="field-line line-two" /><div className="field-line line-three" />
@@ -280,11 +284,20 @@ function Metric({ icon: Icon, label, value, detail }: { icon: typeof Activity; l
   </article>
 }
 
+function SeasonPulse({ totalGames, liveGames, finalGames, nextGame }: { totalGames: number; liveGames: number; finalGames: number; nextGame?: Forecast }) {
+  return <section className="season-pulse" aria-label="Season status">
+    <div className="pulse-intro"><span className="section-eyebrow">SEASON STATUS</span><strong>2026 FBS schedule</strong><small>{totalGames ? `${totalGames} forecasted games currently published` : 'Waiting for the published schedule'}</small></div>
+    <div className="pulse-stat"><span className="pulse-dot live" aria-hidden="true" /><strong>{liveGames}</strong><small>Live now</small></div>
+    <div className="pulse-stat"><span className="pulse-dot final" aria-hidden="true" /><strong>{finalGames}</strong><small>Final scores</small></div>
+    <div className="pulse-next"><span>Next kickoff</span><strong>{nextGame ? `${nextGame.away_team} at ${nextGame.home_team}` : 'No upcoming game in feed'}</strong><small>{nextGame ? `${dayKey(nextGame.kickoff)} · ${timeLabel(nextGame.kickoff)}` : 'The schedule feed has no future kickoff.'}</small></div>
+  </section>
+}
+
 function BoardControls({ query, setQuery, range, setRange, sort, setSort, weekName }: {
   query: string; setQuery: (value: string) => void; range: Range; setRange: (value: Range) => void; sort: Sort; setSort: (value: Sort) => void; weekName: string
 }) {
   return <section className="board-controls" aria-label="Forecast filters">
-    <label className="search-field"><Search aria-hidden="true" /><input type="search" placeholder="Search team" value={query} onChange={event => setQuery(event.target.value)} aria-label="Search team" /></label>
+    <label className="search-field"><Search aria-hidden="true" /><input type="search" placeholder="Search any team or matchup" value={query} onChange={event => setQuery(event.target.value)} aria-label="Search team" /></label>
     <div className="segmented" role="group" aria-label="Date range">
       <button className={range === 'week' ? 'active' : ''} onClick={() => setRange('week')}>{weekName}</button>
       <button className={range === 'all' ? 'active' : ''} onClick={() => setRange('all')}>Full 2026 season</button>
@@ -325,8 +338,8 @@ function ForecastCard({ game, result }: { game: Forecast; result?: LiveResult })
     </div>
     <div className="probability-track" aria-label={`${game.away_team} ${pct(away)}, ${game.home_team} ${pct(home)}`}><i style={{ width: `${away * 100}%` }} /><i style={{ width: `${home * 100}%` }} /></div>
     <dl className="game-details">
-      <div><dt>Predicted spread</dt><dd>{pickedTeam} {spreadFor(game, pickHome ? 'home' : 'away')}</dd></div>
-      <div><dt>Predicted points</dt><dd>{projectedTotal.toFixed(1)}</dd></div>
+      <div><dt>Projected spread</dt><dd>{pickedTeam} {spreadFor(game, pickHome ? 'home' : 'away')}</dd></div>
+      <div><dt>Projected total</dt><dd>{projectedTotal.toFixed(1)} pts</dd></div>
       <div><dt>Fair odds</dt><dd>{oddsLabel(fairMoneyline(confidence))}</dd></div>
     </dl>
     <button className="details-toggle" onClick={() => setExpanded(value => !value)} aria-expanded={expanded} aria-controls={detailsId}>
@@ -430,7 +443,7 @@ function DataPage({ sources, validation, board }: { sources: Source[]; validatio
       <div className="accuracy-note"><Info aria-hidden="true" /><div><strong>{gradedGames > 0 ? `${gradedGames} games are included in these results.` : 'No completed games have been graded yet.'}</strong><p>{gradedGames > 0 ? `Log loss is ${validation.log_loss?.toFixed(3) ?? 'not available'}. It assigns a larger penalty when a high-confidence pick loses.` : 'The current file contains future picks, so an accuracy percentage would be misleading. Results will appear after those games finish and are matched to these saved picks.'}</p></div></div>
       <div className="data-columns">
         <section><span className="section-eyebrow">INPUT FAMILIES</span><h2>What enters the forecast</h2><ul className="check-list"><li><b>Game results</b><span>Final scores and game-level team statistics</span></li><li><b>Efficiency</b><span>Points, yards per play, pass, rush, and first-down rates</span></li><li><b>Situation</b><span>Venue, neutral-site status, and days of rest</span></li><li><b>Market context</b><span>Spread and total only when captured before forecast time</span></li><li><b>Conditional context</b><span>Weather and injuries recorded, but gated by validation</span></li></ul></section>
-        <section><span className="section-eyebrow">PUBLIC SOURCES</span><h2>Traceable inputs</h2><div className="source-list">{(sources.length ? sources : [{ name: 'sportsdataverse', url: 'https://github.com/sportsdataverse/sportsdataverse-data' }]).map(source => <a key={source.name} href={source.url} target="_blank" rel="noreferrer"><span>{source.name.replace(/_/g, ' ')}</span><ArrowRight aria-hidden="true" /></a>)}</div></section>
+        <section><span className="section-eyebrow">PUBLIC SOURCES</span><h2>Traceable inputs</h2>{sources.length ? <div className="source-list">{sources.map(source => <a key={source.name} href={source.url} target="_blank" rel="noreferrer"><span>{source.name.replace(/_/g, ' ')}</span><ArrowRight aria-hidden="true" /></a>)}</div> : <p className="source-empty">The current publication did not include source links. No source is inferred or substituted here.</p>}</section>
       </div>
     </section>
   </>
