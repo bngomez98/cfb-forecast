@@ -27,11 +27,13 @@ artifacts/logs/
 
 # Per-run pipeline outputs (published as CI artifacts instead)
 artifacts/pipeline/
-artifacts/latest-weekly/
+artifacts/latest/
+artifacts/forecasts/
 artifacts/results/
 
-# Raw external-source snapshots (re-interpretable with sources-collect --offline)
-data/sources/raw/
+# External-source runtime state: raw snapshots, collected records, collection receipts
+data/sources/
+data/results_overlay.csv
 
 # Large optional downloads
 data/pbp_*.parquet

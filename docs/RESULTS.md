@@ -1,8 +1,8 @@
 # Computed results
 
-Selected variant: **pbp**, selected using 2024 validation only.
+Selected variant: **pbp_player** (team state model plus the hierarchical player layer), selected using 2024 validation only.
 
-Initial score heads fit 2022–2023; normalization and rating warmup use 2021. 2024 selects settings and calibrates covariance. These held-out 2025 predictions use heads fitted through 2024; only earlier completed games update the ratings during 2025.
+Initial score heads fit 2022–2023; normalization and rating warmup use 2021. 2024 selects settings, the variant, and calibrates the predictive covariance. These held-out 2025 predictions use heads fitted through 2024; only earlier completed games update the ratings during 2025. Numbers come from `artifacts/backtest/metrics.csv`; reproduce with `make reproduce`.
 
 ## All 808 held-out FBS-versus-FBS games in 2025
 
@@ -11,8 +11,9 @@ Initial score heads fit 2022–2023; normalization and rating warmup use 2021. 2
 | elo | 562/808 | 69.55% | 0.5750 | 0.1965 | — | — |
 | score | 582/808 | 72.03% | 0.5377 | 0.1814 | 12.50 | 12.98 |
 | pbp | 590/808 | 73.02% | 0.5406 | 0.1830 | 12.41 | 12.99 |
+| pbp_player (selected) | 586/808 | 72.52% | 0.5395 | 0.1826 | 12.41 | 12.97 |
 
-Lower log loss, Brier score and MAE are better. The selected PBP variant gets more winners correct than score-only, but its probability error is slightly worse in this test year. Variant selection is retained from 2024; this test is not used to switch the released model.
+Lower log loss, Brier score and MAE are better. Adding the player layer to the PBP state model improves probability calibration (log loss 0.5395 vs 0.5406, Brier 0.1826 vs 0.1830) and gives the best total error (12.97), at a slight cost in raw winner count. It was selected on 2024 validation before the 2025 test was scored; this test does not switch the released model. The differences among the three state variants are small relative to the paired intervals below.
 
 ## Matched pregame public forecasts: 763 games
 
@@ -51,11 +52,11 @@ The selected PBP variant is essentially 50/50 on recorded spread directions. Tha
 
 ## Checks and limits
 
-- 20 automated tests passed. They include future-outcome exclusion for both state and Elo ratings, strict result availability at cutoff, covariance stability, neutral-site symmetry, frozen model serialization, simulation determinism, market-timestamp filtering and invalid-score quarantine.
-- Every evaluated forecast cutoff is before kickoff, and every latest contributing result is before its forecast cutoff.
+- 44 automated tests pass (`make test`). They include future-outcome exclusion for both state and Elo ratings, strict result availability at cutoff, covariance stability, neutral-site symmetry, head serialization, deterministic simulation, market-timestamp filtering, invalid-score quarantine, the external-source parsing and cross-check, and the player layer's recovery of a known offense gap and point-in-time safety.
+- Every evaluated forecast cutoff is before kickoff, and every latest contributing result is before its forecast cutoff. The player layer is fit per week from plays strictly before the same cutoff.
 - Saved input hashes were verified against the prior source package. Original external snapshot CSVs and commit metadata are retained; the archive adapter checks their internal consistency.
-- The source records may have been corrected after games. No immutable as-known statistical archive or historical injury model is reconstructed.
-- Final score simulation is an approximate joint Gaussian model, not a drive-level rules engine.
-- The historical test season had been studied in prior work. A prospective holdout is still needed.
+- The source records may have been corrected after games. No immutable as-known statistical archive or historical injury model is reconstructed; the player layer infers expected usage from recent play shares, not declared availability.
+- The win probability is the analytic Gaussian margin integral; margin, total and cover probabilities come from Monte-Carlo integration of the same joint-Gaussian predictive distribution. This is a probability model, not a drive-level rules engine.
+- The historical test season had been studied in prior work. A fully prospective season is still the real test.
 
-The delivered result is a working, testable forecasting engine. Its historical performance does not justify a claim that it beats the market.
+The delivered result is one working, testable predictive-probability model. Its historical performance does not justify a claim that it beats the market.

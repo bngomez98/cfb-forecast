@@ -1,190 +1,124 @@
 # CFB Forecast
 
-College football forecasting that learns time-varying offense and defense strength for every FBS team, simulates **joint score distributions**, and produces a **final forecast** that also uses the betting market and external prediction sites. The market and external sources inform the forecast but never decide it.
+An application that forecasts every FBS college football game, every day. It keeps itself current: it pulls the schedule, completed results, play-by-play and market lines, re-estimates team and player strength, and publishes a win probability and full score distribution for every game still to be played, with a dashboard on top.
+
+```bash
+docker compose up -d        # scheduler + dashboard; open http://localhost:8501
+# or, without Docker:
+pip install -e ".[dashboard]" && cfb-forecast app
+```
+
+The first start produces forecasts on its own; after that a new forecast is published every day, with a table of what moved since the previous run.
 
 | | |
 |---|---|
-| **Model inputs** | SportsDataverse schedules and ESPN advanced box scores; final scores cross-checked across ESPN and external result sites |
-| **Model** | Kalman-filtered team states → ridge scoring head → correlated score simulation |
-| **Final forecast** | Model margin blended with the market line and external predictions, using weights fitted on held-out games; market weight capped |
-| **Outputs** | Expected scores, win probability, margins, intervals and score PMFs per game, plus a weekly `report.md` |
-| **Automation** | Built-in scheduler driven by the game calendar, running as its own container |
-| **2025 held-out** | Model: 73.0% winners, log loss 0.541. Final blend (cross-validated): log loss 0.518, margin MAE 11.95 vs 12.43 for the model alone |
+| **Output** | Home win probability, expected scores, margin and total distributions with 80% intervals, cover/over probabilities when a line exists |
+| **Method** | Gaussian state-space model (Kalman filter) with Bayesian hierarchical pooling, a hierarchical player layer from play-by-play, ridge regression, and Monte-Carlo integration for the predictive distribution |
+| **Guarantee** | Every forecast is built only from results that were available before its cutoff, and records its source and model hashes |
+| **2025 held-out** | 72.5% winners, log loss 0.5395, Brier 0.1826 over 808 FBS games; calibrated Elo scores 0.575 ([details](docs/RESULTS.md)) |
 
-Forecasts are research outputs. No betting edge has been established.
+Forecasts are research outputs. The evaluation found no betting edge.
 
 ---
 
-## How the sources are used
+## What the application does
 
 ```mermaid
 flowchart LR
-    subgraph Inputs
-        SDV[(SportsDataverse<br/>schedules · box scores)]
-        ESPN[(ESPN scoreboard)]
-        RES[(Result sites<br/>Sports-Reference · cfbtrack ·<br/>cfbtxt · theScore · mrtimo)]
-        ODDS[(Lines<br/>FanDuel Sportsbook ·<br/>PickDawgz · collegefootball.gg ·<br/>SportsDataverse snapshot)]
-        PICK[(Predictions<br/>Pickswise · FanDuel Research ·<br/>SportsForecaster · cfbpassport ·<br/>predictions-board PDF)]
-        STAT[(Team stats<br/>FootballDB)]
+    subgraph Sources
+        SDV[(SportsDataverse<br/>schedules · box scores · play-by-play)]
+        ESPN[(ESPN scoreboard<br/>completed scores · pregame odds)]
+        SITES[(Result sites<br/>Sports-Reference · cfbtrack · cfbtxt ·<br/>theScore · mrtimo)]
+        ODDS[(Lines and predictions<br/>FanDuel · Pickswise · PickDawgz ·<br/>SportsForecaster · cfbpassport ·<br/>collegefootball.gg · board PDF)]
     end
 
-    ESPN --> XC{"Results crosscheck<br/>≥ 2 providers agree"}
-    RES --> XC
-    XC -- "agreed finals the schedule<br/>doesn't have yet" --> OV[results_overlay.csv]
-    SDV --> MODEL
-    OV --> MODEL["Model<br/>team states → scores"]
+    subgraph "Scheduler · daily"
+        D[data] --> PL[players] --> MK[market] --> R[results] --> S[sources] --> F[forecast]
+    end
 
-    MODEL -->|model margin| BL{"Final forecast blend<br/>weights fitted on 2025 held-out<br/>market ≤ 35% and ≤ model"}
-    ODDS -->|market margin| BL
-    PICK -->|external margin| BL
-    BL --> FINAL[/final_forecasts.csv · report.md/]
+    SDV --> D
+    SDV --> PL
+    ESPN --> MK
+    ESPN --> R
+    SITES --> S
+    ODDS --> S
 
-    PICK --> GR[Graded vs final scores<br/>picks_grades.csv]
-    STAT --> DASH{{Dashboard}}
-    FINAL --> DASH
-    GR --> DASH
-    XC -->|conflicts| DASH
+    F --> L[/artifacts/latest/<br/>forecasts · changes · ratings/]
+    S -->|"finals ≥ 2 providers agree on"| OV[results_overlay.csv]
+    OV --> D
+    MK --> H[(market_history.csv)]
+    H --> F
+    L --> DASH{{Dashboard}}
 ```
 
-| Source type | What it does | Where it enters |
+Each daily run, in order:
+
+| Stage | What it does | If it fails |
 |---|---|---|
-| **Schedules + box scores** (SportsDataverse) | Train and update team strength | Model |
-| **Final scores** (ESPN + result sites) | Cross-checked. A final that ≥ 2 providers agree on, which the schedule doesn't have yet, updates team states, stamped with when those providers agreed. Schedule scores are never overwritten; disagreements are flagged, never averaged | Model (via `data/results_overlay.csv`) |
-| **Market lines** (sportsbook pages, SportsDataverse snapshot) | One input to the final margin, capped at 35% weight and never more than the model's own weight | Final forecast |
-| **External predictions** (pick sites, PDF board) | Their mean projected margin (from predicted scores, spreads or win %) is one input to the final margin. Its weight scales with how many sources cover the game | Final forecast |
-| **Team stats** (FootballDB) | Reference tables on the dashboard | Dashboard |
+| `data` | Downloads or refreshes the season's schedule and advanced box scores; keeps the cached copy if the source is down | Stops the run (required) |
+| `preflight` | Checks the data folders and the production model | Stops the run (required) |
+| `players` | Aggregates the season's play-by-play into compact per-player-game files | Run continues (optional) |
+| `market` | Captures ESPN pregame odds (spread, total, moneylines) and the SportsDataverse line snapshot, each stamped with the time it was seen | Run continues; fails only if both captures fail |
+| `results` | Pulls final scores of completed games from the ESPN scoreboard | Run continues |
+| `sources` | Collects the external sites (below) and cross-checks their final scores | Run continues |
+| `forecast` | Forecasts every remaining upcoming FBS game, writes the changes and ratings tables, prunes old snapshots | Stops the run (required) |
+| `verify` | Confirms the outputs exist | Stops the run (required) |
 
-Every external input is used only if it was observed **before kickoff** and before the forecast's information cutoff.
+An optional-stage failure is logged and the run finishes as `degraded`; a required-stage failure ends it with a nonzero exit code. Every run writes a receipt to `artifacts/pipeline/` and a log to `artifacts/logs/`.
 
-### Final forecast
+### Automation
 
-`final margin = w_model · model + w_market · market + w_external · external`
+The scheduler (`cfb-forecast scheduler`, or the `scheduler` container) reads the season's kickoff times from the schedule and runs:
 
-The weights are fitted on the 763 held-out 2025 games that have all three signals. They are non-negative and sum to one; the market's weight is at most `CFB_MARKET_MAX_WEIGHT` (0.35) and never above the model's. When a game lacks a signal, the remaining weights are renormalized and the cap re-applied. With no outside information, the final forecast is exactly the model's. Win probability is `Φ(final margin / σ)`, with σ fitted on the same games. Totals remain the model's, because there is no pregame total history to validate a blend against.
-
-| Held-out 2025, 5-fold cross-validated by week | Margin MAE | Log loss | Brier | Winners |
-|---|---:|---:|---:|---:|
-| Model alone | 12.43 | 0.538 | 0.182 | 73.0% |
-| External average alone | 12.00 | 0.518 | 0.175 | 72.0% |
-| Market alone | 11.88 | 0.517 | 0.175 | 73.8% |
-| **Final blend** (model 24% · market 24% · external 52%) | **11.95** | **0.518** | **0.175** | **73.7%** |
-
-The blend gains most of the market's accuracy while keeping the market to a minority share. Refit any time with `cfb-forecast blend-fit` (spec: `artifacts/backtest/blend/blend.json`).
-
-## Pipeline
-
-`cfb-pipeline <action>` runs stages in-process, the same way on a laptop and in the container.
-
-```mermaid
-flowchart LR
-    D[data] --> P[preflight] --> MK[market] --> R[results] --> S[sources] --> F[forecast] --> BL[blend] --> BT[backtest] --> G[grade] --> V[verify]
-    classDef optional stroke-dasharray: 5 5
-    class MK,R,S,BL,BT,G optional
-```
-
-| Action | Stages | Purpose |
+| Job | When (UTC) | Runs |
 |---|---|---|
-| `weekly` | all of the above | Full weekly run |
-| `results` | data → results → sources (result sites) → check | Live scores; refreshes the crosscheck and overlay |
-| `pregame` | data → market → sources (picks, lines) → blend | Capture predictions and lines before kickoff and re-blend the latest forecast |
-| `grade` | data → grade | Grade every pick source against final scores, next to the model |
-| `sources` | data → sources (all) | Collect every external site once |
-| `backtest` | data → preflight → backtest | Re-forecast and grade every completed week |
-| `data` | data | Download or refresh season inputs |
+| `forecast` | Daily at 09:00, and at once on a fresh start, while a game is within 21 days of today | The daily pipeline above |
+| `backtest` | Tuesday 11:00 in season | Point-in-time backtest of every completed week of the season against the final scores |
 
-Dashed stages are optional: a failure (for example, a site that blocks automated requests) is logged and the run finishes `degraded`. A required stage failure stops the run with a nonzero exit code. Every run writes a receipt to `artifacts/pipeline/` and a log to `artifacts/logs/`.
+Outside the season nothing is due, so the application idles and resumes when the next schedule appears. State, a heartbeat for the container health check and a single-instance lock live in `artifacts/scheduler/`. `cfb-forecast scheduler --status` shows what is due; `--once` runs what is due and exits, for cron or Task Scheduler.
 
-## Automation
+### What a run publishes
 
-`cfb-forecast scheduler` (the `scheduler` container) reads the season's kickoff times and runs each job when it is due. All times are UTC and configurable in `.env`.
+`artifacts/latest/` (and a dated copy in `artifacts/forecasts/<UTC stamp>/`, the newest 14 kept):
 
-```mermaid
-gantt
-    title A game week (UTC)
-    dateFormat YYYY-MM-DD HH:mm
-    axisFormat %a %H:%M
-    section Daily
-    data refresh            :milestone, 2026-10-05 09:00, 0m
-    grade                   :milestone, 2026-10-05 10:00, 0m
-    section Weekly
-    weekly pipeline (Mon)   :crit, 2026-10-05 13:00, 30m
-    section Pregame
-    picks + lines, re-blend (every 6 h, and within 3 h of kickoff) :active, 2026-10-05 13:30, 2026-10-10 16:00
-    section Game windows
-    live results every 15 min (kickoff −15 min to +5 h) :2026-10-10 16:00, 2026-10-11 08:00
-```
-
-| Job | When | Action |
-|---|---|---|
-| `live-results` | Every 15 min while any FBS game is between 15 min before kickoff and 5 h after | `results` |
-| `pregame` | Every 6 h while a game is within 7 days, and hourly in the 3 h before kickoff | `pregame` |
-| `weekly` | Monday 13:00 | `weekly` |
-| `grade` | Daily 10:00 in season | `grade` |
-| `data` | Daily 09:00 | `data` |
-
-Off-season, only `weekly` and `data` run. The scheduler keeps its state, a heartbeat (used by the container healthcheck) and a single-instance lock in `artifacts/scheduler/`. Without Docker, run `cfb-forecast scheduler`, or `cfb-forecast scheduler --once` from cron or Task Scheduler. `--status` shows what is due.
-
-## Quick start
-
-### Docker (recommended)
-
-```bash
-cp .env.example .env               # optional: change season, draws, schedule, market cap
-make docker-build                  # docker compose build: engine + dashboard images
-make up                            # scheduler + dashboard on http://localhost:8501
-make logs                          # follow the scheduler
-docker compose run --rm pipeline   # run the weekly pipeline now
-docker compose run --rm cfb-forecast sources-list
-```
-
-The engine image contains the `src/` library (an editable install, so `/app/src` is the code that runs), the pipeline, the scheduler, logging, the bundled data, the production model and blend, the dashboard code and the tests. To test local code edits without rebuilding, run `docker compose run --rm -v ./src:/app/src cfb-forecast …`. Container logs rotate (10 MB × 5), and run logs persist in `artifacts/logs/`.
-
-### Local Python (3.11+)
-
-```bash
-make install       # pip install -e ".[dev]"
-make test          # 46 tests
-make weekly        # refresh, collect, forecast, blend, grade
-make scheduler     # automation in the foreground
-make dashboard     # http://localhost:8501
-```
-
-To publish the dashboard with HTTPS: `CFB_DOMAIN=forecast.example.org docker compose --profile public up -d` (Caddy, [`deploy/Caddyfile`](deploy/Caddyfile)).
-
-## External sources
-
-Run `cfb-forecast sources-list` to see every registered site.
-
-- **Fetching:** each fetch checks robots.txt, rate-limits per host and retries. The raw page is saved with its SHA-256 and retrieval time under `data/sources/raw/`, so `sources-collect --offline` can re-interpret saved pages without refetching.
-- **Interpretation:** works on any layout: table rows, one- or two-line scoreboards, text result lists, embedded JSON with home/away structure, and PDFs. A row is accepted only when both teams resolve (aliases, ranks and "St." handled) to a scheduled matchup.
-- **Classification:** numbers are classified as scores, spreads, moneylines, totals or win probabilities and attached to the right team. A score for a game that hasn't started, a pick published after kickoff or a tied final is rejected.
-- **JavaScript-only or blocking sites:** some pages render in JavaScript or refuse automated requests; FanDuel does both. Those are reported as `no-records` or `http-403` in `data/sources/collections/latest.json`. For them, save the page from a browser and import it:
-
-```bash
-cfb-forecast sources-import --season 2026 --source fanduel_sportsbook --file ~/Downloads/fanduel.html
-cfb-forecast sources-import --season 2026 --source predictions_board --file "CFB Predictions Board.pdf" --observed-at 2026-10-07T15:00:00Z
-```
-
-| Output (`data/sources/`) | Contents |
+| File | Contents |
 |---|---|
-| `results.csv` · `picks.csv` · `lines.csv` | Every accepted record with source, retrieval time and the evidence text |
-| `results_crosscheck.csv` | Per game: each provider's latest final, agreement with each other and with the schedule |
-| `picks_grades.csv` | Accuracy, Brier score and score error per pick source, with the model's numbers on the same games |
-| `team_stats/<source>.csv` | Team stat tables |
-| `collections/latest.json` | Per-source status of the last collection |
+| `forecasts.csv` / `.json` | Per game: win probability, expected scores, margin and total, 80% intervals, simulated and analytic probabilities, cover/over probabilities where a line exists |
+| `score_distribution.parquet` · `margin_…` · `total_…` | Full discrete probability tables per game |
+| `changes.csv` | Change in win probability, margin and total since the previous run, biggest movers first |
+| `team_ratings.csv` | Pass, rush, offense, defense and net rating per team |
+| `player_ratings.csv` | Named passer and runner ratings with usage share and recent plays |
+| `forecast_manifest.json` · `data_availability.json` | Cutoff, every game used, source and model hashes, what data existed at the cutoff |
 
-## How the model works
+### Dashboard
+
+`http://localhost:8501`, four views: **Current forecast** (filterable game table, win-probability and score charts, what changed since the last run); **Players & teams** (team ratings, searchable player ratings); **Historical backtest** (any past forecast run graded against actual results); **External sources** (status of every site, score conflicts, outside predictions for upcoming games).
+
+## The model
+
+One model produces the predictive probability. Its parts are standard methods, applied in sequence:
 
 ```mermaid
 flowchart TB
-    S[Schedules + final scores<br/>+ cross-checked overlay] --> AV{"Result available<br/>before cutoff?"}
-    A[Per-game yards/play, pass, rush,<br/>first-down rate] --> AV
-    AV -- yes --> K["Kalman update<br/>offense & defense states per metric<br/>(weekly drift, offseason shrinkage)"]
-    AV -- no --> X[Excluded]
-    K --> H["Scoring head<br/>26 features → ridge regression<br/>(fit on earlier seasons only)"]
-    H --> SIM["Joint score simulation<br/>correlated Gaussian → integer scores,<br/>overtime resolution"]
-    SIM --> OUT["Model forecast: expected scores, win %,<br/>80% intervals, score/margin/total PMFs"]
+    R["Completed games<br/>(result available before the cutoff)"] --> K
+    A["Per-game yards/play, pass, rush,<br/>first-down rate"] --> K
+    K["Team states<br/>Gaussian offense/defense per metric,<br/>Kalman update, weekly drift, offseason shrinkage,<br/>hierarchical shrinkage to the league"]
+    P["Play-by-play"] --> PL["Player layer<br/>player → team → league partial pooling,<br/>opponent-adjusted, recency-weighted"]
+    PL --> U["Usage-weighted team offense<br/>(who actually plays)"]
+    K --> H
+    U --> H["Ridge regression head<br/>28 features → expected points per side"]
+    H --> C["Joint Gaussian predictive distribution<br/>(out-of-fit residual covariance)"]
+    C --> W["Win probability<br/>analytic Φ(margin / σ)"]
+    C --> M["Monte-Carlo integration<br/>margin · total · cover · over probabilities"]
 ```
+
+- **Team states** (`ratings.py`): for each of five metrics (points, yards/play, yards/pass, yards/rush, first-down rate) every team has a Gaussian offense and defense state with full covariance. A game updates the home and away states jointly through the Kalman filter; states drift each week and are shrunk toward the league each offseason. Shared zero-centred priors give partial pooling.
+- **Player layer** (`players.py`): per-play rush and pass yardage is modelled as `y = player + defense + error`, with players pooled toward their team and teams toward the league, solved by conjugate Gaussian shrinkage iterated between the offense and defense blocks. Plays are weighted by recency (8-week half-life), so the rating tracks current form. A team's rating averages its players weighted by recent usage, so a star who has stopped playing stops counting.
+- **Points head** (`model.py`): a standardized ridge regression maps the 26 state features plus the two player features (own player offense, opponent player defense) to expected points for each side, fitted on earlier seasons only.
+- **Predictive distribution** (`simulate.py`): the 2024 out-of-fit residual covariance gives a joint Gaussian for the two scores. Win probability is its analytic margin integral; margin, total, cover and over probabilities are Monte-Carlo integrals of the same distribution.
+- **Market lines** are never an input to the win probability. They are stamped with when they were seen and used only for cover, over/under and expected-return diagnostics.
+
+Equations, information-cutoff rules and limits are in [docs/METHODOLOGY.md](docs/METHODOLOGY.md). A result is usable only if it became available strictly before the forecast cutoff (kickoff + 8 hours when the real completion time is unknown); the player layer follows the same rule.
 
 ```mermaid
 gantt
@@ -192,90 +126,127 @@ gantt
     dateFormat YYYY
     axisFormat %Y
     section Model
-    Warmup + normalization          :done, 2021, 2022
+    Warmup and normalization        :done, 2021, 2022
     Fit scoring heads               :done, 2022, 2024
-    Choose settings, calibrate      :active, 2024, 2025
+    Select variant, calibrate       :active, 2024, 2025
     section Evaluation
-    Held-out test, blend weights    :crit, 2025, 2026
+    Held-out test                   :crit, 2025, 2026
     Live season                     :2026, 2027
 ```
 
-A result can update team states only if it became available **strictly before** the forecast cutoff (kickoff + 8 h when the real time is unknown). Equations and data policies are in [docs/METHODOLOGY.md](docs/METHODOLOGY.md). The model's 2025 evaluation is in [docs/RESULTS.md](docs/RESULTS.md). The optional 24-hour chronological ledger tools are described in [docs/CHRONOLOGY.md](docs/CHRONOLOGY.md).
+### Results
 
-**2025 held-out model results** (808 FBS-vs-FBS games, heads fitted through 2024):
+2025 held-out season, 808 FBS-vs-FBS games, heads fitted through 2024 (`artifacts/backtest/metrics.csv`):
 
 | Model | Winner accuracy | Log loss | Brier | Margin MAE | Total MAE |
 |---|---:|---:|---:|---:|---:|
 | Calibrated Elo | 69.55% | 0.5750 | 0.1965 | — | — |
-| Score-state | 72.03% | **0.5377** | **0.1814** | 12.50 | **12.98** |
-| PBP-state (selected) | **73.02%** | 0.5406 | 0.1830 | **12.41** | 12.99 |
+| Team states, score only | 72.03% | **0.5377** | **0.1814** | 12.50 | 12.98 |
+| Team states + play-by-play | **73.02%** | 0.5406 | 0.1830 | 12.41 | 12.99 |
+| **+ player layer (selected)** | 72.52% | 0.5395 | 0.1826 | **12.41** | **12.97** |
 
-**2026 to date** (committed snapshot `artifacts/backtest/season-2026/summary.json`): 215 graded games over 4 weeks, 80.9% winners, Brier 0.148, margin MAE 12.9.
+The paired block-bootstrap tests (score and play-by-play models against Elo) exclude zero; the player variant has the same large gap to Elo in log loss and Brier but was not part of the paired tests, and the differences among the three state models are within noise. The variant was chosen on 2024 validation, before the 2025 test was scored. The public prediction tracker in the archive still has lower probability error (log loss 0.520 on 763 matched games). Paired intervals, calibration and spread diagnostics: [docs/RESULTS.md](docs/RESULTS.md).
 
-## Configuration
+## External sources
+
+`cfb-forecast sources-list` shows every registered site. Their roles:
+
+| Role | Sources | Used for |
+|---|---|---|
+| Schedules, box scores, play-by-play | SportsDataverse | The model |
+| Completed scores | ESPN scoreboard, Sports-Reference, cfbtrack, cfbtxt, theScore, mrtimo | A final that at least two providers agree on, and the schedule does not have yet, is written to `data/results_overlay.csv` and enters the ratings (stamped with when the providers agreed). Schedule scores are never overwritten and disagreements are flagged, not averaged |
+| Pregame lines | ESPN odds, FanDuel Sportsbook, PickDawgz, collegefootball.gg | `data/market_history.csv`: cover/over diagnostics only |
+| Outside predictions | Pickswise, FanDuel Research, SportsForecaster, cfbpassport, board PDFs | Shown on the dashboard for comparison; not model inputs |
+| Team statistics | FootballDB | Reference tables |
+
+Each fetch checks `robots.txt`, rate-limits per host, retries, and stores the raw page with its SHA-256 and retrieval time under `data/sources/raw/`, so `sources-collect --offline` can re-read saved pages. Pages are read from tables, scoreboards, text lists, embedded JSON and PDFs; a row is accepted only if both teams resolve to a scheduled matchup, and a score for an unstarted game, a pick published after kickoff, or a tied final is rejected.
+
+Sites that render with JavaScript or refuse automated requests (FanDuel does both) show up as `no-records` or `http-403` in `data/sources/collections/latest.json`. For those, save the page in a browser and import it:
+
+```bash
+cfb-forecast sources-import --season 2026 --source fanduel_sportsbook --file ~/Downloads/fanduel.html
+cfb-forecast sources-import --season 2026 --source predictions_board --file "CFB Predictions Board.pdf" --observed-at 2026-10-07T15:00:00Z
+```
+
+## Running it
+
+### Docker
+
+```bash
+cp .env.example .env              # optional: season, draws, schedule, retention
+docker compose build              # engine image and dashboard image
+docker compose up -d              # scheduler + dashboard
+docker compose logs -f scheduler  # follow the automation
+docker compose run --rm pipeline  # run the daily pipeline once, now
+```
+
+The engine image installs the `src/` library in editable mode (so `/app/src` is the code that runs) and contains the pipeline, scheduler, logging, bundled data, the production model and the tests. Mount `./src` over it to try edits without rebuilding. `docker compose --profile public up -d` adds Caddy with automatic HTTPS in front of the dashboard (`CFB_DOMAIN`, [`deploy/Caddyfile`](deploy/Caddyfile)).
+
+### Local Python (3.11+)
+
+```bash
+make install     # pip install -e ".[dev]"
+make test        # 55 tests
+make app         # scheduler + dashboard in one process
+make forecast    # run the daily pipeline once
+make help        # every task
+```
+
+### Configuration
 
 Defaults are in [`.env.example`](.env.example).
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `CFB_FORECAST_SEASON` | `2026` | Season (the scheduler also accepts `auto`) |
-| `CFB_FORECAST_DRAWS` | `50000` | Monte Carlo draws per game |
+| `CFB_FORECAST_SEASON` | `2026` | Season (`auto` picks the current one) |
+| `CFB_FORECAST_DRAWS` | `50000` | Monte-Carlo draws per game |
+| `CFB_FORECAST_HOURS` · `CFB_FORECAST_HOUR` | `24` · `9` | Minimum hours between forecasts, and the daily slot (UTC) |
+| `CFB_BACKTEST_DAY` · `CFB_BACKTEST_HOUR` · `CFB_BACKTEST_LEAD_HOURS` | `tue` · `11` · `48` | Weekly backtest slot and its cutoff before each week |
+| `CFB_KEEP_FORECASTS` | `14` | Dated forecast snapshots kept |
 | `CFB_SOURCES` | `all` | External sources to collect: `all`, `none` or a comma list |
-| `CFB_MARKET_MAX_WEIGHT` | `0.35` | Cap on the market's share of the final margin |
-| `CFB_EXTERNAL_FULL_SOURCES` | `3` | External sources needed for the full external weight |
-| `CFB_LIVE_MINUTES` · `CFB_PREGAME_HOURS` | `15` · `6` | Scheduler intervals |
-| `CFB_WEEKLY_DAY` · `CFB_WEEKLY_HOUR` · `CFB_GRADE_HOUR` · `CFB_DATA_HOUR` | `mon` · `13` · `10` · `9` | Scheduler slots (UTC) |
+| `CFB_REFRESH_DATA` | `1` in Docker | Re-download season inputs each run |
 | `CFB_LOG_LEVEL` · `CFB_LOG_DIR` | `INFO` · `artifacts/logs` | Logging |
-| `CFB_REFRESH_DATA` | `1` in Docker | Re-download season inputs before the weekly run |
-| `CFB_DATA_DIR` · `CFB_ARTIFACTS_DIR` | `./data` · `./artifacts` | Mounted folders |
+| `CFB_DATA_DIR` · `CFB_ARTIFACTS_DIR` | `./data` · `./artifacts` | Input and output folders |
 | `CFB_DASHBOARD_PORT` · `CFB_DOMAIN` | `8501` · `localhost` | Dashboard port, HTTPS hostname |
 
-## Command reference
+## Commands
 
-Run `cfb-forecast <command> --help` for every option. In Docker, use `docker compose run --rm cfb-forecast <command>`.
+`cfb-forecast <command> --help` lists every option; in Docker use `docker compose run --rm cfb-forecast <command>`.
 
 | Group | Commands |
 |---|---|
-| Pipeline & automation | `pipeline {weekly,results,pregame,grade,sources,backtest,data}` (alias `cfb-pipeline`), `scheduler [--once \| --status \| --run JOB]`, `healthcheck` |
-| Final forecast | `blend-fit`, `blend-apply --forecast DIR` |
-| External sources | `sources-list`, `sources-collect [--source …] [--tag results\|picks\|lines\|stats] [--offline]`, `sources-import --source NAME --file PATH [--observed-at …]`, `sources-grade` |
+| Application | `app`, `scheduler [--once \| --status \| --run JOB]`, `healthcheck` |
+| Pipeline (`cfb-pipeline` is an alias) | `pipeline {forecast,results,sources,backtest,data}` |
+| Forecasting | `forecast --as-of … --through …`, `weekly-forecast [--week N]`, `season-backtest` |
+| Model | `backtest` (chronological fit, selection and 2025 evaluation; `make reproduce`), `distribution-backtest` |
 | Data | `fetch --seasons 2026 [--refresh]`, `results-refresh`, `preflight` |
-| Model | `backtest` (`make reproduce`), `distribution-backtest`, `weekly-forecast`, `forecast`, `forecast-advance`, `season-backtest` |
 | Market | `market-init`, `market-import`, `market-snapshot-sdv`, `market-backfill-sdv` |
-| Chronological ledger | `holdout-*`, `chronology-*`, `prospective-run` |
+| External sources | `sources-list`, `sources-collect [--source …] [--tag results\|picks\|lines\|stats] [--offline]`, `sources-import` |
+| Original ledger tools | `forecast-advance`, `holdout-freeze\|settle\|verify`, `chronology-update\|verify\|settle\|bootstrap`, `prospective-run` — kept as the project had them ([docs/CHRONOLOGY.md](docs/CHRONOLOGY.md)); the application does not use them |
 
 ## Repository layout
 
 ```text
-cfb-forecast/
-├── src/cfb_forecast/
-│   ├── cli.py · pipeline.py · scheduler.py · logs.py   commands, stages, automation, logging
-│   ├── blend.py                                        final forecast (model + market + external)
-│   ├── sources/                                        external sites
-│   │   ├── registry.py   sites and how each is interpreted
-│   │   ├── fetch.py      robots, rate limits, retries, raw snapshots
-│   │   ├── extract.py    HTML / JSON / text / PDF → lines
-│   │   ├── teams.py      team-name resolution
-│   │   ├── interpret.py  results, predictions, lines, team stats
-│   │   └── collection.py collect, import, crosscheck, overlay, grading
-│   ├── data.py · features.py · ratings.py · model.py · simulate.py · distribution.py   model
-│   ├── forecast.py · weekly.py · season_backtest.py · backtest.py · evaluate.py         forecasting and evaluation
-│   ├── results.py · market.py                                                           ESPN scores, market history
-│   └── holdout.py · chronology.py · collector.py · availability.py                      chronological ledger tools
-├── tests/                 model, sources, blend, overlay and scheduler tests
-├── dashboard/             Streamlit app (forecast · backtest · external sources) + Dockerfile
-├── data/                  bundled inputs, market history, archive; sources/ outputs
-├── artifacts/             production model, blend spec, evaluations, forecasts, logs, scheduler state
-├── docs/                  METHODOLOGY · RESULTS · CHRONOLOGY
-├── deploy/Caddyfile       HTTPS proxy
-├── Dockerfile             engine image
-├── docker-compose.yml     scheduler · dashboard · pipeline/sources/cli (profile cli) · caddy (profile public)
-├── Makefile · pyproject.toml · requirements-tested.txt · .env.example
+src/cfb_forecast/
+  app.py · scheduler.py · pipeline.py · cli.py · logs.py       the application: launcher, automation, stages, commands, logging
+  ratings.py · features.py · players.py · model.py             team states, features, player layer, points head
+  simulate.py · distribution.py · forecast.py · weekly.py      predictive distribution, forecasts, daily run and changes table
+  backtest.py · season_backtest.py · evaluate.py · baseline.py selection, point-in-time backtests, Elo baseline
+  data.py · results.py · market.py · availability.py           ingestion, ESPN scores and odds, market history, availability receipts
+  sources/                                                     external sites: registry, fetch, extract, teams, interpret, collection
+  chronology.py · holdout.py · collector.py                    the project's original ledger tools (not used by the application)
+dashboard/            Streamlit app and its Dockerfile
+tests/                model, sources, players, application, dashboard and scheduler tests
+data/                 schedules, box scores, per-player-game aggregates, market history, archived public forecasts
+artifacts/            production model, backtests, forecasts, pipeline receipts, logs, scheduler state
+docs/                 METHODOLOGY · RESULTS · CHRONOLOGY
+scripts/ · merge_workspace.py · inventory_workspace.py         the project's original command-line wrappers and workspace utilities
+Dockerfile · docker-compose.yml · deploy/Caddyfile · Makefile · pyproject.toml · requirements-tested.txt · .env.example
 ```
 
 ## Data sources
 
 - SportsDataverse releases: [`cfb_schedules`](https://github.com/sportsdataverse/sportsdataverse-data/releases/tag/cfb_schedules), [`espn_cfb_adv_team`](https://github.com/sportsdataverse/sportsdataverse-data/releases/tag/espn_cfb_adv_team), [`espn_cfb_pbp`](https://github.com/sportsdataverse/sportsdataverse-data/releases/tag/espn_cfb_pbp), `espn_cfb_betting`
 - [ESPN public scoreboard API](https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard)
-- [ssmarathontrading/ncaa_predictions](https://github.com/ssmarathontrading/ncaa_predictions): archived public forecasts and lines, used to fit the blend weights
-- External sites in [`sources/registry.py`](src/cfb_forecast/sources/registry.py): Sports-Reference, cfbtrack, cfbtxt, theScore, mrtimo cfb-games, FootballDB, FanDuel Sportsbook and Research, Pickswise, PickDawgz, SportsForecaster, CFB Passport, collegefootball.gg, plus manual imports such as the predictions-board PDF
+- [ssmarathontrading/ncaa_predictions](https://github.com/ssmarathontrading/ncaa_predictions): archived public forecasts, used as a comparison baseline
+- The external sites registered in [`sources/registry.py`](src/cfb_forecast/sources/registry.py)

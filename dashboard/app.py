@@ -11,7 +11,7 @@ st.set_page_config(page_title="CFB Forecast", page_icon="🏈", layout="wide")
 
 ARTIFACT_ROOT = Path(os.environ.get("CFB_ARTIFACTS_DIR", str(PROJECT_ROOT / "artifacts")))
 DATA_ROOT = Path(os.environ.get("CFB_DATA_DIR", str(PROJECT_ROOT / "data")))
-LATEST = ARTIFACT_ROOT / "latest-weekly"
+LATEST = ARTIFACT_ROOT / "latest"
 
 @st.cache_data(ttl=300)
 def load_csv(path: str):
@@ -71,8 +71,7 @@ def parse_interval(value):
 
 def forecast_directories():
     paths = []
-    paths.extend(sorted(ARTIFACT_ROOT.glob("weekly/*")))
-    paths.extend(sorted(ARTIFACT_ROOT.glob("forecast_*/")))
+    paths.extend(sorted(ARTIFACT_ROOT.glob("forecasts/*")))
     return [path for path in paths if (path / "forecasts.csv").exists()]
 
 
@@ -97,15 +96,46 @@ def grade_forecast(predictions, schedule):
     return graded
 
 st.title("CFB Forecast Dashboard")
-st.caption("Weekly predictions and historical results backtesting")
+st.caption("Daily win probabilities and score distributions for every upcoming FBS game, plus point-in-time backtests")
 
 forecast_path = LATEST / "forecasts.csv"
-page = st.sidebar.radio("View", ["Current forecast", "Historical backtest", "External sources"])
+page = st.sidebar.radio("View", ["Current forecast", "Players & teams", "Historical backtest", "External sources"])
 schedule = load_schedule(str(DATA_ROOT))
 scoreboard_results = load_scoreboard_results(str(ARTIFACT_ROOT))
 if not scoreboard_results.empty:
     scoreboard_results["completed"] = scoreboard_results["is_final"]
     schedule = pd.concat([schedule, scoreboard_results[["game_id", "completed", "home_points", "away_points"]]], ignore_index=True).drop_duplicates("game_id", keep="last")
+
+if page == "Players & teams":
+    st.header("Players & teams")
+    players_path, teams_path = LATEST / "player_ratings.csv", LATEST / "team_ratings.csv"
+    if not teams_path.exists():
+        st.info("No ratings yet. They are written with every daily forecast run.")
+        st.stop()
+    teams = load_csv(str(teams_path))
+    st.caption("Standardized units: positive offense = more yards per play than the league after adjusting for the defenses faced; "
+               "positive defense = fewer allowed. Ratings are recency-weighted and pooled toward the team and league.")
+    st.subheader("Team ratings")
+    st.dataframe(teams.rename(columns={"team": "Team", "pass_offense": "Pass offense", "rush_offense": "Rush offense",
+                                       "player_offense": "Offense", "player_defense": "Defense", "net_rating": "Net"}).drop(columns="team_id").round(3),
+                 use_container_width=True, hide_index=True)
+    if players_path.exists():
+        players = load_csv(str(players_path))
+        st.subheader("Player ratings")
+        f1, f2, f3 = st.columns(3)
+        role = f1.selectbox("Role", ["pass", "rush"])
+        team = f2.selectbox("Team", ["All"] + sorted(players.team.dropna().unique()))
+        active_only = f3.checkbox("Currently used (recent plays)", value=True)
+        view_p = players[players.role == role]
+        if team != "All":
+            view_p = view_p[view_p.team == team]
+        if active_only:
+            view_p = view_p[view_p.usage_share > 0]
+        st.dataframe(view_p.rename(columns={"player_name": "Player", "team": "Team", "rating": "Rating", "usage_share": "Usage share",
+                                            "plays": "Plays", "recent_plays": "Recent plays", "games": "Games"})
+                     [["Player", "Team", "Rating", "Usage share", "Plays", "Recent plays", "Games"]].round(3),
+                     use_container_width=True, hide_index=True)
+    st.stop()
 
 if page == "Historical backtest":
     st.header("Historical backtest against actual results")
@@ -113,7 +143,7 @@ if page == "Historical backtest":
     if not directories:
         st.warning("No prior forecast artifacts were found.")
         st.stop()
-    labels = {str(path): f"{path.name} ({load_manifest(path / 'weekly_manifest.json').get('as_of', '')[:10]})" if (path / "weekly_manifest.json").exists() else path.name for path in directories}
+    labels = {str(path): f"{path.name} ({load_manifest(path / 'forecast_run_manifest.json').get('as_of', '')[:10]})" if (path / "forecast_run_manifest.json").exists() else path.name for path in directories}
     selected_path = st.selectbox("Forecast run", list(labels), format_func=lambda value: labels[value])
     predictions = load_csv(str(Path(selected_path) / "forecasts.csv"))
     graded = grade_forecast(predictions, schedule)
@@ -200,7 +230,7 @@ if df.empty:
     st.warning("The latest forecast contains no games.")
     st.stop()
 
-manifest = load_manifest(LATEST / "weekly_manifest.json")
+manifest = load_manifest(LATEST / "forecast_run_manifest.json")
 with st.sidebar:
     st.header("Filters")
     team_options = sorted(set(df.home_team) | set(df.away_team))
@@ -227,7 +257,7 @@ m1, m2, m3, m4 = st.columns(4)
 m1.metric("Games", len(view))
 m2.metric("Strongest pick", f"{view.winner_probability.max():.1%}" if len(view) else "—")
 m3.metric("Average projected total", f"{view.projected_total.mean():.1f}" if len(view) else "—")
-m4.metric("Forecast week", str(manifest.get("week", "—")))
+m4.metric("Next week", str(manifest.get("next_week", "—")))
 st.subheader("Projected games")
 if view.empty:
     st.info("No games match the selected filters.")
@@ -242,6 +272,23 @@ else:
         if column in display:
             display[column] = display[column].map(lambda x: "—" if pd.isna(x) else f"{x:.1f}")
     st.dataframe(display, use_container_width=True, hide_index=True)
+changes_path = LATEST / "changes.csv"
+if changes_path.exists():
+    changes = load_csv(str(changes_path))
+    moved = changes.dropna(subset=["win_probability_change"])
+    st.subheader("What changed since the last run")
+    if moved.empty:
+        st.caption("This is the first run, or no earlier run covers these games.")
+    else:
+        st.caption(f"Compared with the run at {str(moved.prior_as_of.iloc[0])[:16]} UTC. Win probability is the home team's.")
+        top = moved.head(10).copy()
+        top = top[["kickoff", "away_team", "home_team", "prior_home_win_probability", "home_win_probability", "win_probability_change", "margin_change"]]
+        for column in ["prior_home_win_probability", "home_win_probability"]:
+            top[column] = top[column].map(lambda x: f"{x:.1%}")
+        top["win_probability_change"] = top["win_probability_change"].map(lambda x: f"{100 * x:+.1f} pts")
+        top["margin_change"] = top["margin_change"].map(lambda x: f"{x:+.1f}")
+        top.columns = ["Kickoff", "Away", "Home", "Before", "Now", "Change", "Margin change"]
+        st.dataframe(top, use_container_width=True, hide_index=True)
 st.subheader("Win probability")
 if not view.empty:
     chart = view[["away_team", "home_team", "home_win_probability"]].copy()

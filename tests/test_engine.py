@@ -9,6 +9,7 @@ from cfb_forecast.model import ScoreHead,residual_covariance
 from cfb_forecast.simulate import simulate_scores,win_probability
 from cfb_forecast.market import market_at_cutoff
 from cfb_forecast.evaluate import metrics
+from cfb_forecast.chronology import select_due_games
 
 def fixture_games():
     return normalize_schedule(pd.DataFrame([
@@ -157,3 +158,40 @@ def test_market_history_supports_multiple_providers_and_consensus_cutoff():
     assert s["market_open_spread"]==-3.5
     assert s["market_current_spread"]==-5.5
     assert s["market_spread_move"]==-2.0
+
+
+def test_chronological_due_games_respect_each_games_own_cutoff():
+    g=fixture_games()
+    due=select_due_games(g,2022,"2022-09-02T17:00:00Z",24)
+    assert due.game_id.astype(int).tolist()==[2]
+    assert due.iloc[0].scheduled_cutoff==pd.Timestamp("2022-09-02T16:00:00Z")
+    none=select_due_games(g,2022,"2022-09-02T17:00:00Z",24,already_forecasted=[2])
+    assert none.empty
+
+
+def test_chronological_due_games_never_include_started_games():
+    g=fixture_games()
+    due=select_due_games(g,2022,"2022-09-09T17:00:00Z",48)
+    assert 2 not in due.game_id.astype(int).tolist()
+    assert 3 in due.game_id.astype(int).tolist()
+
+
+def test_prospective_collection_records_market_failure_and_still_runs(monkeypatch, tmp_path):
+    from pathlib import Path
+    import cfb_forecast.collector as collector
+    dummy_ledger=pd.DataFrame({"game_id":[1]})
+    dummy_added=pd.DataFrame(columns=["game_id"])
+    def fail_market(*args, **kwargs):
+        raise RuntimeError("source unavailable")
+    def fake_chronology(**kwargs):
+        assert str(kwargs["now"]) == "2026-10-02 19:26:22+00:00"
+        return dummy_ledger, dummy_added, {"status":"no_due_games","games_added":0}
+    monkeypatch.setattr(collector,"capture_sportsdataverse_snapshot",fail_market)
+    monkeypatch.setattr(collector,"run_chronological_update",fake_chronology)
+    _,_,receipt=collector.run_prospective_collection(
+        data_root=tmp_path, model_root=tmp_path, ledger_root=tmp_path/"ledger",
+        season=2026, now="2026-10-02T19:26:22Z", market_store=tmp_path/"market.csv"
+    )
+    assert receipt["market_capture"]["status"]=="failed"
+    assert receipt["chronology"]["status"]=="no_due_games"
+    assert Path(receipt["receipt_path"]).exists()

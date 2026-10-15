@@ -63,7 +63,7 @@ def normalize_schedule(df):
         raise ValueError("Schedule must identify FBS games via division columns or fbs_game")
     # No maximum-play-score substitution. Schedule outcomes are authoritative.
     # Unknown actual final whistle is conservatively proxied at kickoff + 8h.
-    df["result_available_at"] = df.start_date + pd.Timedelta(hours=8)
+    df["result_available_at"] = df.start_date + RESULT_LAG
     if "completed_at" in df:
         actual = pd.to_datetime(df.completed_at, utc=True, errors="coerce")
         df["result_available_at"] = actual.fillna(df.result_available_at)
@@ -75,6 +75,8 @@ def read_frame(path):
     return pd.read_parquet(path) if Path(path).suffix == ".parquet" else pd.read_csv(path)
 
 RESULTS_OVERLAY = "results_overlay.csv"
+# A final score is treated as available this long after kickoff when the real completion time is unknown.
+RESULT_LAG = pd.Timedelta(hours=8)
 
 
 def apply_results_overlay(raw, overlay):

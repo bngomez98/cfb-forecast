@@ -2,26 +2,24 @@
 
 
 
-How the engine learns team strength, turns it into score distributions, and keeps every forecast free of future information. For the measured results see [RESULTS.md](RESULTS.md); for the prospective ledger see [CHRONOLOGY.md](CHRONOLOGY.md).
-
-
+This is one statistical model whose output is **predictive probability**: for every upcoming FBS game it produces a win probability and full margin/total distributions, kept free of any information that was not available before kickoff. The named methods are a Gaussian linear state-space model updated by the **Kalman filter**, **Bayesian hierarchical partial pooling** (shared zero-centred priors; player ratings pooled toward team and league), **ridge regression** for the points mapping, an analytic **Gaussian predictive win probability**, and **Monte-Carlo integration** for the discrete margin, total and cover probabilities. Everything below is one model with these components; for the measured results see [RESULTS.md](RESULTS.md).
 
 ## Components
 
 | Component | Implementation |
 |---|---|
-| Free inputs | SportsDataverse schedules and ESPN-derived per-game advanced team summaries |
-| Dynamic ratings | Metric-specific Gaussian offense and defense states, full covariance, opponent adjustment, weekly drift and offseason shrinkage |
-| Pooling | Shared zero-centered Gaussian priors shrink teams with little evidence toward the population mean |
-| Scoring model | A regularized, standardized regression head fitted on earlier seasons |
-| PBP extension | Prior-game yards per play, yards per pass, yards per rush, first-down creation rate, and offense/defense interactions |
-| Probability calibration | Joint score residual covariance from an out-of-fit validation season |
-| Joint simulation | Correlated score draws, nonnegative integer rounding, approximate overtime, margin/total intervals and push probabilities |
-| Market diagnostics | Timestamp-filtered spread, total, moneyline and odds input; cover probabilities and expected net return calculations |
+| Free inputs | SportsDataverse schedules and ESPN-derived per-game advanced team summaries; ESPN play-by-play for the player layer |
+| Dynamic team ratings | Metric-specific Gaussian offense and defense states, full covariance, opponent adjustment, weekly drift and offseason shrinkage, updated by the Kalman filter |
+| Hierarchical pooling | Shared zero-centred Gaussian priors shrink teams with little evidence toward the population mean |
+| Player layer | Per-play rush/pass yardage modelled with partial pooling (player → team → league) and an opponent-defense term, recency-weighted; usage-weighted into a team player-offense rating (`players.py`) |
+| Points mapping | A regularized, standardized ridge regression head fitted on earlier seasons |
+| Feature set | Pregame offense, defense, their differences/products, uncertainty summaries, venue and early-season terms; the player variant adds two point-in-time player columns |
+| Predictive probability | Analytic Gaussian win probability from the margin, plus Monte-Carlo margin/total/cover probabilities from an out-of-fit validation residual covariance |
+| Market diagnostics | Timestamp-filtered spread, total, moneyline and odds input; cover probabilities and expected net return — informative only, never an input to the win probability |
 | Baselines | Chronological calibrated Elo and retained public pregame forecast snapshots |
-| Verification | Tests for future-outcome exclusion, state covariance, time ordering, market timestamps, deterministic simulations, score-head serialization and invalid data |
+| Verification | Tests for future-outcome exclusion, state covariance, time ordering, market timestamps, deterministic simulations, head serialization, player pooling/point-in-time safety, and invalid data |
 
-The engine does not yet estimate player ability or injury effects, train its own EPA model, simulate individual drives, or learn information incremental to the market. Provider EPA, win probabilities, Elo and betting fields are deliberately excluded from the current statistical inputs. Raw-play cleaning and success/explosive-rate aggregation are available as a separate extension; the current fitted PBP head uses the deterministic per-game yardage and first-down fields in the advanced summaries, not that optional raw-play aggregate.
+The model estimates player offensive ability from play-by-play (`players.py`) but does not model injuries or declared availability directly — it infers expected usage from recent play shares. It does not train its own EPA model, simulate individual drives, or treat the market as information. Provider EPA, win probabilities, Elo and betting fields are deliberately excluded from the statistical inputs.
 
 ## Historical design
 
@@ -31,7 +29,7 @@ Default chronology:
 |---|---|
 | 2021 | Warmup; estimate normalization centers/scales; initialize ratings |
 | 2022–2023 | Fit candidate score/probability mappings |
-| 2024 | Select state drift, offseason carry, regularization, and score-versus-PBP variant; estimate out-of-fit score covariance |
+| 2024 | Select state drift, offseason carry, regularization, and the variant (score / pbp / pbp_player); estimate out-of-fit score covariance |
 | 2025 | Evaluate frozen fitted heads and settings; refresh team states only after earlier games become available |
 
 The released **heldout** models train their heads through 2024. The **production** models are separately refitted through 2025 after the 2025 test predictions are written. Refitting does not overwrite the held-out probabilities or metrics. Production forecasting rejects a model trained through the season being forecast.
@@ -76,7 +74,20 @@ C_new = C - K H C
 
 Each metric uses separate states/covariance; both teams' observations in a game are conditioned jointly. The observation residual correlation is fixed at 0.10. Shared zero-centered priors identify offense/defense decompositions and produce partial pooling. State hyperparameters are selected empirically on 2024; this is not full Bayesian integration over unknown hyperparameters.
 
-The scoring head receives pregame offense, defense, their differences/products, uncertainty summaries, venue and early-season terms. It predicts both sides with the same standardized ridge regression. Output score means are clipped at zero. The score-only head uses a restricted six-column subset. The PBP head uses all 26 columns.
+The score head receives pregame offense, defense, their differences/products, uncertainty summaries, venue and early-season terms. It predicts both sides with the same standardized ridge regression. Output score means are clipped at zero. The `score` head uses a restricted six-column subset; the `pbp` head uses all 26 state columns; the `pbp_player` head uses those 26 plus two player columns (28 total).
+
+## Player layer
+
+The player layer is the same probabilistic idea applied one level down. On standardized per-play yards for role r (pass or rush), a play by ball-carrier j on team t against defense d is
+
+```text
+y = alpha_j + beta_d + error,   error ~ N(0, sigma_r^2)
+alpha_j ~ N(theta_t, tau_player^2)   # players pooled toward their team
+theta_t ~ N(0,       tau_team^2)     # teams pooled toward the league
+beta_d  ~ N(0,       tau_def^2)      # defenses pooled toward the league
+```
+
+The posterior means are obtained in closed form by conjugate Gaussian shrinkage — a group's estimate is `(sum w*y + kappa*prior) / (sum w + kappa)` with prior pseudo-count `kappa = 1/tau^2` — iterated a few times between the offense (player/team) and defense blocks (coordinate ascent). Each play is weighted `decay ** weeks_before_cutoff`, an exponential-forgetting state filter on a slowly varying latent. Only plays from games that kicked off strictly before the cutoff contribute. A team's pre-kickoff player-offense rating is the usage-weighted average of its expected players' `alpha`, with expected usage taken from each player's share of recent plays, so a team whose high-rated player has no recent usage is rated lower. The rating enters the score head as two columns: the team's own player offense and the opponent's player defense. This variant was selected on 2024 validation and modestly improves held-out calibration (see RESULTS.md).
 
 The 2024 residual covariance contains game variation and realized estimation error. It is used as the forecast covariance without adding state uncertainty again. This empirical joint Gaussian approximation does not explicitly integrate every posterior parameter uncertainty through the nonlinear scoring head.
 

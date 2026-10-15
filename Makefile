@@ -6,7 +6,7 @@ export OPENBLAS_NUM_THREADS := 1
 export OMP_NUM_THREADS := 1
 
 .DEFAULT_GOAL := help
-.PHONY: help install lint test check reproduce results forecast sources scheduler scheduler-status \
+.PHONY: help install lint test check reproduce results app forecast sources scheduler scheduler-status \
         backtest-season dashboard docker-build docker-forecast up down logs clean
 
 help: ## Show this help
@@ -34,6 +34,9 @@ results: ## Final scores of completed games from ESPN and result sites
 
 sources: ## Collect every external source once
 	cfb-forecast sources-collect --season $(SEASON)
+
+app: ## Run the whole application (scheduler + dashboard) in the foreground
+	cfb-forecast app
 
 scheduler: ## Run the automation loop in the foreground
 	cfb-forecast scheduler

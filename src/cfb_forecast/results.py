@@ -137,3 +137,114 @@ def refresh_results(data_root="data", output_root="artifacts/results", season=No
     }
     (destination / "results_manifest.json").write_text(json.dumps(manifest, indent=2))
     return current, manifest
+
+
+# --------------------------------------------------------------------------- pregame odds
+def _number(value):
+    try:
+        return float(str(value).replace("+", "")) if value not in (None, "", "OFF") else None
+    except ValueError:
+        return None
+
+
+def _decimal(moneyline):
+    if moneyline is None or abs(moneyline) < 100:
+        return None
+    return 1 + (moneyline / 100 if moneyline > 0 else 100 / abs(moneyline))
+
+
+def event_odds(event):
+    """Pregame line from one scoreboard event in home-perspective fields, or None.
+
+    The favourite comes from ``details`` ("UGA -3.5") matched to a competitor abbreviation and
+    is cross-checked with the ``favorite`` flags; if the two disagree the line is skipped rather
+    than guessing the sign. Only events that have not started count, because a line shown during
+    or after a game is not pregame market information.
+    """
+    competition = (event.get("competitions") or [{}])[0]
+    status = (competition.get("status") or event.get("status") or {}).get("type") or {}
+    if status.get("state") not in (None, "pre") or status.get("completed"):
+        return None
+    odds = (competition.get("odds") or [None])[0]
+    if not odds:
+        return None
+    competitors = competition.get("competitors") or []
+    home = next((x for x in competitors if x.get("homeAway") == "home"), {})
+    away = next((x for x in competitors if x.get("homeAway") == "away"), {})
+    home_abbr = str((home.get("team") or {}).get("abbreviation", "")).upper()
+    away_abbr = str((away.get("team") or {}).get("abbreviation", "")).upper()
+    home_odds, away_odds = odds.get("homeTeamOdds") or {}, odds.get("awayTeamOdds") or {}
+    details = str(odds.get("details") or "").strip()
+
+    home_spread = None
+    if details.upper() in ("EVEN", "PK", "PICK"):
+        home_spread = 0.0
+    else:
+        team_part, _, size_part = details.rpartition(" ")
+        size = _number(size_part)
+        size = abs(size) if size is not None else (abs(_number(odds.get("spread"))) if _number(odds.get("spread")) is not None else None)
+        by_details = {home_abbr: "home", away_abbr: "away"}.get(team_part.upper()) if team_part else None
+        by_flag = "home" if home_odds.get("favorite") is True else ("away" if away_odds.get("favorite") is True else None)
+        favourite = None if (by_details and by_flag and by_details != by_flag) else (by_details or by_flag)
+        if size == 0:
+            home_spread = 0.0
+        elif size is not None and favourite:
+            home_spread = -size if favourite == "home" else size
+
+    def moneyline(side_odds, side):
+        value = _number(side_odds.get("moneyLine"))
+        if value is None:
+            value = _number((((odds.get("moneyline") or {}).get(side) or {}).get("close") or {}).get("odds"))
+        return value
+
+    total = _number(odds.get("overUnder"))
+    row = {
+        "home_spread": home_spread,
+        "total_line": total if total and total > 0 else None,
+        "home_ml_decimal": _decimal(moneyline(home_odds, "home")),
+        "away_ml_decimal": _decimal(moneyline(away_odds, "away")),
+        "odds_provider": str((odds.get("provider") or {}).get("name") or "espn").strip(),
+    }
+    return row if any(row[k] is not None for k in ("home_spread", "total_line", "home_ml_decimal", "away_ml_decimal")) else None
+
+
+def capture_espn_odds(data_root, season, store_path, days_ahead=8, now=None):
+    """Snapshot ESPN scoreboard pregame odds for the next ``days_ahead`` days into market history.
+
+    ``observed_at`` is the retrieval time, so a captured line can only inform forecasts made after
+    it was seen and only for games that had not kicked off. Returns the rows appended.
+    """
+    from .market import append_market_history
+
+    schedule = pd.read_csv(Path(data_root) / f"schedule_{int(season)}.csv", low_memory=False)
+    schedule["start_date"] = pd.to_datetime(schedule["start_date"], utc=True)
+    now = pd.Timestamp(now or datetime.now(timezone.utc)).tz_convert("UTC")
+    upcoming = schedule[(schedule.start_date > now) & (schedule.start_date <= now + pd.Timedelta(days=days_ahead))]
+    if upcoming.empty:
+        return pd.DataFrame()
+    rows = []
+    for day in sorted(upcoming.start_date.dt.normalize().unique()):
+        query = urllib.parse.urlencode({"dates": pd.Timestamp(day).strftime("%Y%m%d"), "limit": 500, "groups": 80})
+        payload = _request_json(f"{ESPN_SCOREBOARD}?{query}")
+        retrieved_at = datetime.now(timezone.utc).isoformat()
+        for event in payload.get("events", []):
+            base, odds = _event_row(event, retrieved_at), event_odds(event)
+            if base is not None and odds is not None:
+                rows.append({**base, **odds})
+    if not rows:
+        return pd.DataFrame()
+    frame = _map_schedule_ids(pd.DataFrame(rows), schedule)
+    frame["game_id"] = pd.to_numeric(frame.game_id, errors="coerce")
+    frame = frame[frame.game_id.isin(upcoming.game_id)]
+    frame = frame[pd.to_datetime(frame.kickoff, utc=True) > pd.to_datetime(frame.retrieved_at, utc=True)]
+    if frame.empty:
+        return pd.DataFrame()
+    market = pd.DataFrame({
+        "game_id": frame.game_id.astype("int64"), "observed_at": frame.retrieved_at,
+        "provider": "espn:" + frame.odds_provider.str.lower().str.replace(r"\s+", "_", regex=True),
+        "home_spread": frame.home_spread, "total_line": frame.total_line,
+        "home_ml_decimal": frame.home_ml_decimal, "away_ml_decimal": frame.away_ml_decimal,
+        "source": ESPN_SCOREBOARD,
+    }).drop_duplicates(["game_id", "provider", "observed_at"])
+    append_market_history(store_path, market)
+    return market

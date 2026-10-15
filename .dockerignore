@@ -24,9 +24,10 @@ dist
 data/pbp_*.parquet
 artifacts/pipeline
 artifacts/results
-artifacts/latest-weekly
+artifacts/latest
+artifacts/forecasts
 artifacts/logs
-data/sources/raw
+data/sources
 
 # Local configuration
 .env

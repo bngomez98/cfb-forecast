@@ -31,6 +31,7 @@ x-engine: &engine
     CFB_FORECAST_DRAWS: ${CFB_FORECAST_DRAWS:-50000}
     CFB_BACKTEST_LEAD_HOURS: ${CFB_BACKTEST_LEAD_HOURS:-48}
     CFB_REFRESH_DATA: ${CFB_REFRESH_DATA:-1}
+    CFB_KEEP_FORECASTS: ${CFB_KEEP_FORECASTS:-14}
     CFB_SOURCES: ${CFB_SOURCES:-all}
     CFB_LOG_LEVEL: ${CFB_LOG_LEVEL:-INFO}
     CFB_LOG_DIR: /app/artifacts/logs
@@ -74,6 +75,7 @@ services:
       CFB_FORECAST_HOUR: ${CFB_FORECAST_HOUR:-9}
       CFB_BACKTEST_DAY: ${CFB_BACKTEST_DAY:-tue}
       CFB_BACKTEST_HOUR: ${CFB_BACKTEST_HOUR:-11}
+      CFB_KEEP_FORECASTS: ${CFB_KEEP_FORECASTS:-14}
     healthcheck:
       test: ["CMD", "cfb-forecast", "healthcheck", "--artifacts", "/app/artifacts", "--max-age", "600"]
       interval: 60s

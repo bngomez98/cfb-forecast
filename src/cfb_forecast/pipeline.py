@@ -136,20 +136,32 @@ def _market_path(ctx):
 
 
 def stage_market(ctx):
-    """Point-in-time SportsDataverse spread/total snapshot into the market history."""
+    """Market history: ESPN pregame odds for upcoming games plus the SportsDataverse snapshot.
+
+    The two captures are independent; the stage fails only if both do. Lines are stamped with
+    the time they were seen, and the forecast uses them for cover/total probabilities only.
+    """
     from .market import capture_sportsdataverse_snapshot
+    from .results import capture_espn_odds
 
     store = ctx.data / "market_history.csv"
-    rows = capture_sportsdataverse_snapshot(ctx.season, store)
-    return {"store": str(store), "rows": int(len(rows))}
+    detail, errors = {"store": str(store)}, {}
+    for name, capture in (("espn_pregame_rows", lambda: capture_espn_odds(ctx.data, ctx.season, store)),
+                          ("sportsdataverse_rows", lambda: capture_sportsdataverse_snapshot(ctx.season, store))):
+        try:
+            detail[name] = int(len(capture()))
+        except Exception as exc:
+            errors[name] = f"{type(exc).__name__}: {exc}"
+            log.warning("market capture %s failed: %s", name, errors[name])
+    if len(errors) == 2:
+        raise RuntimeError(f"no market source could be captured: {errors}")
+    return {**detail, **({"errors": errors} if errors else {})}
 
 
 def stage_players(ctx):
     """Refresh the current season's hierarchical player ratings from play-by-play."""
     from .players import build_aggregates
 
-    if ctx.sources.strip().lower() in ("none", "off", "0") and not ctx.refresh_data:
-        pass
     written = build_aggregates(ctx.data, [ctx.season], refresh=ctx.refresh_data)
     ctx.outputs["player_aggregates"] = str(ctx.data)
     return {"season_files": [str(p) for p in written]}
@@ -159,7 +171,8 @@ def stage_forecast(ctx):
     from .weekly import run_daily_forecast
 
     result, manifest = run_daily_forecast(ctx.data, ctx.model, ctx.artifacts, ctx.season,
-                                          market_path=_market_path(ctx), draws=ctx.draws)
+                                          market_path=_market_path(ctx), draws=ctx.draws,
+                                          keep=int(os.environ.get("CFB_KEEP_FORECASTS", "14")))
     ctx.outputs["forecast"] = manifest["output"]
     ctx.outputs["latest"] = str(ctx.artifacts / "latest")
     return manifest
@@ -196,7 +209,7 @@ PREFLIGHT = Stage("preflight", stage_preflight, True, "Validate data, artifact a
 RESULTS = Stage("results", stage_results, False, "Final scores of completed games from the ESPN scoreboard")
 SOURCES = Stage("sources", _sources_stage(None), False, "Collect external results, picks, lines and stats")
 SOURCE_RESULTS = Stage("sources", _sources_stage("results"), False, "Collect external result sources")
-MARKET = Stage("market", stage_market, False, "Snapshot the SportsDataverse spread/total into market history")
+MARKET = Stage("market", stage_market, False, "Capture ESPN pregame odds and the SportsDataverse snapshot into market history")
 PLAYERS = Stage("players", stage_players, False, "Refresh current-season hierarchical player ratings from play-by-play")
 
 FORECAST = Stage("forecast", stage_forecast, True, "Forecast every remaining upcoming FBS game from the current state")

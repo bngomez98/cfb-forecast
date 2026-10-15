@@ -21,7 +21,7 @@ so the estimate is an exponential-forgetting state filter on a slowly varying
 latent rather than a flat average: this is the "dynamic continuous" state.
 
 Everything is point-in-time: a rating as of a cutoff uses only plays from games
-that kicked off strictly before the cutoff. A team's pre-kickoff offensive
+whose result was available strictly before the cutoff (kickoff + 8 hours). A team's pre-kickoff offensive
 rating is the usage-weighted average of its expected players' alphas, where
 expected usage comes from the share of recent plays each player took.
 """
@@ -33,7 +33,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .data import require_columns, timestamp
+from .data import RESULT_LAG, require_columns, timestamp
 from .logs import get
 
 log = get("players")
@@ -43,6 +43,7 @@ ROLES = ("pass", "rush")
 CLIP = {"pass": (-15.0, 75.0), "rush": (-10.0, 60.0)}
 RAW_COLUMNS = ["game_id", "pos_team_id", "def_pos_team_id", "rush", "pass", "sack", "statYardage",
                "passer_player_id", "rusher_player_id"]
+NAME_COLUMNS = ["passer_player_name", "rusher_player_name"]  # optional; used only to label the published tables
 
 
 @dataclass(frozen=True)
@@ -72,7 +73,7 @@ def player_plays(plays):
     a run to ``rusher_player_id``. Plays without a usable carrier or yardage are dropped.
     """
     require_columns(plays, RAW_COLUMNS, "play-by-play")
-    p = plays.loc[:, RAW_COLUMNS].copy()
+    p = plays.reindex(columns=RAW_COLUMNS + NAME_COLUMNS).copy()
     for c in ("rush", "pass", "sack"):
         p[c] = _flag(p[c])
     p["statYardage"] = pd.to_numeric(p.statYardage, errors="coerce")
@@ -80,7 +81,8 @@ def player_plays(plays):
         p[c] = pd.to_numeric(p[c], errors="coerce")
     is_pass = p["pass"] | p.sack
     rows = []
-    for role, mask, carrier in (("pass", is_pass, "passer_player_id"), ("rush", p.rush & ~is_pass, "rusher_player_id")):
+    for role, mask, carrier, name_col in (("pass", is_pass, "passer_player_id", "passer_player_name"),
+                                          ("rush", p.rush & ~is_pass, "rusher_player_id", "rusher_player_name")):
         part = p[mask & p[carrier].notna() & p.pos_team_id.notna() & p.def_pos_team_id.notna() & p.statYardage.notna()].copy()
         if part.empty:
             continue
@@ -88,11 +90,12 @@ def player_plays(plays):
         rows.append(pd.DataFrame({
             "game_id": part.game_id.astype("int64"), "role": role,
             "player_id": part[carrier].astype("int64"),
+            "player_name": part[name_col].fillna("").astype(str),
             "team_id": part.pos_team_id.astype("int64"), "def_id": part.def_pos_team_id.astype("int64"),
             "yards": part.statYardage.clip(lo, hi).astype(float),
         }))
     if not rows:
-        return pd.DataFrame(columns=["game_id", "role", "player_id", "team_id", "def_id", "yards"])
+        return pd.DataFrame(columns=["game_id", "role", "player_id", "player_name", "team_id", "def_id", "yards"])
     return pd.concat(rows, ignore_index=True)
 
 
@@ -108,7 +111,7 @@ def player_game_aggregates(plays, schedule):
     sched["game_id"] = pd.to_numeric(sched.game_id, errors="coerce").astype("int64")
     sched["start_date"] = pd.to_datetime(sched.start_date, utc=True)
     agg = pp.groupby(["game_id", "role", "player_id", "team_id", "def_id"], as_index=False).agg(
-        plays=("yards", "size"), yards=("yards", "sum"), yards_per_play=("yards", "mean"))
+        player_name=("player_name", "first"), plays=("yards", "size"), yards=("yards", "sum"), yards_per_play=("yards", "mean"))
     return agg.merge(sched, on="game_id", how="inner").sort_values(["start_date", "game_id"]).reset_index(drop=True)
 
 
@@ -120,7 +123,7 @@ def _shrink(sum_w, sum_wy, prior_mean, prior_pseudocount):
 def fit_player_ratings(aggregates, cutoff, config=None, roles=ROLES):
     """Fit hierarchical, opponent-adjusted, recency-weighted player/team/defense ratings.
 
-    Only games that kicked off strictly before ``cutoff`` contribute. Returns a dict
+    Only games whose kickoff plus the result lag is strictly before ``cutoff`` contribute. Returns a dict
     with per-role player, team-offense and defense rating tables (standardized units;
     positive offense = more yards than league average, positive defense = fewer allowed).
     """
@@ -129,7 +132,8 @@ def fit_player_ratings(aggregates, cutoff, config=None, roles=ROLES):
     out = {"cutoff": cutoff.isoformat(), "config": config.to_dict(), "players": {}, "teams": {}, "defense": {}, "league": {}}
     if aggregates.empty:
         return out
-    a = aggregates[pd.to_datetime(aggregates.start_date, utc=True) < cutoff].copy()
+    # Same availability rule as the team states: a game counts only once kickoff + lag is before the cutoff.
+    a = aggregates[pd.to_datetime(aggregates.start_date, utc=True) + RESULT_LAG < cutoff].copy()
     if a.empty:
         return out
     weeks_old = (cutoff - pd.to_datetime(a.start_date, utc=True)).dt.total_seconds() / 604800.0
@@ -182,7 +186,7 @@ def fit_player_ratings(aggregates, cutoff, config=None, roles=ROLES):
 def recent_usage(aggregates, cutoff, lookback_games=4):
     """Each team's expected player usage share (by plays) over its most recent games before cutoff."""
     cutoff = timestamp(cutoff)
-    a = aggregates[pd.to_datetime(aggregates.start_date, utc=True) < cutoff]
+    a = aggregates[pd.to_datetime(aggregates.start_date, utc=True) + RESULT_LAG < cutoff]
     usage = {}
     for (team, role), g in a.groupby(["team_id", "role"]):
         recent_games = g.sort_values("start_date").game_id.drop_duplicates().tail(lookback_games)
@@ -281,7 +285,76 @@ def player_feature_matrix(game_ids, features_by_week):
     return block
 
 
-PBP_RELEASE = "https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_cfb_pbp/play_by_play_{season}.parquet"
+def _available(aggregates, cutoff):
+    cutoff = timestamp(cutoff)
+    return aggregates[pd.to_datetime(aggregates.start_date, utc=True) + RESULT_LAG < cutoff]
+
+
+def player_table(aggregates, ratings, cutoff, team_names=None, min_plays=25, lookback_games=4):
+    """Named player ratings as of ``cutoff``: one row per (player, role) with enough plays.
+
+    ``rating`` is the pooled, defense-adjusted player effect in standardized yards-per-play
+    units (positive = better than the league). ``usage_share`` is the player's share of
+    their team's recent plays in that role and ``recent_plays`` the plays behind it, so a
+    high rating with no recent usage is visible. ``team_id`` is the player's latest team.
+    """
+    columns = ["role", "player_id", "player_name", "team_id", "team", "rating", "usage_share", "plays", "recent_plays", "games"]
+    a = _available(aggregates, cutoff)
+    if a.empty or not ratings.get("players"):
+        return pd.DataFrame(columns=columns)
+    a = a.sort_values("start_date")
+    if "player_name" not in a:
+        a = a.assign(player_name="")
+    last = a.groupby(["role", "player_id"]).tail(1).set_index(["role", "player_id"])
+    totals = a.groupby(["role", "player_id"]).agg(plays=("plays", "sum"), games=("game_id", "nunique"))
+    usage = recent_usage(aggregates, cutoff, lookback_games)
+    rows = []
+    for role, alphas in ratings["players"].items():
+        for pid, rating in alphas.items():
+            key = (role, int(pid))
+            if key not in totals.index:
+                continue
+            team = int(last.loc[key, "team_id"])
+            share = usage.get((team, role), {}).get(int(pid), 0.0)
+            rows.append({"role": role, "player_id": int(pid), "player_name": str(last.loc[key, "player_name"]),
+                         "team_id": team, "team": (team_names or {}).get(team, str(team)), "rating": float(rating),
+                         "usage_share": float(share), "plays": int(totals.loc[key, "plays"]),
+                         "recent_plays": int(round(share * a[(a.team_id == team) & (a.role == role)].plays.sum())) if share else 0,
+                         "games": int(totals.loc[key, "games"])})
+    out = pd.DataFrame(rows, columns=columns)
+    out = out[out.plays >= min_plays]
+    return out.sort_values(["role", "rating"], ascending=[True, False]).reset_index(drop=True)
+
+
+def team_table(ratings, usage, team_names=None):
+    """Team offense (usage-weighted players) and defense ratings by role, with a net rating."""
+    team = team_offense_ratings(ratings, usage)
+    columns = ["team_id", "team", "pass_offense", "rush_offense", "player_offense", "player_defense", "net_rating"]
+    if team.empty:
+        return pd.DataFrame(columns=columns)
+    team["player_defense"] = [team_defense_rating(ratings, t) for t in team.team_id]
+    team["net_rating"] = team.player_offense + team.player_defense
+    team["team"] = team.team_id.map(lambda t: (team_names or {}).get(int(t), str(t)))
+    return team[columns].sort_values("net_rating", ascending=False).reset_index(drop=True)
+
+
+def write_player_report(data_root, out_dir, as_of, team_names=None, config=None):
+    """Fit the player layer as of ``as_of`` and write ``player_ratings.csv`` and ``team_ratings.csv``."""
+    agg = load_aggregates(data_root)
+    if agg.empty:
+        return {"players": 0, "teams": 0}
+    config = config or PlayerConfig()
+    ratings = fit_player_ratings(agg, as_of, config)
+    players = player_table(agg, ratings, as_of, team_names)
+    teams = team_table(ratings, recent_usage(agg, as_of), team_names)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    players.to_csv(out_dir / "player_ratings.csv", index=False)
+    teams.to_csv(out_dir / "team_ratings.csv", index=False)
+    return {"players": int(len(players)), "teams": int(len(teams))}
+
+
+PBP_RELEASE ="https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_cfb_pbp/play_by_play_{season}.parquet"
 
 
 def build_aggregates(data_root, seasons, pbp_dir=None, refresh=False):
@@ -293,6 +366,8 @@ def build_aggregates(data_root, seasons, pbp_dir=None, refresh=False):
     """
     import tempfile
     import urllib.request
+
+    import pyarrow.parquet as pq
 
     from .data import normalize_schedule
 
@@ -318,7 +393,9 @@ def build_aggregates(data_root, seasons, pbp_dir=None, refresh=False):
             urllib.request.urlretrieve(url, tmp)  # noqa: S310 - fixed SportsDataverse release URL
             source = tmp
         try:
-            plays = pd.read_parquet(source, columns=RAW_COLUMNS)
+            wanted = RAW_COLUMNS + NAME_COLUMNS
+            available = set(pq.ParquetFile(source).schema.names)
+            plays = pd.read_parquet(source, columns=[c for c in wanted if c in available])
             schedule = normalize_schedule(pd.read_csv(schedule_path, low_memory=False))
             agg = player_game_aggregates(plays, schedule)
             agg.to_parquet(out, index=False)
