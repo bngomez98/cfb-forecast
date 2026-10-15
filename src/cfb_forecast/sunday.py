@@ -463,7 +463,7 @@ def sunday_run(
                 for p in (work / "inputs").rglob("*")
                 if p.is_file()
             },
-            "calculation_method": "One forecasting model: hierarchical state, historical team and player rates, known-future Koopman map, Gaussian scores, Poisson rates, logistic win probability, Monte Carlo spread",
+            "calculation_method": "One forecasting model: hierarchical state, historical team and player rates, known-future Koopman map, Gaussian scores, Poisson rates, logistic win probability, direct Gaussian spread and total",
         }
         if timestamp(utc_now()) >= games.start_date.min():
             raise ValueError(

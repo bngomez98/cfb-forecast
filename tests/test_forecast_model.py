@@ -30,7 +30,7 @@ def test_koopman_shift_follows_known_future_and_logistic_picks_the_higher_score(
     favored = location[:1] + 0
     known_row = np.zeros((1, 9))
     known_row[0, 0] = known[:, 0].mean() + 2 * known[:, 0].std()
-    out = model.apply(favored, known_row, [[36, 4], [4, 36]], [{}], [11], draws=500)
+    out = model.apply(favored, known_row, [[36, 4], [4, 36]], [{}], [11])
     assert out[0]["distribution_method"] == "forecast_model"
     assert out[0]["win_link"] == "logistic"
     assert 0 < out[0]["home_win_probability"] < 1
@@ -49,20 +49,27 @@ def test_partial_known_future_is_filled_and_scores_stay_inside_observed_bounds()
     model = ForecastModel.fit(location, actual, known, wins)
     extreme = np.array([[200.0, -20.0]])
     blank = np.full((1, 9), np.nan)
-    out = model.apply(extreme, blank, [[25, 2], [2, 25]], [{}], [4], draws=200)
+    out = model.apply(extreme, blank, [[25, 2], [2, 25]], [{}], [4])
     assert model.score_low[0] <= out[0]["expected_home_score"] <= model.score_high[0]
     assert model.score_low[1] <= out[0]["expected_away_score"] <= model.score_high[1]
 
 
-def test_monte_carlo_spread_prices_sum_and_market_sign_matches_the_margin():
+def test_spread_and_total_prices_are_calculated_directly_without_simulation():
+    from scipy.stats import norm
+
     model = ForecastModel.identity()
     means = np.array([[31.0, 21.0]])
-    out = model.apply(means, np.zeros((1, 9)), [[49, 6], [6, 49]], [{"home_spread": -7.0, "total_line": 52.0}], [9], draws=2000)
+    out = model.apply(means, np.zeros((1, 9)), [[49, 6], [6, 49]], [{"home_spread": -7.0, "total_line": 52.0}], [9])
     row = out[0]
     assert row["model_spread"] == pytest.approx(-10.0)
-    assert row["home_cover_probability"] + row["away_cover_probability"] + row["spread_push_probability"] == pytest.approx(1)
-    assert row["over_probability"] + row["under_probability"] + row["total_push_probability"] == pytest.approx(1)
-    assert row["monte_carlo_draws"] == 2000
+    margin_sd = np.sqrt(49 + 49 - 2 * 6)
+    total_sd = np.sqrt(49 + 49 + 2 * 6)
+    # Whole-number lines: a 7-point win and a 52-point total are pushes.
+    assert row["home_cover_probability"] == pytest.approx(norm.sf((7.5 - 10.0) / margin_sd))
+    assert row["spread_push_probability"] == pytest.approx(norm.cdf((7.5 - 10.0) / margin_sd) - norm.cdf((6.5 - 10.0) / margin_sd))
+    assert row["over_probability"] == pytest.approx(norm.sf((52.5 - 52.0) / total_sd))
+    assert row["under_probability"] == pytest.approx(norm.cdf((51.5 - 52.0) / total_sd))
+    assert "monte_carlo_draws" not in row
 
 
 def test_rest_uses_only_the_previous_kickoff():

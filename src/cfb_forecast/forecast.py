@@ -39,7 +39,7 @@ def _known_frame(games, schedules, market_rows, extra):
     return frame
 
 
-def _project_rows(targets, means, fitted, covariance, schedules, market_rows, history_rows, extra, draws, metadata, history=None):
+def _project_rows(targets, means, fitted, covariance, schedules, market_rows, history_rows, extra, metadata, history=None):
     known = known_future_matrix(_known_frame(targets, schedules, market_rows, extra))
     projected = fitted.apply(
         means,
@@ -47,7 +47,6 @@ def _project_rows(targets, means, fitted, covariance, schedules, market_rows, hi
         covariance,
         market_rows,
         targets.game_id.astype(int).tolist(),
-        draws=draws,
         history=history,
     )
     rows = []
@@ -236,7 +235,6 @@ def forecast(
             if market is not None and not market.empty
             else {"market_snapshot_count": 0}
         )
-    draw_count = int(min(max(int(draws), 1000), 8000))
     history_future = pregame_history(targets, data_root, past, database=database_path())
     rows = _project_rows(
         targets,
@@ -247,7 +245,6 @@ def forecast(
         market_rows,
         history_rows,
         known_future,
-        draw_count,
         {
             "as_of": at.isoformat(),
             "latest_result_available_at": state.latest_update.isoformat() if state.latest_update is not None else None,
@@ -428,7 +425,6 @@ def advance_forecast_snapshot(
             if market is not None and not market.empty
             else {"market_snapshot_count": 0}
         )
-    draw_count = int(min(max(int(draws), 1000), 8000))
     completed = schedules[
         schedules.fbs_game
         & schedules.season.between(model["warmup_season"], season)
@@ -445,7 +441,6 @@ def advance_forecast_snapshot(
         market_rows,
         history_rows,
         None,
-        draw_count,
         {
             "as_of": at.isoformat(),
             "latest_result_available_at": state.latest_update.isoformat() if state.latest_update is not None else None,
