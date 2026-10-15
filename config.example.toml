@@ -1,0 +1,14 @@
+# cfb-forecast application configuration.
+# Copy to config.toml (or point CFB_FORECAST_CONFIG at it) and run:
+#   cfb-forecast up            # start the autonomous daemon
+#   cfb-forecast status        # live state from the ledger
+#   cfb-forecast show --week 6 # current forecasts
+[app]
+season = 2026                  # season being forecast/validated
+data_root = "data"             # normalized schedule/results sources
+model_root = "artifacts/backtest/model"  # trained production model
+db_path = "cfb_ledger.db"      # SQLite schema ledger (runs/forecasts/validations)
+lead_hours = 48.0              # forecast issued first-kickoff minus this lead
+recipient = "bngomez@ieee.org" # emailed on every forecast & validation completion
+interval_seconds = 900         # daemon wake interval
+# market_path = "data/market_history.csv"  # optional FanDuel/SDV quotes

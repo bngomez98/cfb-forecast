@@ -18,15 +18,11 @@ def main():
     bt.add_argument("--archive",default=None)
     bt.add_argument("--warmup",type=int,default=2021); bt.add_argument("--train-start",type=int,default=2022)
     bt.add_argument("--validation",type=int,default=2024); bt.add_argument("--test",type=int,default=2025)
-    fc=sub.add_parser("forecast",help="Produce forecasts from a saved production model")
+    fc=sub.add_parser("forecast",help="Joint possession-level point-in-time forecast for a window (no artifacts; prints rows)")
     fc.add_argument("--data",default="data"); fc.add_argument("--model",default="artifacts/backtest/model")
-    fc.add_argument("--out",default="artifacts/forecast"); fc.add_argument("--as-of",required=True)
+    fc.add_argument("--as-of",required=True)
     fc.add_argument("--through",required=True); fc.add_argument("--season",type=int,required=True)
-    fc.add_argument("--market",default=None); fc.add_argument("--market-provider",default=None); fc.add_argument("--draws",type=int,default=50000)
-    fa=sub.add_parser("forecast-advance",help="Advance a saved exact forecast state when no new result became eligible")
-    fa.add_argument("--previous",required=True); fa.add_argument("--data",default="data"); fa.add_argument("--model",default="artifacts/backtest/model")
-    fa.add_argument("--out",required=True); fa.add_argument("--as-of",required=True); fa.add_argument("--through",required=True); fa.add_argument("--season",type=int,required=True)
-    fa.add_argument("--market",default=None); fa.add_argument("--market-provider",default=None); fa.add_argument("--draws",type=int,default=50000)
+    fc.add_argument("--market",default=None); fc.add_argument("--draws",type=int,default=50000)
     mi=sub.add_parser("market-import",help="Append timestamped market snapshots to the canonical market-history store")
     mi.add_argument("--input",required=True); mi.add_argument("--store",default="data/market_history.csv")
     mi.add_argument("--provider",default="unspecified"); mi.add_argument("--source",default=None)
@@ -64,19 +60,30 @@ def main():
     pr.add_argument("--now",default=None); pr.add_argument("--lead-hours",type=float,default=24.0)
     pr.add_argument("--market",default="data/market_history.csv"); pr.add_argument("--market-provider",default=None); pr.add_argument("--draws",type=int,default=50000)
     pr.add_argument("--primary-lateness-minutes",type=float,default=60.0); pr.add_argument("--skip-market-capture",action="store_true")
-    wf=sub.add_parser("weekly-forecast",help="Forecast the next upcoming FBS slate")
+    app = sub.add_parser("up", help="Run the forecasting application: autonomous daemon (R analysis -> weekly forecast -> Sunday validation -> ledger -> email), driven by config.toml")
+    app.add_argument("--config", default=None); app.add_argument("--once", action="store_true", help="execute a single pass and exit")
+    st_ = sub.add_parser("status", help="Live application state read from the ledger database")
+    st_.add_argument("--config", default=None)
+    sh = sub.add_parser("show", help="Current forecasts per game from the ledger")
+    sh.add_argument("--config", default=None); sh.add_argument("--week", type=int, default=None); sh.add_argument("--team", default=None)
+    sp = sub.add_parser("stop", help="Stop a running daemon via its pid file")
+    sp.add_argument("--config", default=None)
+    wf=sub.add_parser("weekly-cycle",help="Autonomous pass: R source analysis, point-in-time forecast at each FPS week start, validation after that week's Sunday; logs to SQLite and emails bngomez@ieee.org")
     wf.add_argument("--data",default="data"); wf.add_argument("--model",default="artifacts/backtest/model")
-    wf.add_argument("--out",default="artifacts"); wf.add_argument("--season",type=int,required=True)
-    wf.add_argument("--week",type=int,default=None); wf.add_argument("--as-of",default=None)
-    wf.add_argument("--market",default=None); wf.add_argument("--draws",type=int,default=50000)
+    wf.add_argument("--db",default="cfb_ledger.db"); wf.add_argument("--season",type=int,required=True)
+    wf.add_argument("--lead-hours",type=float,default=48.0)
+    wf.add_argument("--recipient",default="bngomez@ieee.org")
+    wf.add_argument("--now",default=None,help="Horizon override; only weeks whose start has arrived are issued (default: real clock)")
     rr=sub.add_parser("results-refresh",help="Retrieve live scores from ESPN's public scoreboard API")
     rr.add_argument("--data",default="data"); rr.add_argument("--out",default="artifacts/results")
     rr.add_argument("--season",type=int,required=True); rr.add_argument("--week",type=int,default=None)
     rr.add_argument("--start",default=None); rr.add_argument("--end",default=None)
-    sb=sub.add_parser("season-backtest",help="Reconstruct and grade weekly forecasts across a season")
+    sb=sub.add_parser("season-backtest",help=argparse.SUPPRESS)  # legacy alias -> weekly-cycle
     sb.add_argument("--data",default="data"); sb.add_argument("--model",default="artifacts/backtest/model")
-    sb.add_argument("--out",default="artifacts/backtest"); sb.add_argument("--season",type=int,required=True)
-    sb.add_argument("--draws",type=int,default=50000); sb.add_argument("--lead-hours",type=float,default=48.0)
+    sb.add_argument("--db",default="cfb_ledger.db"); sb.add_argument("--season",type=int,required=True)
+    sb.add_argument("--lead-hours",type=float,default=48.0)
+    sb.add_argument("--recipient",default="bngomez@ieee.org")
+    sb.add_argument("--now",default=None)
     cw = sub.add_parser(
         "capture-weather",
         help="Capture pregame weather for a slate of games through Open-Meteo",
@@ -176,12 +183,8 @@ def main():
         result,spec=run_backtest(args.data,args.out,args.archive,args.warmup,args.train_start,args.validation,args.test)
         print(result.to_string(index=False)); print("selected production variant:",spec["selected_variant"])
     elif args.command=="forecast":
-        from .forecast import forecast
-        result=forecast(args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.draws,args.market_provider)
-        print(result[["away_team","home_team","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
-    elif args.command=="forecast-advance":
-        from .forecast import advance_forecast_snapshot
-        result=advance_forecast_snapshot(args.previous,args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.draws,args.market_provider)
+        from .score import score_games
+        result=score_games(args.data,args.model,args.as_of,args.through,args.season,market_path=args.market,draws=args.draws)
         print(result[["away_team","home_team","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
     elif args.command=="market-import":
         from .market import import_market_file
@@ -244,16 +247,27 @@ def main():
         results,manifest=refresh_results(args.data,args.out,args.season,args.week,args.start,args.end)
         print(pd.DataFrame([manifest]).to_string(index=False))
         print(results[["game_id","status","is_final","away_team","away_points","home_team","home_points"]].tail(20).to_string(index=False))
-    elif args.command=="season-backtest":
-        from .season_backtest import run_season_backtest
-        metrics,summary=run_season_backtest(args.data,args.model,args.out,args.season,args.draws,args.lead_hours)
-        print(pd.DataFrame([summary]).to_string(index=False))
-        print(metrics.to_string(index=False))
-    elif args.command=="weekly-forecast":
-        from .weekly import run_weekly_forecast
-        result,manifest=run_weekly_forecast(args.data,args.model,args.out,args.season,args.week,args.as_of,args.market,args.draws)
-        print(pd.DataFrame([manifest]).to_string(index=False))
-        print(result[["away_team","home_team","kickoff","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
+    elif args.command in ("up", "status", "show", "stop"):
+        from .application import daemon, load_config, show, status, stop
+        cfg = load_config(args.config)
+        if args.command == "up":
+            daemon(cfg, once=args.once)
+        elif args.command == "stop":
+            print("stopped" if stop(cfg) else "no running daemon")
+        elif args.command == "status":
+            import json as _json
+            print(_json.dumps(status(cfg), indent=2, default=str))
+        else:
+            frame = show(cfg, week=args.week, team=args.team)
+            print(frame.to_string(index=False) if len(frame) else "no forecasts in ledger")
+    elif args.command in ("weekly-cycle","season-backtest"):
+        from .weekly import run_cycle
+        results,pending=run_cycle(args.data,args.model,args.db,args.season,now=args.now,
+                                  lead_hours=args.lead_hours,recipient=args.recipient)
+        for run_id,preds,graded in results:
+            print(f"week {int(preds.week.iloc[0])}: {len(preds)} games forecast, {len(graded)} validated (run {run_id})")
+        for run_id,week,games in pending:
+            print(f"week {week}: {games} games validated on late pass (run {run_id})")
     elif args.command == "capture-weather":
         from .capture_log import CAPTURE_LOG_FILENAME, append_capture, read_capture_log, summarize_capture_log
         from .venues import load_venues

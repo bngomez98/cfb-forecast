@@ -1,6 +1,58 @@
 # College football forecasting engine
 
-A runnable Python package that downloads free college-football data, learns changing offense and defense states, produces score and win-probability forecasts, simulates joint scores, and evaluates predictions chronologically. Every delivered forecast has an explicit information cutoff, source hashes, model settings, and saved state features.
+A runnable full-stack package that analyzes free college-football sources in **R**, then produces **analytic point-in-time** score and win-probability forecasts in Python on the **CFB FPS weekly schedule** — a forecast is issued at the start of each scheduled week and validated on the Sunday after that week's games. Runs are logged to a SQLite schema ledger and emailed to `bngomez@ieee.org` on every forecast/validation completion. No artifacts, no manifests, no Monte Carlo simulation.
+
+## Full-stack architecture
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  DATA SOURCES (free)                                                        │
+│  SportsDataverse schedules ── ESPN advanced team summaries ── PBP           │
+└───────────────┬─────────────────────────────────────────────────────────────┘
+                ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  R ANALYSIS GATE   r/analyze_sources.R  (runs FIRST, every week)            │
+│  ragged-header repair · duplicate game_id audit · point-in-time             │
+│  training-game census · structured JSON report → gates Python stage         │
+└───────────────┬─────────────────────────────────────────────────────────────┘
+                ▼  (audit must pass)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  PYTHON FORECASTING CORE                                                    │
+│  weekly.py        fps_weeks(): CFB FPS schedule boundaries                  │
+│                   issue time = first kickoff − lead_hours (default 48h)     │
+│                   validation boundary = Monday 00:00 UTC after last kickoff │
+│  forecast_state.py replay_state(): Gaussian Kalman rating state, strictly   │
+│                   results available BEFORE the as-of cutoff only            │
+│  score.py         ScoreHead → expected scores; home win prob =              │
+│                   closed-form Gaussian margin CDF (no simulation)           │
+└───────────────┬─────────────────────────────────────────────────────────────┘
+                ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  SCHEMA LEDGER   schema.py → SQLite (cfb_ledger.db)                         │
+│  runs · source_checks(r_ok + R report detail) · forecasts(one row/game) ·   │
+│  validations(margin_error, total_error, brier, correct) · notifications     │
+└───────────────┬─────────────────────────────────────────────────────────────┘
+                ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  NOTIFIER   notify.py → SMTP / sendmail → bngomez@ieee.org                  │
+│  one email per completed forecast, one per completed validation             │
+│  (queued to .eml outbox if transport unavailable; queue state in ledger)    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+WEEKLY CADENCE (2026 FPS season):
+  wk1 ──── wk2 ──── wk3 ──── wk4 ──── wk5 ──── wk6 ...
+   ▲F       ▲F       ▲F       ▲F       ▲F
+   Sun▼V    Sun▼V    Sun▼V    Sun▼V    pending
+  F = forecast issued at week start (first kickoff − 48h)
+  V = prior week validated on its closing Sunday boundary
+```
+
+Run the whole cycle autonomously:
+
+```bash
+python -m cfb_forecast weekly-cycle --data data --model artifacts/backtest/model \
+  --db cfb_ledger.db --season 2026
+```
 
 This package was built from the earlier CFB historical backtests and extended into a reusable engine. The 13 judgment-based forecasts discussed in chat are not training inputs. The historical performance here is computed from this code, not inferred from those forecasts.
 
