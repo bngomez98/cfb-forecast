@@ -4,7 +4,7 @@ import path from 'node:path'
 export default async function handler(request, response) {
   if (request.method !== 'GET') return response.status(405).json({ error: 'Method not allowed' })
   try {
-    const file = path.join(process.cwd(), 'public', 'forecasts.json')
+    const file = path.join(process.cwd(), 'web', 'public', 'forecasts.json')
     const board = JSON.parse(await readFile(file, 'utf8'))
     const versions = Array.isArray(board.learning_versions) ? board.learning_versions : []
     response.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300')
