@@ -125,6 +125,24 @@ flowchart LR
 
 **Web data.** `cfb-forecast sources-collect` reads the registered public web pages (`src/cfb_forecast/webdata/registry.py`: results, picks, lines and team statistics), interprets pages, JSON and PDFs, cross-checks final scores between sources and against the schedule, and writes `data/sources/`. Results that two or more sources agree on enter `data/results_overlay.csv`, with the time they were observed as their availability time, so they cannot enter any earlier forecast. External picks and lines are reference data; the market informs the forecast but never decides it.
 
+**The database loop.** Data moves through SQLite in a closed loop (`dbflow.py`, stage `database` of the daily pipeline):
+
+```mermaid
+flowchart LR
+  src[Sources: schedule, ESPN, cfbtrack and other web pages] --> db1[(SQLite: results, external_results, team and player facts)]
+  db1 --> r[R: r/validate_db.R]
+  r --> db2[(r_validation)]
+  db1 --> py[Python forecast model reads the stored history]
+  py --> log[(forecast_log)]
+  log --> val[Validate each logged pregame forecast against stored finals]
+  val --> db1
+```
+
+1. Outcomes (schedule finals plus any final that two or more web sources agree on, such as cfbtrack.com) and the source cross-check are written to `results` and `external_results`.
+2. Every pregame forecast ever logged to `forecast_log`, Sunday or daily, is joined to those outcomes into `forecast_validation` (forecasts logged after kickoff never count) and summarised in `weekly_validation`.
+3. R recomputes log loss, Brier score and margin error from `forecast_validation` with DBI/RSQLite and writes `r_validation`; Python refuses any disagreement. Without `Rscript` this step reports `unavailable`, unless `CFB_REQUIRE_R=1`.
+4. The next forecast reads the stored team and player history from the same database and logs its output, which the next run validates.
+
 **Scheduler.** Times are UTC unless noted. Outside the season nothing is due.
 
 | Job | When | Action |

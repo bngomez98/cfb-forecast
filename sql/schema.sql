@@ -273,3 +273,42 @@ CREATE INDEX IF NOT EXISTS idx_player_game_facts_team ON player_game_facts(team_
 CREATE INDEX IF NOT EXISTS idx_games_season_week ON games(season, week);
 CREATE INDEX IF NOT EXISTS idx_forecast_runs_season ON forecast_runs(season);
 CREATE INDEX IF NOT EXISTS idx_forecast_log_season_kickoff ON forecast_log(season, kickoff);
+
+-- Database loop: ingested outcomes, per-forecast validation, and the independent R recomputation.
+CREATE TABLE IF NOT EXISTS external_results (
+  id INTEGER PRIMARY KEY,
+  season INTEGER NOT NULL,
+  game_id INTEGER NOT NULL,
+  observed_at TEXT NOT NULL,
+  sources_agree INTEGER,
+  schedule_agrees INTEGER,
+  source_scores TEXT,
+  schedule_score TEXT,
+  UNIQUE(season, game_id, observed_at)
+);
+
+CREATE TABLE IF NOT EXISTS forecast_validation (
+  run_id TEXT NOT NULL,
+  game_id INTEGER NOT NULL,
+  season INTEGER NOT NULL,
+  week INTEGER,
+  logged_at TEXT NOT NULL,
+  kickoff TEXT NOT NULL,
+  home_win_probability REAL NOT NULL,
+  projected_home_margin REAL,
+  home_win INTEGER NOT NULL,
+  actual_margin REAL NOT NULL,
+  result_source TEXT,
+  validated_at TEXT NOT NULL,
+  PRIMARY KEY(run_id, game_id)
+);
+
+CREATE TABLE IF NOT EXISTS r_validation (
+  run_id TEXT NOT NULL,
+  computed_at TEXT NOT NULL,
+  games INTEGER NOT NULL,
+  log_loss REAL NOT NULL,
+  brier REAL NOT NULL,
+  margin_mae REAL,
+  PRIMARY KEY(run_id)
+);

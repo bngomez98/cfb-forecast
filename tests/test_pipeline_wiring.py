@@ -87,3 +87,46 @@ def test_empty_slate_publication_replaces_latest(tmp_path):
     publish_latest(tmp_path, final)
     assert not (old / "forecasts.csv").exists()
     assert json.loads((old / "run_manifest.json").read_text())["games"] == 0
+
+
+def test_database_loop_ingests_validates_and_cross_checks(tmp_path, monkeypatch):
+    import sqlite3
+    from contextlib import closing
+
+    from cfb_forecast import dbflow
+    from cfb_forecast.database import connect
+
+    data = tmp_path / "data"
+    data.mkdir()
+    pd.DataFrame({
+        "game_id": [1, 2, 3], "season": [2026] * 3, "week": [1, 1, 2], "start_date": ["2026-09-05T18:00:00Z", "2026-09-05T22:00:00Z", "2026-09-12T18:00:00Z"],
+        "completed": [True, True, False], "neutral_site": [False] * 3, "home_id": [10, 12, 14], "away_id": [11, 13, 15],
+        "home_team": ["A", "C", "E"], "away_team": ["B", "D", "F"], "home_points": [30, 10, None], "away_points": [20, 24, None],
+        "home_division": ["fbs"] * 3, "away_division": ["fbs"] * 3,
+    }).to_csv(data / "schedule_2026.csv", index=False)
+    (data / "sources").mkdir()
+    pd.DataFrame({"game_id": [1], "sources_agree": [True], "schedule_agrees": [True], "source_scores": ["cfbtrack 20-30"], "schedule_score": ["20-30"]}).to_csv(
+        data / "sources" / "results_crosscheck.csv", index=False)
+    db = tmp_path / "t.sqlite"
+    with closing(connect(db)) as conn:
+        for run, p1, p2 in (("daily-1", 0.7, 0.3), ("daily-2", 0.6, 0.2)):
+            for gid, p, home in ((1, p1, "A"), (2, p2, "C"), (3, 0.5, "E")):
+                conn.execute("""INSERT INTO forecast_log(run_id, season, game_id, kickoff, home_team, away_team, expected_home_score, expected_away_score,
+                    winner, confidence, home_win_probability, logged_at, projected_home_margin) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (run, 2026, gid, {1: "2026-09-05T18:00:00Z", 2: "2026-09-05T22:00:00Z", 3: "2026-09-12T18:00:00Z"}[gid], home, "X", 28, 21, home, max(p, 1 - p), p,
+                     "2026-09-01T00:00:00Z", 7.0))
+        # a forecast logged after kickoff must never count
+        conn.execute("""INSERT INTO forecast_log(run_id, season, game_id, kickoff, home_team, away_team, expected_home_score, expected_away_score,
+            winner, confidence, home_win_probability, logged_at) VALUES('late', 2026, 1, '2026-09-05T18:00:00Z', 'A', 'B', 1, 1, 'A', .9, .9, '2026-09-06T00:00:00Z')""")
+        conn.commit()
+    report = dbflow.run(db, data, 2026)
+    assert report["ingest"]["results"] == 2 and report["ingest"]["external_checks"] == 1
+    assert report["validation"] == {"runs": 2, "games": 4}
+    with closing(sqlite3.connect(db)) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM forecast_validation WHERE run_id='late'").fetchone()[0] == 0
+        wins = dict(conn.execute("SELECT game_id, home_win FROM forecast_validation WHERE run_id='daily-1'").fetchall())
+        assert wins == {1: 1, 2: 0}
+        assert conn.execute("SELECT COUNT(*) FROM weekly_validation").fetchone()[0] == 2
+    dbflow.run(db, data, 2026)  # idempotent
+    with closing(sqlite3.connect(db)) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM weekly_validation").fetchone()[0] == 2

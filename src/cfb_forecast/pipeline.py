@@ -193,6 +193,16 @@ def stage_sunday(ctx):
     return {k: report.get(k) for k in ("status", "run_id", "games", "as_of")}
 
 
+def stage_database(ctx):
+    """Store outcomes in SQLite, validate every logged forecast against them, and cross-check in R."""
+    from . import dbflow
+    from .paths import database_path
+
+    report = dbflow.run(database_path(), ctx.data, ctx.season)
+    ctx.outputs["database"] = str(database_path())
+    return report
+
+
 def stage_backtest(ctx):
     from .season_backtest import run_season_backtest
 
@@ -231,13 +241,14 @@ FORECAST = Stage("forecast", stage_forecast, True, "Forecast every remaining upc
 BACKTEST = Stage("backtest", stage_backtest, False, "Point-in-time backtest: re-forecast every completed week from its pre-kickoff state, compare with final scores")
 VERIFY = Stage("verify", stage_verify, True, "Check that the forecast outputs exist")
 
+DATABASE = Stage("database", stage_database, False, "Store outcomes in SQLite, validate logged forecasts against them, recompute the metrics in R")
 SUNDAY = Stage("sunday", stage_sunday, True, "Sunday service: collect sources, validate, learn, forecast the week, publish")
 
 PLANS = {
     "sunday": (SUNDAY,),
     # One ongoing daily pipeline: refresh data and completed results, update player ratings,
     # forecast the full remaining slate from the current state. No chronological ledger.
-    "forecast": (DATA, PREFLIGHT, PLAYERS, MARKET, RESULTS, SOURCES, FORECAST, VERIFY),
+    "forecast": (DATA, PREFLIGHT, PLAYERS, MARKET, RESULTS, SOURCES, DATABASE, FORECAST, VERIFY),
     "results": (DATA, RESULTS, SOURCE_RESULTS, Stage("check", stage_any_results, True, "Require results from at least one provider")),
     "sources": (DATA, Stage("sources", _sources_stage(None), True, SOURCES.description)),
     "backtest": (DATA, PREFLIGHT, PLAYERS, Stage("backtest", stage_backtest, True, BACKTEST.description)),

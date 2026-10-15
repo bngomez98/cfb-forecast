@@ -40,7 +40,7 @@ WORKDIR /app
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates libgomp1 \
-    && if [ "$INSTALL_R" = "1" ]; then apt-get install -y --no-install-recommends r-base-core; fi \
+    && if [ "$INSTALL_R" = "1" ]; then apt-get install -y --no-install-recommends r-base-core r-cran-dbi r-cran-rsqlite; fi \
     && rm -rf /var/lib/apt/lists/*
 
 # Dependencies first so code-only changes reuse the cached layer.
