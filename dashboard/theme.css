@@ -23,6 +23,13 @@ p, li {line-height:1.6}
 .summary-item span {display:block;color:var(--fq-text-2);font-size:14px}
 .summary-item strong {display:block;margin-top:4px;font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--fq-text)}
 
+/* Results page */
+.summary-item small {display:block;margin-top:4px;color:var(--fq-muted);font-size:13px;line-height:1.4}
+h2.section {font-size:20px;font-weight:650;margin:28px 0 6px;padding:0;color:var(--fq-text)}
+.verdict {font-weight:600}
+.verdict.right {color:var(--fq-teal)}
+.verdict.wrong {color:#f08c7d}
+
 /* Days and game cards */
 .day h2 {font-size:18px;font-weight:600;margin:20px 0 12px;padding:0 0 8px;border-bottom:1px solid var(--fq-line);color:var(--fq-text)}
 .cards {display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}

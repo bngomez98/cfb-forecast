@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 from cfb_forecast.paths import artifacts_root
 from board import how_it_works_page, odds_page, predictions_page
+from results import results_page
 from desk import heading, historical, overview, render_pipeline, shell, sidebar_footer, sources, training_root
 
 ROOT = artifacts_root()
@@ -116,7 +117,7 @@ def detail_page(page):
                     st.dataframe(pd.read_sql_query("SELECT * FROM player_game_facts ORDER BY season DESC, yards DESC LIMIT 200", conn), hide_index=True, width="stretch")
         except Exception as exc:
             st.warning(str(exc))
-    elif page == "Past results":
+    elif page == "Validation runs":
         report = read_json(latest / "previous_week_validation.json", {})
         batches = report.get("runs", [])
         if not batches:
@@ -223,11 +224,12 @@ def main():
         "Forecasts": [
             st.Page(predictions_page, title="Predictions", default=True),
             st.Page(odds_page, title="Odds", url_path="odds"),
-            _detail("Past results", "results"),
+            st.Page(results_page, title="Results and accuracy", url_path="results"),
             st.Page(how_it_works_page, title="How it works", url_path="how-it-works"),
         ],
         "Behind the scenes": [
             _detail("Overview", "overview"),
+            _detail("Validation runs", "validation-runs"),
             _detail("Book prices", "book-prices"),
             _detail("Game inputs", "game-inputs"),
             _detail("Statistics", "statistics"),

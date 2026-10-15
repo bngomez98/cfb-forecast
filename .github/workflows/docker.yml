@@ -57,7 +57,7 @@ jobs:
           IMAGE_TAG: ${{ steps.meta.outputs.version }}
         run: |
           docker run --rm "$REGISTRY_IMAGE-dashboard:$IMAGE_TAG" \
-            sh -c 'cd dashboard && python -c "import streamlit, desk; from cfb_forecast.database import connect"'
+            sh -c 'cd dashboard && python -c "import streamlit, desk, board, results, app; from cfb_forecast.database import connect"'
 
       - name: Log in to GitHub Container Registry
         if: env.PUSH_IMAGES == 'true'

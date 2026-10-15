@@ -126,14 +126,14 @@ def _filters(board, frame, key):
 def _summary(board, frame):
     week = _week_games(board, frame)
     chance = week.home_win_probability.where(week.home_win_probability >= 0.5, 1 - week.home_win_probability)
-    validation = _read_json(artifacts_root() / "latest" / "previous_week_validation.json") or {}
-    runs = validation.get("runs", [])
-    checked = f"{runs[-1].get('games', '')} games" if runs and runs[-1].get("games") else "Not yet"
+    from results import season_accuracy
+    graded = season_accuracy()
+    checked = f"{graded[0]:.1%}" if graded else "Not graded yet"
     items = [
         (f"{_week_name(board)} games", str(len(week)) if len(week) else "—"),
         ("Average chance for the pick", f"{chance.mean():.0%}" if len(week) else "—"),
         ("Close calls (under 60%)", str(int((chance < 0.6).sum())) if len(week) else "—"),
-        ("Last week checked", checked),
+        ("Season accuracy so far", checked),
     ]
     st.html('<div class="summary">' + "".join(
         f'<div class="summary-item"><span>{escape(label)}</span><strong>{escape(value)}</strong></div>' for label, value in items
