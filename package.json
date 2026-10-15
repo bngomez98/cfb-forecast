@@ -1,0 +1,10 @@
+{
+  "name": "cfb-forecast",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build": "npm --prefix web run build",
+    "start": "npm --prefix web start",
+    "test": "npm --prefix web test -- --watchAll=false"
+  }
+}
