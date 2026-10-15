@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Work from the repository root, two levels above this script.
+cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+
 echo "Installing cfb-forecast..."
 
 # Check Python version

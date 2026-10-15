@@ -32,6 +32,26 @@ A real-data forecasting service for the 2026 FBS season. Each Sunday at 10 AM Am
 
 The editable install is the git checkout. On Linux that environment is `/home/brian/.venvs/cfb-forecast`. On Windows it is `C:\Users\brian\miniforge3\envs\cfb-python`.
 
+## Repository layout
+
+Each top-level folder has one job:
+
+| Folder | What it holds |
+|---|---|
+| `src/cfb_forecast/` | The Python package: data collection, ratings and forecasts, betting math, validation, publishing, the CLI and the API |
+| `tests/` | The pytest suite |
+| `dashboard/` | The Streamlit dashboard and its Docker image |
+| `web/` | The public React board, built by Vercel from `vercel.json` |
+| `sql/` | The SQLite schema applied on connect |
+| `r/` | The R weekly report |
+| `examples/` | Example input files, such as the market template |
+| `scripts/` | `cfb.py` and `weekly_pipeline.py` (run with `python -m scripts.<name>`), plus shell and Python helpers grouped in `setup/` (install and environment setup), `run/` (forecast and dashboard runs), `checks/` (dataset, source, build and git checks) and `workspace/` (workspace inventory and merge) |
+| `deploy/` | Deployment configuration: `caddy/` for the public HTTPS proxy, `datadog/` for log intake and `bridge/` for the Kubernetes manifests |
+| `docs/` | `ARCHITECTURE.md` and `RESULTS.md` |
+| `.github/` | GitHub Actions workflows and issue templates |
+
+`Dockerfile`, `docker-compose.yml`, `docker-compose.public.yml`, `docker-bake.hcl`, `pyproject.toml` and `vercel.json` stay at the root because Docker, pip and Vercel look for them there.
+
 ## Architecture, pipelines, workflows, and sources
 
 Forecasts come from one model. A hierarchical team state sets the score location. Pregame team and player rates from the parquet seasons on disk (2000 through 2025, plus completed games after that) and known-future information (market line, total, rest, weather, and reported injuries) shift that location together. Completed games teach that shift with their real closing spread and total, downloaded from the SportsDataverse ESPN betting files into `data/market_closing_history.csv`; an upcoming game uses only a line captured before the forecast time. A game with no captured line uses a second fit that never saw lines, so a missing line is not filled with an average one. Weather and injuries have no downloadable history, so they enter only through the context model below once enough recorded weeks exist. The same location is the Gaussian mean and the Poisson rate. The win probability is the logistic of the margin. Spread and total chances are calculated directly from that Gaussian; no scores are simulated. Those rates are stored in `team_game_facts` and `player_game_facts`, and the next weekly forecast reads them back into the same hierarchical state, Poisson rates, Gaussian scores, and logistic win probability. The prediction board shows kickoff, teams, expected score, winner, and confidence. Spreads and moneylines, team and player statistics, and method notes are separate pages. Weather comes from the ESPN game summary, and from Open-Meteo for the venue when that summary has none. CollegeFootballData lines, weather, team stats, and player stats are collected when `CFBD_API_KEY` is set. FootballDB college offense, defense, scoring, and player pages are collected with the other sources. cfbtrack.com supplies current team and player season stats. A saved model keeps the warmup season it was fit with. Missing history is left missing; it is not replaced with a made-up season.
@@ -76,7 +96,7 @@ flowchart LR
 
 The SQLite file is `artifacts/cfb_forecast.sqlite`. `sql/schema.sql` is the schema applied on connect. The published board is `forecast_log`. Learning rows are `learning_versions` and `training_examples`. Source provenance is `source_registry`, `source_retrievals`, and `source_files`.
 
-Datadog reads `artifacts/logs/datadog.jsonl` through `datadog/conf.yaml`. Intake runs only when `DD_API_KEY` is set. Email is sent only when `CFB_SMTP_HOST` and `CFB_SMTP_PASSWORD` are set.
+Datadog reads `artifacts/logs/datadog.jsonl` through `deploy/datadog/conf.yaml`. Intake runs only when `DD_API_KEY` is set. Email is sent only when `CFB_SMTP_HOST` and `CFB_SMTP_PASSWORD` are set.
 
 | Source | URL |
 |---|---|

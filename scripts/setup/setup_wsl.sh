@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VENV_DIR="${VENV_DIR:-${PROJECT_ROOT}/.venv}"
 DATA_DIR="${CFB_DATA_DIR:-${PROJECT_ROOT}/data}"
 ARTIFACTS_DIR="${CFB_ARTIFACTS_DIR:-${PROJECT_ROOT}/artifacts}"

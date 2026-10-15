@@ -6,7 +6,7 @@ fetches raw PBP, validates every local data layer, refreshes ESPN results,
 runs tests, generates a weekly forecast, and builds distributions.
 
 Run inside the project virtual environment:
-    python update_forecast.py --season 2026
+    python scripts/run/update_forecast.py --season 2026
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[2]
 WORKSPACE = ROOT.parent
 DEFAULT_DATA = ROOT / "data"
 DEFAULT_ARTIFACTS = ROOT / "artifacts"
