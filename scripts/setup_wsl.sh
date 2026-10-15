@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV_DIR="${VENV_DIR:-${PROJECT_ROOT}/.venv}"
 DATA_DIR="${CFB_DATA_DIR:-${PROJECT_ROOT}/data}"
 ARTIFACTS_DIR="${CFB_ARTIFACTS_DIR:-${PROJECT_ROOT}/artifacts}"
@@ -39,10 +39,11 @@ import os
 from pathlib import Path
 from cfb_forecast.data import load_data
 from cfb_forecast.model import load_model
+from cfb_forecast.paths import database_path
 
 root = Path(os.environ.get("CFB_DATA_DIR", "data"))
 model_root = Path(os.environ.get("CFB_MODEL_DIR", "artifacts/backtest/model"))
-schedules, summaries, paths = load_data(root)
+schedules, summaries, paths = load_data(root, database=os.environ.get("CFB_DATABASE") or database_path())
 model = load_model(model_root)
 print(f"schedule rows: {len(schedules)}")
 print(f"advanced summary rows: {len(summaries)}")

@@ -12,11 +12,11 @@ EXCLUDED = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", "build", "d
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("workspace", type=Path, nargs="?", default=Path(__file__).resolve().parent.parent)
+    parser.add_argument("workspace", type=Path, nargs="?", default=Path(__file__).resolve().parents[1])
     parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args()
     workspace = args.workspace.resolve()
-    output = (args.output or workspace / "cfb_forecast" / "artifacts" / "workspace_inventory.json").resolve()
+    output = (args.output or workspace / "artifacts" / "workspace_inventory.json").resolve()
     files = []
     for path in sorted(workspace.rglob("*")):
         if not path.is_file() or any(part in EXCLUDED for part in path.parts):

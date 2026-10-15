@@ -3,9 +3,9 @@ set -Eeuo pipefail
 
 # Clone or safely update the forecasting repository in WSL.
 # First clone:
-#   CFB_REPO_URL=https://github.com/OWNER/REPOSITORY.git bash git_setup.sh
+#   CFB_REPO_URL=https://github.com/OWNER/REPOSITORY.git bash scripts/git_setup.sh
 # Existing checkout:
-#   bash git_setup.sh
+#   bash scripts/git_setup.sh
 
 REPO_URL="${CFB_REPO_URL:-}"
 REPO_DIR="${CFB_REPO_DIR:-$HOME/cfb_forecast}"
@@ -30,7 +30,7 @@ else
   [[ -n "$REPO_URL" ]] || {
     echo "No repository exists at: $REPO_DIR"
     echo "Provide the GitHub URL on the first run:"
-    echo "CFB_REPO_URL=https://github.com/OWNER/REPOSITORY.git bash git_setup.sh"
+    echo "CFB_REPO_URL=https://github.com/OWNER/REPOSITORY.git bash scripts/git_setup.sh"
     exit 2
   }
   mkdir -p "$(dirname "$REPO_DIR")"

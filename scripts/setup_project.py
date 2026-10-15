@@ -2,9 +2,9 @@
 """Bootstrap and validate the full-stack CFB forecasting application.
 
 Usage:
-    python setup_project.py
-    python setup_project.py --start-stack
-    python setup_project.py --skip-tests
+    python scripts/setup_project.py
+    python scripts/setup_project.py --start-stack
+    python scripts/setup_project.py --skip-tests
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ import tomllib
 import urllib.request
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT_FILE = PROJECT_ROOT / "pyproject.toml"
 VENV_DIR = PROJECT_ROOT / ".venv"
 DATA_DIR = Path(os.getenv("CFB_DATA_DIR", PROJECT_ROOT / "data"))
@@ -77,7 +77,8 @@ from pathlib import Path
 import os
 from cfb_forecast.data import load_data
 from cfb_forecast.model import load_model
-schedules, summaries, paths = load_data(Path(os.environ['CFB_DATA_DIR']))
+from cfb_forecast.paths import database_path
+schedules, summaries, paths = load_data(Path(os.environ['CFB_DATA_DIR']), database=os.environ.get('CFB_DATABASE') or database_path())
 model = load_model(Path(os.environ['CFB_MODEL_DIR']))
 print(f'schedule rows: {len(schedules)}')
 print(f'advanced summary rows: {len(summaries)}')

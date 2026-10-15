@@ -6,7 +6,7 @@ fetches raw PBP, validates every local data layer, refreshes ESPN results,
 runs tests, generates a weekly forecast, and builds distributions.
 
 Run inside the project virtual environment:
-    python update_forecast.py --season 2026
+    python scripts/update_forecast.py --season 2026
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent
 DEFAULT_DATA = ROOT / "data"
 DEFAULT_ARTIFACTS = ROOT / "artifacts"
@@ -118,9 +118,10 @@ def verify_manifest(data_dir: Path) -> None:
 
 def verify_data(data_dir: Path, season: int, raw_pbp: bool) -> None:
     from cfb_forecast.data import load_data
+    from cfb_forecast.paths import database_path
 
     print("\n==> Verify integrated datasets", flush=True)
-    schedules, advanced, loaded = load_data(data_dir)
+    schedules, advanced, loaded = load_data(data_dir, database=database_path())
     if schedules.empty:
         raise RuntimeError("No schedule rows loaded")
     if advanced.empty:

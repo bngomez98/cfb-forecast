@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pandas as pd
 from cfb_forecast.data import ADV_FIELDS, SCHEDULE_FIELDS, load_data, normalize_schedule
+from cfb_forecast.paths import database_path
 
 root = Path(os.environ["DATA_DIR"])
 required_schedules = sorted(root.glob("schedule_*.csv"))
@@ -41,7 +42,7 @@ for path in required_advanced:
         raise SystemExit(f"{path.name} missing columns: {missing}")
     print(f"OK advanced team: {path.name} ({path.stat().st_size} bytes)")
 
-schedules, summaries, loaded = load_data(root)
+schedules, summaries, loaded = load_data(root, database=database_path())
 print(f"Loaded schedules: {len(schedules)} rows")
 print(f"Loaded advanced-team rows: {len(summaries)} rows")
 print(f"Loaded files: {len(loaded)}")

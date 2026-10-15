@@ -3,9 +3,9 @@ set -Eeuo pipefail
 
 # One-command WSL build for the CFB forecasting project.
 # Run from any WSL directory:
-#   bash /mnt/c/Users/brian/cfb-forecast/wsl_forecast.sh
+#   bash /mnt/c/Users/brian/cfb-forecast/scripts/wsl_forecast.sh
 
-PROJECT_DIR="${PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+PROJECT_DIR="${PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 VENV_DIR="${VENV_DIR:-/home/brian/.venvs/cfb-forecast}"
 DATA_DIR="${CFB_DATA_DIR:-$PROJECT_DIR/data}"
 ARTIFACT_DIR="${CFB_ARTIFACTS_DIR:-$PROJECT_DIR/artifacts}"
@@ -102,7 +102,7 @@ PY
 
 STAGE="source connectivity"
 say "Checking ESPN and public repository connectivity"
-python "$PROJECT_DIR/update_forecast.py" "$SEASON" "$DRAWS" \
+python "$PROJECT_DIR/scripts/update_forecast.py" "$SEASON" "$DRAWS" \
   --no-fetch --no-results --no-forecast --no-tests --no-build
 
 STAGE="dataset refresh"
@@ -114,7 +114,7 @@ python "${FETCH_ARGS[@]}"
 
 STAGE="dataset validation"
 say "Validating schedules, advanced-team, PBP, markets, manifests, and checksums"
-CFB_DATA_DIR="$DATA_DIR" bash "$PROJECT_DIR/scripts_verify_datasets.sh"
+CFB_DATA_DIR="$DATA_DIR" bash "$PROJECT_DIR/scripts/verify_datasets.sh"
 
 STAGE="ESPN results"
 say "Refreshing ESPN results for season $SEASON"

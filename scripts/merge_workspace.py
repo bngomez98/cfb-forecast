@@ -4,9 +4,9 @@
 Default behavior preserves existing target files and reports conflicts.
 
 Examples:
-    python merge_workspace.py
-    python merge_workspace.py --dry-run
-    python merge_workspace.py --overwrite
+    python scripts/merge_workspace.py
+    python scripts/merge_workspace.py --dry-run
+    python scripts/merge_workspace.py --overwrite
 """
 from __future__ import annotations
 

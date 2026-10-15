@@ -1,10 +1,13 @@
 __pycache__/
 *.pyc
-.pytest_tmp/
 *.egg-info/
+.pytest_cache/
+.pytest_tmp/
 build/
 dist/
-# R package and local R state
+.venv/
+venv/
+
 .Rproj.user/
 renv/library/
 renv/staging/
@@ -12,44 +15,23 @@ renv/staging/
 .RData
 .Ruserdata
 
-# Generated SQLite runtime database
 *.sqlite
 *.sqlite3
 *.db
-venv/
-.DS_Store
 *.log
-.env
-artifacts/latest-weekly/
-artifacts/results/
-artifacts/logs/
-artifacts/backtest/
-data/pbp_*.parquet
-.pytest_cache/
+.DS_Store
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Local environments and generated runtime data
-.git/
 activate/
 pythonlib1/
-venv/
-dist/
-build/
-__pycache__/
-.pytest_cache/
-.pytest_tmp/
+
 artifacts/
 data/
-*.log
-*.pyc
-*.egg-info/
-
-.venv/
+runtime/
 
 web/node_modules/
 web/dist/
 web/tsconfig.tsbuildinfo
-
