@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Activity,
+  AlertCircle,
   ArrowRight,
   BarChart3,
   BookOpen,
@@ -130,43 +131,31 @@ export function App() {
   const [sort, setSort] = useState<Sort>('kickoff')
   const [liveResults, setLiveResults] = useState<Record<number, LiveResult>>({})
   const [scoresUpdatedAt, setScoresUpdatedAt] = useState<Date | null>(null)
+  const [dataError, setDataError] = useState<string | null>(null)
 
   async function refresh() {
     setLoading(true)
+    setDataError(null)
     try {
       const published = await fetch('/api/season?season=2026', { cache: 'no-store' })
-      let currentForecasts = forecasts
-      if (published.ok) {
-        const board = await published.json() as Board
-        setBoardMeta(board)
-        if (Array.isArray(board.forecasts)) {
-          currentForecasts = board.forecasts
-          setForecasts(board.forecasts)
-        }
-        if (Array.isArray(board.sources)) setSources(board.sources)
-      } else {
-        const fallback = await fetch('/forecasts.json', { cache: 'no-store' })
-        if (fallback.ok) {
-          const board = await fallback.json() as Board
-          setBoardMeta(board)
-          if (Array.isArray(board.forecasts)) {
-            currentForecasts = board.forecasts
-            setForecasts(board.forecasts)
-          }
-          if (Array.isArray(board.sources)) setSources(board.sources)
-        }
-      }
-      const firstKickoff = currentForecasts.length ? new Date(Math.min(...currentForecasts.map(game => new Date(game.kickoff).getTime()))) : new Date()
+      if (!published.ok) throw new Error(`Forecast service returned ${published.status}`)
+      const board = await published.json() as Board
+      if (!Array.isArray(board.forecasts)) throw new Error('Forecast service returned no season schedule')
+      setBoardMeta(board)
+      setForecasts(board.forecasts)
+      if (Array.isArray(board.sources)) setSources(board.sources)
+
+      const firstKickoff = board.forecasts.length ? new Date(Math.min(...board.forecasts.map(game => new Date(game.kickoff).getTime()))) : new Date()
       const start = new Date(Math.max(firstKickoff.getTime(), Date.now() - DAY))
       const end = new Date(start.getTime() + 8 * DAY)
       const response = await fetch(`/api/live-results?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`, { cache: 'no-store' })
-      if (response.ok) {
-        const data = await response.json() as { updated_at?: string; results?: LiveResult[] }
-        if (Array.isArray(data.results)) setLiveResults(Object.fromEntries(data.results.map(result => [result.game_id, result])))
-        if (data.updated_at) setScoresUpdatedAt(new Date(data.updated_at))
-      }
-    } catch {
-      // The static publication is the production fallback when the self-hosted API is unavailable.
+      if (!response.ok) throw new Error(`Score service returned ${response.status}`)
+      const data = await response.json() as { updated_at?: string; results?: LiveResult[] }
+      if (!Array.isArray(data.results)) throw new Error('Score service returned an invalid result set')
+      setLiveResults(Object.fromEntries(data.results.map(result => [result.game_id, result])))
+      if (data.updated_at) setScoresUpdatedAt(new Date(data.updated_at))
+    } catch (error) {
+      setDataError(error instanceof Error ? error.message : 'Football data could not be loaded')
     } finally {
       setLoading(false)
     }
@@ -226,8 +215,9 @@ export function App() {
     <main id="top">
       {page === 'forecast' && <>
         <Hero weekName={weekName} updated={updated} games={range === 'all' ? chronological.length : weekGames.length} onRefresh={refresh} loading={loading} />
-        <section className="content-section">
-          <div className="live-score-strip" role="status"><span><i aria-hidden="true" /> 2026 scores refresh every 60 seconds</span><small>{scoresUpdatedAt ? `Last checked ${scoresUpdatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Connecting to score feed'} · Published forecasts cover {chronological.length || 'the'} scheduled games</small></div>
+  <section className="content-section">
+  {dataError && <div className="notice" role="alert"><AlertCircle aria-hidden="true" /><div><strong>Live football data unavailable</strong><p>{dataError}. No substitute forecasts, scores, or inputs are displayed. Use Refresh data to try again.</p></div></div>}
+  <div className="live-score-strip" role="status"><span><i aria-hidden="true" /> 2026 scores refresh every 60 seconds</span><small>{scoresUpdatedAt ? `Last checked ${scoresUpdatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Connecting to score feed'} · Published forecasts cover {chronological.length} scheduled games</small></div>
           <div className="metric-grid" aria-label="Weekly forecast summary">
             <Metric icon={CalendarDays} label="Games in window" value={weekGames.length ? String(weekGames.length) : '—'} detail={`${weekName} slate`} />
             <Metric icon={Gauge} label="Average pick strength" value={weekGames.length ? pct(avgConfidence, 1) : '—'} detail="Average chance for the picked team" />
