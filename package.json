@@ -3,8 +3,10 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
+    "dev": "npm --prefix web run dev",
     "build": "npm --prefix web run build",
     "start": "npm --prefix web start",
-    "test": "npm --prefix web test -- --watchAll=false --passWithNoTests"
+    "test": "npm --prefix web test -- --watchAll=false --passWithNoTests",
+    "pipeline": "python -m cfb_forecast.pipeline_cli"
   }
 }
