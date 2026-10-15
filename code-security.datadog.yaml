@@ -1,0 +1,8 @@
+schema-version: v1.0
+sast:
+  use-rulesets:
+    - python-best-practices
+    - python-code-style
+    - python-inclusive
+    - python-pandas
+    - python-security
