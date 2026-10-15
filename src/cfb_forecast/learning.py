@@ -54,6 +54,10 @@ def validate_in_r(frame, folder):
     return {"status": "verified", **independent}
 
 
+# Results past the base model's training seasons needed before its first reinforcement.
+MIN_NEW_RESULTS = 50
+
+
 def learn(data_root, base_root, output_root, database, as_of):
     at = timestamp(as_of)
     output = Path(output_root).resolve()
@@ -64,6 +68,7 @@ def learn(data_root, base_root, output_root, database, as_of):
     base_root = Path(base_root).resolve()
     original_hash = file_hash(base_root / "model.json")
     base = load_model(base_root)
+    champion_latest = None
     with closing(connect(database)) as conn:
         conn.executescript(SCHEMA)
         for row in conn.execute("SELECT report_json FROM learning_versions WHERE status='promoted' ORDER BY created_at DESC"):
@@ -73,11 +78,17 @@ def learn(data_root, base_root, output_root, database, as_of):
                 if file_hash(base_root / "model.json") != previous["model_sha256"]:
                     raise ValueError("Promoted champion checksum mismatch")
                 base = load_model(base_root)
+                champion_latest = previous.get("latest_result")
                 break
     schedules, summaries, paths = load_data(data_root)
     games = schedules[schedules.fbs_game & schedules.result_usable & (schedules.result_available_at < at) & (schedules.season >= base["warmup_season"])].copy().reset_index(drop=True)
     if games.empty:
         raise ValueError("No completed prior games available for training")
+    new_games = int((games.season > base["training_through_season"]).sum())
+    if champion_latest is None and new_games < MIN_NEW_RESULTS:
+        return {"status": "insufficient_new_results", "new_games": new_games, "required_games": MIN_NEW_RESULTS, "model_path": str(base_root), "watchdog": watchdog}
+    if champion_latest is not None and not (games.result_available_at > timestamp(champion_latest)).any():
+        return {"status": "no_new_results", "latest_result": champion_latest, "model_path": str(base_root), "watchdog": watchdog}
     sources = {p.name: file_hash(p) for p in paths}
     identity = {"algorithm": 2, "base": file_hash(Path(base_root) / "model.json"), "sources": sources, "games": sorted(games.game_id.astype(int).tolist())}
     version = sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
