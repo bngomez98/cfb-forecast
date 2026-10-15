@@ -73,6 +73,22 @@ jobs:
       - run: python -m pytest -q
       - run: python -m cfb_forecast --help
 
+  dashboard:
+    name: Dashboard pages load and grade results
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install -e '.[test]' -r dashboard/requirements.txt
+      - run: python -m pytest -q tests/test_dashboard_results.py
+      - name: Load every dashboard page module
+        working-directory: dashboard
+        run: python -c "import app, board, desk, results"
+
   package:
     name: Build and install the package from scratch
     runs-on: ubuntu-latest
@@ -98,7 +114,7 @@ jobs:
           clean/bin/cfb-forecast --help >/dev/null
           clean/bin/cfb-pipeline --help >/dev/null
           clean/bin/cfb-data-watchdog --help >/dev/null
-          clean/bin/python -c "import importlib.resources as r; assert r.files('cfb_forecast').joinpath('validate_learning.R').is_file(), 'R script missing from wheel'"
+          clean/bin/python -c "import importlib.resources as r; assert r.files('cfb_forecast.modeling').joinpath('validate_learning.R').is_file(), 'R script missing from wheel'"
       - uses: actions/upload-artifact@v4
         with:
           name: cfb-forecast-dist

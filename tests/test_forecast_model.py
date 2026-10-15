@@ -4,14 +4,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from cfb_forecast.database import connect, record_weekly_validation
-from cfb_forecast.decision import probability_to_american
-from cfb_forecast.evaluate import spread_regression
-from cfb_forecast.forecast_model import METHOD, ForecastModel, known_future_matrix, rest_days
-from cfb_forecast.publisher import board_row
+from cfb_forecast.storage.database import connect, record_weekly_validation
+from cfb_forecast.odds.decision import probability_to_american
+from cfb_forecast.evaluation.evaluate import spread_regression
+from cfb_forecast.modeling.forecast_model import METHOD, ForecastModel, known_future_matrix, rest_days
+from cfb_forecast.pipeline.publisher import board_row
 
 
-def test_koopman_shift_follows_known_future_and_logistic_picks_the_higher_score():
+def test_score_adjustment_follows_known_future_with_one_gaussian_win_probability():
     rng = np.random.default_rng(7)
     known = rng.normal(size=(80, 9))
     location = np.full((80, 2), 24.0)
@@ -26,13 +26,13 @@ def test_koopman_shift_follows_known_future_and_logistic_picks_the_higher_score(
     wins[1] = 1
     model = ForecastModel.fit(location, actual, known, wins)
     assert model.ready
-    assert model.logistic_ready
+    assert not model.logistic_ready
     favored = location[:1] + 0
     known_row = np.zeros((1, 9))
     known_row[0, 0] = known[:, 0].mean() + 2 * known[:, 0].std()
     out = model.apply(favored, known_row, [[36, 4], [4, 36]], [{}], [11])
     assert out[0]["distribution_method"] == "forecast_model"
-    assert out[0]["win_link"] == "logistic"
+    assert out[0]["win_link"] == "gaussian"
     assert 0 < out[0]["home_win_probability"] < 1
     assert out[0]["expected_home_score"] >= 0
     assert "posterior" not in METHOD
@@ -180,7 +180,7 @@ def test_recorded_scoring_history_moves_the_home_score():
 
 
 def test_pregame_history_uses_prior_games_in_the_same_season(tmp_path):
-    from cfb_forecast.features import pregame_history
+    from cfb_forecast.ingest.features import pregame_history
 
     completed = pd.DataFrame(
         {
@@ -202,8 +202,8 @@ def test_pregame_history_uses_prior_games_in_the_same_season(tmp_path):
 
 
 def test_database_team_facts_enter_the_pregame_rates(tmp_path):
-    from cfb_forecast.database import connect, record_history_facts
-    from cfb_forecast.features import pregame_history
+    from cfb_forecast.storage.database import connect, record_history_facts
+    from cfb_forecast.ingest.features import pregame_history
 
     db = tmp_path / "facts.sqlite"
     conn = connect(db)
@@ -229,7 +229,7 @@ def test_database_team_facts_enter_the_pregame_rates(tmp_path):
 
 
 def test_pregame_history_replays_bowl_games_after_the_regular_season(tmp_path):
-    from cfb_forecast.features import pregame_history
+    from cfb_forecast.ingest.features import pregame_history
 
     # Postseason games restart week numbering at 1; the December bowl must not
     # feed the same team's September week-3 rates.
@@ -255,7 +255,7 @@ def test_pregame_history_replays_bowl_games_after_the_regular_season(tmp_path):
 
 
 def test_pregame_history_starts_from_the_previous_season_only(tmp_path):
-    from cfb_forecast.features import pregame_history
+    from cfb_forecast.ingest.features import pregame_history
 
     # 2024 is two seasons back, so only 2025 sets the starting mean for 2026.
     completed = pd.DataFrame(
@@ -278,7 +278,7 @@ def test_pregame_history_starts_from_the_previous_season_only(tmp_path):
 
 def test_postseason_week_one_is_not_early_season():
     from types import SimpleNamespace
-    from cfb_forecast.ratings import early_season
+    from cfb_forecast.modeling.ratings import early_season
 
     assert early_season(SimpleNamespace(week=2, season_type="regular"))
     assert not early_season(SimpleNamespace(week=1, season_type="postseason"))
@@ -303,7 +303,7 @@ def test_rest_days_count_games_against_non_fbs_opponents():
 
 
 def test_season_backtest_forecasts_bowls_separately_from_week_one(monkeypatch, tmp_path):
-    import cfb_forecast.season_backtest as season_backtest
+    import cfb_forecast.evaluation.season_backtest as season_backtest
 
     schedule = pd.DataFrame(
         {
@@ -350,7 +350,7 @@ def test_pickem_line_cannot_push_because_ties_go_to_overtime():
 
 
 def test_closing_lines_skip_unavailable_spreads(tmp_path):
-    from cfb_forecast.market import closing_lines
+    from cfb_forecast.odds.market import closing_lines
 
     path = tmp_path / "closing.csv"
     pd.DataFrame(
@@ -366,7 +366,7 @@ def test_closing_lines_skip_unavailable_spreads(tmp_path):
 
 
 def test_games_without_a_line_use_the_fit_that_never_saw_lines():
-    from cfb_forecast.forecast_model import KNOWN_COLUMNS, ForecastModel
+    from cfb_forecast.modeling.forecast_model import KNOWN_COLUMNS, ForecastModel
 
     rng = np.random.default_rng(7)
     n = 400

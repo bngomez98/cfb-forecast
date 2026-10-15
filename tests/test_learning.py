@@ -8,10 +8,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from cfb_forecast.config import StateConfig
-from cfb_forecast.database import connect
-from cfb_forecast.features import feature_columns
-from cfb_forecast.learning import learn, validate_in_r
-from cfb_forecast.model import write_model
+from cfb_forecast.storage.database import connect
+from cfb_forecast.ingest.features import feature_columns
+from cfb_forecast.modeling.learning import learn, validate_in_r
+from cfb_forecast.modeling.model import write_model
 
 
 @pytest.fixture
@@ -38,6 +38,8 @@ def training_files(tmp_path):
 def test_sql_training_promotes_and_preserves_temporal_evidence(training_files):
     report = learn(*training_files, "2023-12-01T00:00Z")
     assert report["status"] == "promoted"
+    assert report["gate_independent"] is True
+    assert report["probability_layer"] == "joint_gaussian_score_distribution"
     assert report["candidate"]["log_loss"] < report["incumbent"]["log_loss"]
     with closing(connect(training_files[-1])) as conn:
         rows = conn.execute("SELECT * FROM training_examples").fetchall()
@@ -50,9 +52,46 @@ def test_sql_training_promotes_and_preserves_temporal_evidence(training_files):
         assert conn.execute("SELECT count(*) FROM learning_versions").fetchone()[0] == 1
 
 
+def test_refit_that_forecasts_worse_is_retained(training_files, monkeypatch):
+    import cfb_forecast.modeling.learning as learning
+
+    class Backwards(learning.ScoreHead):
+        """Fits normally, then predicts each side's score swapped."""
+
+        def fit(self, *args, **kwargs):
+            self.backwards = True
+            return super().fit(*args, **kwargs)
+
+        def predict(self, F):
+            mu = super().predict(F)
+            return mu[:, ::-1] if getattr(self, "backwards", False) else mu
+
+    monkeypatch.setattr(learning, "ScoreHead", Backwards)
+    report = learn(*training_files, "2023-12-01T00:00Z")
+    assert report["gate_independent"] is True
+    assert report["candidate"]["log_loss"] > report["incumbent"]["log_loss"]
+    assert report["status"] == "retained"
+    assert report["model_path"] == str(training_files[1].resolve())
+    with closing(connect(training_files[-1])) as conn:
+        assert tuple(conn.execute("SELECT status, model_path FROM learning_versions").fetchone()) == ("retained", report["model_path"])
+
+
 def test_insufficient_results_do_not_create_candidate(training_files):
     report = learn(*training_files, "2023-08-10T00:00Z")
     assert report["status"] == "insufficient_new_results"
+    assert report["model_path"] == str(training_files[1].resolve())
+
+
+def test_refit_without_an_independent_gate_keeps_the_selected_head(training_files):
+    # Only 80 eligible games: the proposed half-split leaves fewer than 50
+    # training games and triggers the overlapping fallback.
+    model_file = training_files[1] / "model.json"
+    model = json.loads(model_file.read_text())
+    model["train_start_season"] = 2023
+    model_file.write_text(json.dumps(model))
+    report = learn(*training_files, "2023-12-01T00:00Z")
+    assert not report["gate_independent"]
+    assert report["status"] == "retained"
     assert report["model_path"] == str(training_files[1].resolve())
 
 
@@ -81,7 +120,7 @@ def test_r_python_metrics_agree(tmp_path):
 
 
 def test_adaptive_model_cannot_predict_its_past(training_files, tmp_path):
-    from cfb_forecast.forecast import forecast
+    from cfb_forecast.modeling.forecast import forecast
     report = learn(*training_files, "2023-12-01T00:00Z")
     with pytest.raises(ValueError, match="trained after"):
         forecast(training_files[0], report["model_path"], tmp_path / "predictions", "2023-11-01T00:00Z", "2023-11-02T00:00Z", 2023)

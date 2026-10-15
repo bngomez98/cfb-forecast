@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from cfb_forecast.database import connect, list_forecasts
-from cfb_forecast.watchdog import sync_artifacts
+from cfb_forecast.storage.database import connect, list_forecasts
+from cfb_forecast.monitoring.watchdog import sync_artifacts
 
 
 def test_watchdog_persists_forecasts_without_duplicates(tmp_path: Path):

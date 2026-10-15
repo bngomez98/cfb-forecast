@@ -2,13 +2,13 @@ import numpy as np
 import pandas as pd
 import pytest
 from cfb_forecast.config import StateConfig
-from cfb_forecast.data import normalize_schedule,timestamp
-from cfb_forecast.features import clean_plays
-from cfb_forecast.ratings import DynamicRatings,build_features
-from cfb_forecast.model import ScoreHead,residual_covariance
-from cfb_forecast.simulate import simulate_scores,win_probability
-from cfb_forecast.market import market_at_cutoff
-from cfb_forecast.evaluate import metrics
+from cfb_forecast.ingest.data import normalize_schedule,timestamp
+from cfb_forecast.ingest.features import clean_plays
+from cfb_forecast.modeling.ratings import DynamicRatings,build_features
+from cfb_forecast.modeling.model import ScoreHead,residual_covariance
+from cfb_forecast.modeling.simulate import simulate_scores,win_probability
+from cfb_forecast.odds.market import market_at_cutoff
+from cfb_forecast.evaluation.evaluate import metrics
 
 def fixture_games():
     return normalize_schedule(pd.DataFrame([
@@ -99,7 +99,7 @@ def test_missing_final_score_is_quarantined_without_inventing_an_outcome():
     assert pd.isna(clean.loc[0,"home_points"])
 
 def test_elo_is_independent_of_the_game_being_predicted():
-    from cfb_forecast.baseline import elo_features
+    from cfb_forecast.modeling.baseline import elo_features
     g=fixture_games(); F=elo_features(g)
     changed=g.copy(); changed.loc[1,["home_points","away_points"]]=[99,0]
     alt=elo_features(changed)
@@ -132,8 +132,8 @@ def test_single_class_evaluation_and_score_errors():
 def test_residual_covariance_calibration_rejects_tiny_sample():
     with pytest.raises(ValueError): residual_covariance(np.ones((2,2)),np.ones((2,2)))
 
-from cfb_forecast.distribution import probability_tables, discrete_crps
-from cfb_forecast.market import normalize_market_history, market_history_summary
+from cfb_forecast.modeling.distribution import probability_tables, discrete_crps
+from cfb_forecast.odds.market import normalize_market_history, market_history_summary
 
 
 def test_distribution_tables_sum_to_one_and_crps_prefers_truth():
@@ -165,7 +165,7 @@ def test_market_history_supports_multiple_providers_and_consensus_cutoff():
     assert s["market_current_spread"]==-5.5
     assert s["market_spread_move"]==-2.0
 
-from cfb_forecast.chronology import select_due_games
+from cfb_forecast.evaluation.chronology import select_due_games
 
 
 def test_chronological_due_games_respect_each_games_own_cutoff():
@@ -186,7 +186,7 @@ def test_chronological_due_games_never_include_started_games():
 
 def test_prospective_collection_records_market_failure_and_still_runs(monkeypatch, tmp_path):
     from pathlib import Path
-    import cfb_forecast.collector as collector
+    import cfb_forecast.ingest.collector as collector
     dummy_ledger=pd.DataFrame({"game_id":[1]})
     dummy_added=pd.DataFrame(columns=["game_id"])
     def fail_market(*args, **kwargs):

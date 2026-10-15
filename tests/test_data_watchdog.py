@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from cfb_forecast.data_watchdog import check_data
-from cfb_forecast.database import connect
+from cfb_forecast.monitoring.data_watchdog import check_data
+from cfb_forecast.storage.database import connect
 
 
 def test_data_watchdog_records_integrity_and_changes(tmp_path: Path):

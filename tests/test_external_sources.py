@@ -1,8 +1,8 @@
 import pandas as pd
 
 from cfb_forecast.external_cli import select_next_week
-from cfb_forecast.external_sources import validate_schedule_rows
-from cfb_forecast.data import normalize_schedule
+from cfb_forecast.ingest.external_sources import validate_schedule_rows
+from cfb_forecast.ingest.data import normalize_schedule
 
 
 def _games():

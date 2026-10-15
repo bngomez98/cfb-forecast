@@ -1,8 +1,8 @@
 import pandas as pd
 import pytest
 
-from cfb_forecast.data import normalize_schedule
-from cfb_forecast.layered_model import LayeredBayesModel
+from cfb_forecast.ingest.data import normalize_schedule
+from cfb_forecast.modeling.layered_model import LayeredBayesModel
 
 
 def layered_games():
