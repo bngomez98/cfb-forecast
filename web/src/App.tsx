@@ -199,6 +199,9 @@ export function App() {
   const strongPicks = weekGames.filter(game => Math.max(homeChance(game), 1 - homeChance(game)) >= 0.7).length
   const closest = weekGames.length ? [...weekGames].sort((a, b) => Math.abs(margin(a)) - Math.abs(margin(b)))[0] : null
   const weekName = boardMeta.week ? `Week ${boardMeta.week}` : 'This week'
+  const seasonLive = Object.values(liveResults).filter(result => result.status === 'live').length
+  const seasonFinal = Object.values(liveResults).filter(result => result.status === 'final').length
+  const nextGame = chronological.find(game => new Date(game.kickoff).getTime() > Date.now())
 
   return <div className="app-shell">
     <header className="topbar">
@@ -218,6 +221,7 @@ export function App() {
   <section className="content-section">
   {dataError && <div className="notice" role="alert"><AlertCircle aria-hidden="true" /><div><strong>Live football data unavailable</strong><p>{dataError}. No substitute forecasts, scores, or inputs are displayed. Use Refresh data to try again.</p></div></div>}
   <div className="live-score-strip" role="status"><span><i aria-hidden="true" /> 2026 scores refresh every 60 seconds</span><small>{scoresUpdatedAt ? `Last checked ${scoresUpdatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Connecting to score feed'} · Published forecasts cover {chronological.length} scheduled games</small></div>
+          <SeasonPulse totalGames={chronological.length} liveGames={seasonLive} finalGames={seasonFinal} nextGame={nextGame} />
           <div className="metric-grid" aria-label="Weekly forecast summary">
             <Metric icon={CalendarDays} label="Games in window" value={weekGames.length ? String(weekGames.length) : '—'} detail={`${weekName} slate`} />
             <Metric icon={Gauge} label="Average win chance" value={weekGames.length ? pct(avgConfidence, 1) : '—'} detail="Average chance for the favored team" />
@@ -278,6 +282,15 @@ function Metric({ icon: Icon, label, value, detail }: { icon: typeof Activity; l
     <strong>{value}</strong>
     <p>{detail}</p>
   </article>
+}
+
+function SeasonPulse({ totalGames, liveGames, finalGames, nextGame }: { totalGames: number; liveGames: number; finalGames: number; nextGame?: Forecast }) {
+  return <section className="season-pulse" aria-label="Season status">
+    <div className="pulse-intro"><span className="section-eyebrow">SEASON STATUS</span><strong>2026 FBS schedule</strong><small>{totalGames ? `${totalGames} forecasted games currently published` : 'Waiting for the published schedule'}</small></div>
+    <div className="pulse-stat"><span className="pulse-dot live" aria-hidden="true" /><strong>{liveGames}</strong><small>Live now</small></div>
+    <div className="pulse-stat"><span className="pulse-dot final" aria-hidden="true" /><strong>{finalGames}</strong><small>Final scores</small></div>
+    <div className="pulse-next"><span>Next kickoff</span><strong>{nextGame ? `${nextGame.away_team} at ${nextGame.home_team}` : 'No upcoming game in feed'}</strong><small>{nextGame ? `${dayKey(nextGame.kickoff)} · ${timeLabel(nextGame.kickoff)}` : 'The schedule feed has no future kickoff.'}</small></div>
+  </section>
 }
 
 function BoardControls({ query, setQuery, range, setRange, sort, setSort, weekName }: {
@@ -430,7 +443,7 @@ function DataPage({ sources, validation, board }: { sources: Source[]; validatio
       <div className="accuracy-note"><Info aria-hidden="true" /><div><strong>{gradedGames > 0 ? `${gradedGames} games are included in these results.` : 'No completed games have been graded yet.'}</strong><p>{gradedGames > 0 ? `Log loss is ${validation.log_loss?.toFixed(3) ?? 'not available'}. It assigns a larger penalty when a high-confidence pick loses.` : 'The current file contains future picks, so an accuracy percentage would be misleading. Results will appear after those games finish and are matched to these saved picks.'}</p></div></div>
       <div className="data-columns">
         <section><span className="section-eyebrow">INPUT FAMILIES</span><h2>What enters the forecast</h2><ul className="check-list"><li><b>Game results</b><span>Final scores and game-level team statistics</span></li><li><b>Efficiency</b><span>Points, yards per play, pass, rush, and first-down rates</span></li><li><b>Situation</b><span>Venue, neutral-site status, and days of rest</span></li><li><b>Market context</b><span>Spread and total only when captured before forecast time</span></li><li><b>Conditional context</b><span>Weather and injuries recorded, but gated by validation</span></li></ul></section>
-        <section><span className="section-eyebrow">PUBLIC SOURCES</span><h2>Traceable inputs</h2><div className="source-list">{(sources.length ? sources : [{ name: 'sportsdataverse', url: 'https://github.com/sportsdataverse/sportsdataverse-data' }]).map(source => <a key={source.name} href={source.url} target="_blank" rel="noreferrer"><span>{source.name.replace(/_/g, ' ')}</span><ArrowRight aria-hidden="true" /></a>)}</div></section>
+        <section><span className="section-eyebrow">PUBLIC SOURCES</span><h2>Traceable inputs</h2>{sources.length ? <div className="source-list">{sources.map(source => <a key={source.name} href={source.url} target="_blank" rel="noreferrer"><span>{source.name.replace(/_/g, ' ')}</span><ArrowRight aria-hidden="true" /></a>)}</div> : <p className="source-empty">The current publication did not include source links. No source is inferred or substituted here.</p>}</section>
       </div>
     </section>
   </>

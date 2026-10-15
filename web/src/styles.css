@@ -74,7 +74,24 @@ h1 { font-size: clamp(46px, 6vw, 78px); letter-spacing: -.055em; line-height: .9
 .hero-chart i:nth-child(1) { height: 22%; }.hero-chart i:nth-child(2) { height: 39%; }.hero-chart i:nth-child(3) { height: 34%; }.hero-chart i:nth-child(4) { height: 56%; }.hero-chart i:nth-child(5) { height: 49%; }.hero-chart i:nth-child(6) { height: 71%; }.hero-chart i:nth-child(7) { height: 65%; }.hero-chart i:nth-child(8) { height: 92%; }
 
 .content-section { max-width: 1260px; padding: 34px 24px 80px; margin: 0 auto; }
+.season-pulse { display: grid; grid-template-columns: 1.45fr .55fr .55fr 1.65fr; border: 1px solid var(--line); background: var(--panel); margin-bottom: 14px; }
+.pulse-intro, .pulse-stat, .pulse-next { min-height: 88px; padding: 16px 18px; }
+.pulse-intro, .pulse-stat { border-right: 1px solid var(--line); }
+.pulse-intro { display: flex; flex-direction: column; gap: 5px; }
+.pulse-intro strong { font-size: 14px; }
+.pulse-intro small, .pulse-stat small, .pulse-next small { color: var(--muted); font-size: 10px; }
+.pulse-stat { display: grid; grid-template-columns: 9px 1fr; grid-template-rows: 1fr 1fr; column-gap: 8px; align-items: center; }
+.pulse-stat strong { font: 500 24px 'DM Mono', monospace; grid-column: 2; }
+.pulse-stat small { grid-column: 2; grid-row: 2; text-transform: uppercase; letter-spacing: .08em; font: 9px 'DM Mono', monospace; }
+.pulse-dot { width: 7px; height: 7px; border-radius: 50%; grid-row: 1 / span 2; }
+.pulse-dot.live { background: #f27d6b; box-shadow: 0 0 0 4px rgb(242 125 107 / 10%); }
+.pulse-dot.final { background: var(--acid); }
+.pulse-next { display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+.pulse-next span { color: var(--faint); font: 9px 'DM Mono', monospace; text-transform: uppercase; letter-spacing: .08em; }
+.pulse-next strong { font-size: 12px; }
+.pulse-next small { font-family: 'DM Mono', monospace; }
 .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); margin-bottom: 34px; }
+.source-empty { color: var(--muted); font-size: 13px; line-height: 1.7; border: 1px dashed var(--line-strong); padding: 18px; }
 .metric-card { padding: 22px; min-width: 0; background: linear-gradient(145deg, var(--panel), rgb(16 20 17 / 55%)); }
 .metric-card + .metric-card { border-left: 1px solid var(--line); }
 .metric-label { display: flex; gap: 9px; align-items: center; color: var(--muted); text-transform: uppercase; font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: .1em; }
