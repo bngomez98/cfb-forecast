@@ -10,6 +10,7 @@ file instead of a scattering of fields.
 The log is append-only JSON Lines so it is cheap to tail and safe to merge
 across runs. Each row is self-contained and does not refer to other rows.
 """
+
 from __future__ import annotations
 
 import json

@@ -8,6 +8,7 @@ Settlement is the end-of-season step that joins the ledger to final game
 results and computes grading metrics on the whole ledger plus two
 pre-registered subsets.
 """
+
 from __future__ import annotations
 
 import json
@@ -28,9 +29,16 @@ log = logging.getLogger(__name__)
 # subset by cutoff eligibility and market availability without re-reading the
 # ledger file.
 _LEDGER_ENRICHMENT_COLUMNS = [
-    "game_id", "scheduled_cutoff", "actual_forecast_at", "target_lead_hours",
-    "actual_lead_hours", "cutoff_delay_minutes", "primary_cutoff_eligible",
-    "market_status", "home_spread", "total_line",
+    "game_id",
+    "scheduled_cutoff",
+    "actual_forecast_at",
+    "target_lead_hours",
+    "actual_lead_hours",
+    "cutoff_delay_minutes",
+    "primary_cutoff_eligible",
+    "market_status",
+    "home_spread",
+    "total_line",
     "market_home_win_probability_no_vig",
 ]
 
@@ -96,9 +104,7 @@ def settle_chronological_ledger(ledger_root, current_data_root, settled_at=None)
     frames = []
     summaries = []
     for run in manifest.get("runs", []):
-        games, summary = settle_holdout(
-            root / run["frozen_run_path"], current_data_root, settled_at
-        )
+        games, summary = settle_holdout(root / run["frozen_run_path"], current_data_root, settled_at)
         if len(games):
             games["run_id"] = run["run_id"]
             frames.append(games)
@@ -121,9 +127,9 @@ def settle_chronological_ledger(ledger_root, current_data_root, settled_at=None)
         "forecasted_games": int(len(ledger)),
         "settled_games": int(len(settled)),
         "primary_cutoff_eligible_settled": int(settled.primary_cutoff_eligible.sum()) if len(settled) else 0,
-        "market_available_settled": int(
-            (settled.market_status == "captured_at_or_before_forecast").sum()
-        ) if len(settled) else 0,
+        "market_available_settled": int((settled.market_status == "captured_at_or_before_forecast").sum())
+        if len(settled)
+        else 0,
         "run_summaries": summaries,
     }
     if len(settled):

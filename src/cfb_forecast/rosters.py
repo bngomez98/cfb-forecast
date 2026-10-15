@@ -18,6 +18,7 @@ module never fabricates a roster when the call fails: it returns a
 sentinel status with the reason, and the caller decides whether that is
 blocking.
 """
+
 from __future__ import annotations
 
 import json
@@ -38,9 +39,7 @@ log = logging.getLogger(__name__)
 _ESPN_ROSTER_ENDPOINT = (
     "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/{team_id}/roster"
 )
-_SPORTSDATAVERSE_ROSTER_RELEASE = (
-    "https://github.com/sportsdataverse/sportsdataverse-data/releases/download/cfb_rosters/cfb_rosters_{year}.parquet"
-)
+_SPORTSDATAVERSE_ROSTER_RELEASE = "https://github.com/sportsdataverse/sportsdataverse-data/releases/download/cfb_rosters/cfb_rosters_{year}.parquet"
 
 STATUS_CAPTURED = "captured"
 STATUS_EMPTY = "no_athletes_listed"
@@ -153,11 +152,7 @@ def fetch_current_roster(
 ) -> RosterCapture:
     """Fetch one team's current roster from ESPN."""
     url = _ESPN_ROSTER_ENDPOINT.format(team_id=int(team_id))
-    observed_ts = (
-        timestamp(observed_at)
-        if observed_at is not None
-        else datetime.now(UTC)
-    )
+    observed_ts = timestamp(observed_at) if observed_at is not None else datetime.now(UTC)
     observed = observed_ts.isoformat()
     try:
         payload = _request_json(url, timeout=timeout)
@@ -233,17 +228,20 @@ def fetch_historical_rosters(
     url = _SPORTSDATAVERSE_ROSTER_RELEASE.format(year=season)
     cache_root = Path(cache_dir) if cache_dir is not None else Path("data/rosters")
     cached_path = cache_root / f"cfb_rosters_{season}.parquet"
-    observed_ts = (
-        timestamp(observed_at)
-        if observed_at is not None
-        else datetime.now(UTC)
-    )
+    observed_ts = timestamp(observed_at) if observed_at is not None else datetime.now(UTC)
     observed = observed_ts.isoformat()
     try:
         if not cached_path.exists():
             _download_file(url, cached_path, timeout=timeout)
         frame = pd.read_parquet(cached_path)
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError, ImportError) as exc:
+    except (
+        urllib.error.URLError,
+        urllib.error.HTTPError,
+        TimeoutError,
+        OSError,
+        ValueError,
+        ImportError,
+    ) as exc:
         log.warning("historical roster fetch failed for season %s: %s", season, exc)
         return RosterCapture(
             team_id=0,
@@ -275,10 +273,9 @@ def fetch_historical_rosters(
     )
 
 
-def _normalize_sportsdataverse_frame(
-    frame: pd.DataFrame, *, season: int, observed_at: str
-) -> list[dict]:
+def _normalize_sportsdataverse_frame(frame: pd.DataFrame, *, season: int, observed_at: str) -> list[dict]:
     """Normalize a SportsDataverse roster parquet to :data:`ROSTER_COLUMNS`."""
+
     # SportsDataverse column names vary slightly year to year; look up the
     # most common names and fall back to None when a column is missing.
     def pick(row: dict, *candidates: str):
@@ -294,9 +291,7 @@ def _normalize_sportsdataverse_frame(
                 "season": int(pick(record, "season", "year") or season),
                 "team_id": int(pick(record, "team_id", "teamId", "team") or 0),
                 "athlete_id": str(pick(record, "athlete_id", "id", "athleteId") or ""),
-                "player_name": str(
-                    pick(record, "full_name", "displayName", "name") or ""
-                ),
+                "player_name": str(pick(record, "full_name", "displayName", "name") or ""),
                 "position": str(pick(record, "position", "pos") or ""),
                 "jersey": str(pick(record, "jersey", "number") or ""),
                 "class": str(pick(record, "class", "year_class", "experience") or ""),
@@ -328,9 +323,7 @@ def fetch_historical_rosters_span(
     start = int(start_season)
     end = int(end_season)
     if end < start:
-        raise ValueError(
-            f"end_season ({end}) must be >= start_season ({start})"
-        )
+        raise ValueError(f"end_season ({end}) must be >= start_season ({start})")
     captures: list[RosterCapture] = []
     for season in range(start, end + 1):
         capture = fetch_historical_rosters(

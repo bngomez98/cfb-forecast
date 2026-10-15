@@ -11,6 +11,7 @@ possession-level game simulator. The continuous Gaussian margin probability
 (:func:`win_probability`) is used in historical probability evaluation; the
 bounded simulation probability is a separate, inspectable number.
 """
+
 from __future__ import annotations
 
 import hashlib

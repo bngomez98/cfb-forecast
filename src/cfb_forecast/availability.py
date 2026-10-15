@@ -1,4 +1,5 @@
 """Prospective data-availability receipts for a forecast cutoff."""
+
 from __future__ import annotations
 
 import json
@@ -31,7 +32,11 @@ def availability_snapshot(data_root, as_of, schedules, summaries, paths) -> dict
     manifest = _manifest(root).get("files", {})
     files = []
     clean_current = True
-    forecast_season = int(schedules.loc[schedules.start_date > at, "season"].min()) if (schedules.start_date > at).any() else int(schedules.season.max())
+    forecast_season = (
+        int(schedules.loc[schedules.start_date > at, "season"].min())
+        if (schedules.start_date > at).any()
+        else int(schedules.season.max())
+    )
     for p in paths:
         p = Path(p)
         meta = manifest.get(p.name, {})
@@ -51,21 +56,21 @@ def availability_snapshot(data_root, as_of, schedules, summaries, paths) -> dict
                 year = int(token)
         if year == forecast_season and captured is not True:
             clean_current = False
-        files.append({
-            "name": p.name,
-            "sha256": sha256(p),
-            "bytes": p.stat().st_size,
-            "source_url": meta.get("url"),
-            "downloaded_at": downloaded,
-            "capture_status": status,
-            "prospective_current_season_eligible": bool(year != forecast_season or captured is True),
-            "provenance": meta.get("provenance"),
-        })
+        files.append(
+            {
+                "name": p.name,
+                "sha256": sha256(p),
+                "bytes": p.stat().st_size,
+                "source_url": meta.get("url"),
+                "downloaded_at": downloaded,
+                "capture_status": status,
+                "prospective_current_season_eligible": bool(year != forecast_season or captured is True),
+                "provenance": meta.get("provenance"),
+            }
+        )
 
     prior = schedules[
-        schedules.fbs_game
-        & schedules.result_usable
-        & (schedules.result_available_at < at)
+        schedules.fbs_game & schedules.result_usable & (schedules.result_available_at < at)
     ].copy()
     known = set(summaries.game_id.astype(int)) if summaries is not None and "game_id" in summaries else set()
     metric_coverage = {}

@@ -1,4 +1,5 @@
 """Retrieve live college-football scores from ESPN's public scoreboard API."""
+
 import json
 import urllib.parse
 import urllib.request
@@ -62,7 +63,9 @@ def fetch_scoreboard(season, dates):
     return pd.DataFrame(rows)
 
 
-def refresh_results(data_root="data", output_root="artifacts/results", season=None, week=None, start=None, end=None):
+def refresh_results(
+    data_root="data", output_root="artifacts/results", season=None, week=None, start=None, end=None
+):
     """Poll ESPN for a date range and update normalized results for a season/week."""
     data_root = Path(data_root)
     output_root = Path(output_root)
@@ -76,11 +79,19 @@ def refresh_results(data_root="data", output_root="artifacts/results", season=No
     if week is not None:
         schedule = schedule[pd.to_numeric(schedule["week"], errors="coerce") == int(week)]
     if start:
-        start_ts = pd.Timestamp(start, tz="UTC") if pd.Timestamp(start).tz is None else pd.Timestamp(start).tz_convert("UTC")
+        start_ts = (
+            pd.Timestamp(start, tz="UTC")
+            if pd.Timestamp(start).tz is None
+            else pd.Timestamp(start).tz_convert("UTC")
+        )
     else:
         start_ts = schedule.start_date.min().normalize()
     if end:
-        end_ts = pd.Timestamp(end, tz="UTC") if pd.Timestamp(end).tz is None else pd.Timestamp(end).tz_convert("UTC")
+        end_ts = (
+            pd.Timestamp(end, tz="UTC")
+            if pd.Timestamp(end).tz is None
+            else pd.Timestamp(end).tz_convert("UTC")
+        )
     else:
         end_ts = schedule.start_date.max().normalize()
     if pd.isna(start_ts) or pd.isna(end_ts):
@@ -90,7 +101,11 @@ def refresh_results(data_root="data", output_root="artifacts/results", season=No
     if current.empty:
         raise RuntimeError("ESPN returned no games for the requested date range")
 
-    label = f"{int(season)}-week-{int(week)}" if week is not None else f"{int(season)}-{start_ts:%Y%m%d}-{end_ts:%Y%m%d}"
+    label = (
+        f"{int(season)}-week-{int(week)}"
+        if week is not None
+        else f"{int(season)}-{start_ts:%Y%m%d}-{end_ts:%Y%m%d}"
+    )
     destination = output_root / label
     snapshot_dir = destination / "snapshots"
     snapshot_dir.mkdir(parents=True, exist_ok=True)

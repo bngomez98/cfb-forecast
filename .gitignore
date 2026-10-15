@@ -1,11 +1,4 @@
 __pycache__/
 *.pyc
-.pytest_cache/
 *.egg-info/
-.venv/
-backtest.log
-forecast.log
-artifacts/weekly/
-artifacts/latest-weekly/
-artifacts/results/
-data/pbp_*.parquet
+data/clean/

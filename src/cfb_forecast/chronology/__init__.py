@@ -18,6 +18,7 @@ The implementation is split across submodules by concern:
 External callers import the public functions from this package directly;
 nothing in the import surface changed when the module was split.
 """
+
 from __future__ import annotations
 
 from ._shared import LEDGER_COLUMNS

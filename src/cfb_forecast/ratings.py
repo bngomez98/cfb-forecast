@@ -19,6 +19,7 @@ use for live forecasting:
 
 Hyperparameters are fixed for an entire evaluated season.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -90,7 +91,7 @@ class DynamicRatings:
                 raise ValueError("State clock cannot run backward")
             weeks = (at - self.clock).total_seconds() / 604800.0
             if 0 < weeks < MAX_WEEKLY_GAP_WEEKS:
-                carry = self.config.weekly_carry ** weeks
+                carry = self.config.weekly_carry**weeks
                 self.mean *= carry
                 self.cov *= carry * carry
                 diag = np.arange(self.dim)
@@ -176,19 +177,12 @@ class DynamicRatings:
             # Cross-covariance between every state coordinate and the
             # observation at each side.
             cross = np.stack(
-                [
-                    self.cov[j, :, pairs[s][0]] - self.cov[j, :, pairs[s][1]]
-                    for s in sides_with_values
-                ],
+                [self.cov[j, :, pairs[s][0]] - self.cov[j, :, pairs[s][1]] for s in sides_with_values],
                 axis=1,
             )
             # Observation covariance for the sides actually observed.
-            observation_cov = np.stack(
-                [cross[pairs[s][0]] - cross[pairs[s][1]] for s in sides_with_values]
-            )
-            residual_cov = np.full_like(
-                observation_cov, self.config.observation_correlation
-            )
+            observation_cov = np.stack([cross[pairs[s][0]] - cross[pairs[s][1]] for s in sides_with_values])
+            residual_cov = np.full_like(observation_cov, self.config.observation_correlation)
             np.fill_diagonal(residual_cov, 1.0)
 
             residual = []
@@ -279,9 +273,7 @@ def build_features(
         states.advance(at)
         if event_type == 1:
             if states.latest_update is not None and states.latest_update >= at:
-                raise AssertionError(
-                    "Result at or after forecast cutoff entered ratings"
-                )
+                raise AssertionError("Result at or after forecast cutoff entered ratings")
             features[k] = states.features(
                 record.home_id,
                 record.away_id,

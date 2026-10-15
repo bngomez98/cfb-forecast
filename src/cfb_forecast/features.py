@@ -10,6 +10,7 @@ updates from occasional corrupt rows in the ESPN feed (e.g. a pass yardage
 value of several hundred that would be dominated by a stat correction after
 the fact). Realistic game values are untouched.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -21,9 +22,20 @@ from .data import require_columns
 #: Columns required on the raw play-by-play frame when the optional
 #: deterministic cleaning step is used.
 _RAW_PLAY_COLUMNS = [
-    "game_id", "game_play_number", "pos_team_id", "def_pos_team_id",
-    "down", "distance", "statYardage", "rush", "pass", "sack",
-    "kneel_down", "penalty_no_play", "period", "start.pos_score_diff",
+    "game_id",
+    "game_play_number",
+    "pos_team_id",
+    "def_pos_team_id",
+    "down",
+    "distance",
+    "statYardage",
+    "rush",
+    "pass",
+    "sack",
+    "kneel_down",
+    "penalty_no_play",
+    "period",
+    "start.pos_score_diff",
 ]
 _RAW_PLAY_FLAG_COLUMNS = ("rush", "pass", "sack", "kneel_down", "penalty_no_play")
 
@@ -31,10 +43,10 @@ _RAW_PLAY_FLAG_COLUMNS = ("rush", "pass", "sack", "kneel_down", "penalty_no_play
 #: through 4). Chosen as hard upper bounds on physically reasonable FBS values
 #: so bad feed data cannot swing the state updates.
 _METRIC_CLIP_RANGES = {
-    1: (0.0, 15.0),   # yards per play
-    2: (0.0, 20.0),   # yards per pass
+    1: (0.0, 15.0),  # yards per play
+    2: (0.0, 20.0),  # yards per pass
     3: (-2.0, 15.0),  # yards per rush
-    4: (0.0, 1.0),    # first-down creation rate
+    4: (0.0, 1.0),  # first-down creation rate
 }
 
 
@@ -70,9 +82,7 @@ def clean_plays(plays: pd.DataFrame) -> pd.DataFrame:
         default=1.0,
     )
     plays["success"] = plays.statYardage.ge(threshold).astype(float)
-    plays["explosive"] = plays.statYardage.ge(
-        np.where(plays.pass_play, 20, 10)
-    ).astype(float)
+    plays["explosive"] = plays.statYardage.ge(np.where(plays.pass_play, 20, 10)).astype(float)
     plays["clipped_yards"] = plays.statYardage.clip(-20, 80)
     return plays
 
@@ -80,9 +90,7 @@ def clean_plays(plays: pd.DataFrame) -> pd.DataFrame:
 def aggregate_plays(plays: pd.DataFrame) -> pd.DataFrame:
     """Aggregate cleaned plays to per-game offense/defense summary rows."""
     cleaned = clean_plays(plays)
-    return cleaned.groupby(
-        ["game_id", "pos_team_id", "def_pos_team_id"], as_index=False
-    ).agg(
+    return cleaned.groupby(["game_id", "pos_team_id", "def_pos_team_id"], as_index=False).agg(
         plays=("game_play_number", "size"),
         success_rate=("success", "mean"),
         explosive_rate=("explosive", "mean"),
@@ -104,16 +112,12 @@ def observations(games: pd.DataFrame, summaries: pd.DataFrame) -> np.ndarray:
     if len(summaries):
         indexed_summaries = summaries.set_index(["game_id", "pos_team_id"])
         for side, team_column in enumerate(("home_id", "away_id")):
-            index = pd.MultiIndex.from_arrays(
-                [games.game_id, games[team_column]]
+            index = pd.MultiIndex.from_arrays([games.game_id, games[team_column]])
+            observation_tensor[:, side, 1:] = indexed_summaries.reindex(index)[list(METRICS[1:])].to_numpy(
+                dtype=float
             )
-            observation_tensor[:, side, 1:] = indexed_summaries.reindex(index)[
-                list(METRICS[1:])
-            ].to_numpy(dtype=float)
     for metric_idx, (lower, upper) in _METRIC_CLIP_RANGES.items():
-        observation_tensor[:, :, metric_idx] = np.clip(
-            observation_tensor[:, :, metric_idx], lower, upper
-        )
+        observation_tensor[:, :, metric_idx] = np.clip(observation_tensor[:, :, metric_idx], lower, upper)
     return observation_tensor
 
 
@@ -125,14 +129,8 @@ def normalization(Y: np.ndarray, mask: np.ndarray) -> tuple[np.ndarray, np.ndarr
     """
     center = np.nanmean(Y[mask], axis=(0, 1))
     scale = np.nanstd(Y[mask], axis=(0, 1))
-    if (
-        not np.isfinite(center).all()
-        or not np.isfinite(scale).all()
-        or (scale < 1e-8).any()
-    ):
-        raise ValueError(
-            "Warmup data must contain variable observations for every metric"
-        )
+    if not np.isfinite(center).all() or not np.isfinite(scale).all() or (scale < 1e-8).any():
+        raise ValueError("Warmup data must contain variable observations for every metric")
     return center, scale
 
 

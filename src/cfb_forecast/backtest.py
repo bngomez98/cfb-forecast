@@ -5,6 +5,7 @@ The default chronology is warmup 2021, fit 2022-2023, select and calibrate on
 variant selection. Production refitting through the test season only runs
 after the held-out predictions have been written to disk.
 """
+
 from __future__ import annotations
 
 import json
@@ -40,8 +41,13 @@ _OFFSEASON_CARRY_GRID = (0.5, 0.8)
 _RIDGE_ALPHA_GRID = (3.0, 10.0, 30.0, 100.0, 300.0, 1000.0)
 
 _REQUIRED_ARCHIVE_FIELDS = {
-    "game_id", "snapshot_utc", "snapshot_commit",
-    "snapshot_file", "phwin", "lineavg", "lineca",
+    "game_id",
+    "snapshot_utc",
+    "snapshot_commit",
+    "snapshot_file",
+    "phwin",
+    "lineavg",
+    "lineca",
 }
 
 
@@ -64,17 +70,16 @@ def verified_archive(path, games: pd.DataFrame):
         raise ValueError("Archive must have one snapshot per game")
     meta_path = Path(path).parent / "snapshot_commits.json"
     if not meta_path.exists():
-        raise ValueError(
-            "Archive needs snapshot_commits.json for independently retained commit metadata"
-        )
+        raise ValueError("Archive needs snapshot_commits.json for independently retained commit metadata")
     meta = {record["file"]: record for record in json.loads(meta_path.read_text())}
     for name, group in archive.groupby("snapshot_file"):
         if Path(name).name != name or name not in meta:
             raise ValueError("Unrecognized archive snapshot file")
         commit = meta[name]
-        if not group.snapshot_commit.eq(commit["sha"]).all() or not pd.to_datetime(
-            group.snapshot_utc, utc=True
-        ).eq(timestamp(commit["date"])).all():
+        if (
+            not group.snapshot_commit.eq(commit["sha"]).all()
+            or not pd.to_datetime(group.snapshot_utc, utc=True).eq(timestamp(commit["date"])).all()
+        ):
             raise ValueError(f"Snapshot commit/timestamp mismatch: {name}")
         raw_path = Path(path).parent / name
         if not raw_path.exists():
@@ -90,15 +95,11 @@ def verified_archive(path, games: pd.DataFrame):
             validate="many_to_one",
         )
         for column in ("phwin", "lineavg", "lineca"):
-            if not np.allclose(
-                check[column], check[column + "_raw"], equal_nan=True, rtol=1e-10, atol=1e-10
-            ):
+            if not np.allclose(check[column], check[column + "_raw"], equal_nan=True, rtol=1e-10, atol=1e-10):
                 raise ValueError(
                     f"Archive probabilities/lines differ from original snapshot: {name} {column}"
                 )
-    archive = archive.merge(
-        games[["game_id", "start_date"]], on="game_id", validate="one_to_one"
-    )
+    archive = archive.merge(games[["game_id", "start_date"]], on="game_id", validate="one_to_one")
     archive["snapshot_utc"] = pd.to_datetime(archive.snapshot_utc, utc=True)
     valid = (
         (archive.snapshot_utc < archive.start_date)
@@ -117,9 +118,7 @@ def _validate_season_boundaries(warmup: int, train_start: int, validation: int, 
 def _ensure_seasons_present(games: pd.DataFrame, warmup: int, test: int) -> None:
     for year in range(warmup, test + 1):
         if not (games.season == year).any():
-            raise ValueError(
-                f"No completed FBS-v-FBS games for required season {year}"
-            )
+            raise ValueError(f"No completed FBS-v-FBS games for required season {year}")
 
 
 def _run_validation_grid(
@@ -157,9 +156,7 @@ def _run_validation_grid(
                     # comes from out-of-fit validation residuals below.
                     sigma = residual_covariance(Y[train, :, 0], train_mu)
                     p = win_probability(val_mu, sigma)
-                    scores = metrics(
-                        (Y[val, 0, 0] > Y[val, 1, 0]).astype(int), p
-                    )
+                    scores = metrics((Y[val, 0, 0] > Y[val, 1, 0]).astype(int), p)
                     trials.append(
                         {
                             "variant": variant,
@@ -212,16 +209,12 @@ def _fit_variant(
     result[f"{variant}_p"] = p
     result["forecast_cutoff"] = cutoffs[te].astype(str).to_numpy()
     result["latest_result_available_at"] = [
-        str(x) if x is not None else ""
-        for x, is_test in zip(latest, te, strict=True)
-        if is_test
+        str(x) if x is not None else "" for x, is_test in zip(latest, te, strict=True) if is_test
     ]
     base = {
         "schema_version": 1,
         "variant": variant,
-        "state_config": StateConfig(
-            process_variance=best["q"], offseason_carry=best["carry"]
-        ).to_dict(),
+        "state_config": StateConfig(process_variance=best["q"], offseason_carry=best["carry"]).to_dict(),
         "metric_names": list(METRICS),
         "center": center.tolist(),
         "scale": scale.tolist(),
@@ -233,9 +226,7 @@ def _fit_variant(
         "calibration_season": validation,
         "selection_season": validation,
         "source_hashes": {p.name: sha256(p) for p in paths},
-        "input_note": (
-            "Retrospectively revised historical records; not immutable as-known statistics"
-        ),
+        "input_note": ("Retrospectively revised historical records; not immutable as-known statistics"),
     }
     write_model(out / "models" / variant / "heldout", base)
     scores = metrics(
@@ -322,9 +313,7 @@ def _compare_against_archive(
                     "losses": int((values < 0).sum()),
                     "pushes": int((values == 0).sum()),
                     "win_rate_excluding_pushes": (
-                        float((values > 0).sum() / (values != 0).sum())
-                        if (values != 0).sum()
-                        else None
+                        float((values > 0).sum() / (values != 0).sum()) if (values != 0).sum() else None
                     ),
                 }
             )
@@ -347,11 +336,7 @@ def run_backtest(
     schedules, summaries, paths = load_data(data_root)
     audit(schedules, summaries).to_csv(out / "data_audit.csv", index=False)
     games = (
-        schedules[
-            schedules.fbs_game
-            & schedules.result_usable
-            & schedules.season.between(warmup, test)
-        ]
+        schedules[schedules.fbs_game & schedules.result_usable & schedules.season.between(warmup, test)]
         .copy()
         .reset_index(drop=True)
     )
@@ -364,9 +349,7 @@ def run_backtest(
     final_train = games.season.between(train_start, validation).to_numpy()
     archive, explicit = verified_archive(archive_path, games)
 
-    cache, trials = _run_validation_grid(
-        games, Y, center, scale, train, val, explicit, warmup
-    )
+    cache, trials = _run_validation_grid(games, Y, center, scale, train, val, explicit, warmup)
     pd.DataFrame(trials).to_csv(out / "validation_trials.csv", index=False)
 
     selected = {
@@ -388,9 +371,17 @@ def run_backtest(
     result = games.loc[
         te,
         [
-            "game_id", "season", "week", "start_date",
-            "home_id", "away_id", "home_team", "away_team",
-            "home_points", "away_points", "neutral_site",
+            "game_id",
+            "season",
+            "week",
+            "start_date",
+            "home_id",
+            "away_id",
+            "home_team",
+            "away_team",
+            "home_points",
+            "away_points",
+            "neutral_site",
         ],
     ].copy()
     result["home_win"] = (result.home_points > result.away_points).astype(int)
@@ -401,11 +392,25 @@ def run_backtest(
     summaries_out: list[dict] = []
     for variant, best in selected.items():
         _, production_model = _fit_variant(
-            variant, best, cache,
-            games, Y, center, scale,
-            train, val, final_train, te,
-            train_start, test, warmup, validation,
-            paths, out, result, summaries_out,
+            variant,
+            best,
+            cache,
+            games,
+            Y,
+            center,
+            scale,
+            train,
+            val,
+            final_train,
+            te,
+            train_start,
+            test,
+            warmup,
+            validation,
+            paths,
+            out,
+            result,
+            summaries_out,
         )
         production[variant] = production_model
 

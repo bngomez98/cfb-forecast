@@ -18,6 +18,7 @@ that catches the pre-report chatter and the items that never land on an
 official injury report (transfers, suspensions, depth-chart changes).
 Together they go on the forecast row and into the capture log.
 """
+
 from __future__ import annotations
 
 import json
@@ -35,12 +36,9 @@ from .data import timestamp
 
 log = logging.getLogger(__name__)
 
-_ESPN_NEWS_ENDPOINT = (
-    "https://site.api.espn.com/apis/site/v2/sports/football/college-football/news"
-)
+_ESPN_NEWS_ENDPOINT = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/news"
 _ESPN_TEAM_NEWS_ENDPOINT = (
-    "https://site.api.espn.com/apis/site/v2/sports/football/college-football/news"
-    "?team={team_id}"
+    "https://site.api.espn.com/apis/site/v2/sports/football/college-football/news?team={team_id}"
 )
 
 STATUS_CAPTURED = "captured"
@@ -223,15 +221,9 @@ def fetch_news(
     cadence to catch new injuries and roster changes.
     """
     url = (
-        _ESPN_TEAM_NEWS_ENDPOINT.format(team_id=int(team_id))
-        if team_id is not None
-        else _ESPN_NEWS_ENDPOINT
+        _ESPN_TEAM_NEWS_ENDPOINT.format(team_id=int(team_id)) if team_id is not None else _ESPN_NEWS_ENDPOINT
     )
-    observed_ts = (
-        timestamp(observed_at)
-        if observed_at is not None
-        else datetime.now(UTC)
-    )
+    observed_ts = timestamp(observed_at) if observed_at is not None else datetime.now(UTC)
     observed = observed_ts.isoformat()
     try:
         payload = _request_json(url, timeout=timeout)

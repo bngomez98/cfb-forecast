@@ -7,6 +7,7 @@ games on the same slate are discarded here rather than treated as if they had
 been forecast at their future cutoffs; those are reforecast later by
 ``run_chronological_update`` when their cutoffs arrive.
 """
+
 from __future__ import annotations
 
 import json
@@ -182,9 +183,8 @@ def bootstrap_from_frozen_batch(
         )
         for rec in due_clean.to_dict("records")
     ]
-    ledger = (
-        pd.DataFrame(rows, columns=LEDGER_COLUMNS)
-        .sort_values(["scheduled_cutoff", "kickoff", "game_id"])
+    ledger = pd.DataFrame(rows, columns=LEDGER_COLUMNS).sort_values(
+        ["scheduled_cutoff", "kickoff", "game_id"]
     )
     ledger.to_csv(root / "ledger.csv", index=False)
     ledger_sha = sha256(root / "ledger.csv")

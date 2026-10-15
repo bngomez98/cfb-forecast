@@ -12,6 +12,7 @@ This module exposes two functions: one to fetch a date's scoreboard, and
 one to fetch the current week's upcoming games. Both return normalized
 rows; failures return an empty list with a reason, never a guess.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,9 +27,7 @@ from .data import timestamp
 
 log = logging.getLogger(__name__)
 
-_NFL_SCOREBOARD_ENDPOINT = (
-    "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
-)
+_NFL_SCOREBOARD_ENDPOINT = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
 
 STATUS_CAPTURED = "captured"
 STATUS_NETWORK_ERROR = "network_or_parse_error"
@@ -84,9 +83,7 @@ class NFLScoreboardCapture:
 
 
 def _request_json(url: str, timeout: float = 15.0) -> dict:
-    request = urllib.request.Request(
-        url, headers={"User-Agent": "cfb-forecast/0.3"}
-    )
+    request = urllib.request.Request(url, headers={"User-Agent": "cfb-forecast/0.3"})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
@@ -152,11 +149,7 @@ def fetch_nfl_scoreboard(
     date_str = scoreboard_date.strftime("%Y%m%d")
     query = urllib.parse.urlencode({"dates": date_str})
     url = f"{_NFL_SCOREBOARD_ENDPOINT}?{query}"
-    observed_ts = (
-        timestamp(observed_at)
-        if observed_at is not None
-        else datetime.now(UTC)
-    )
+    observed_ts = timestamp(observed_at) if observed_at is not None else datetime.now(UTC)
     observed = observed_ts.isoformat() if hasattr(observed_ts, "isoformat") else str(observed_ts)
     try:
         payload = _request_json(url, timeout=timeout)

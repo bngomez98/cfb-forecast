@@ -1,6 +1,7 @@
-from pathlib import Path
 import ast
 import json
+from pathlib import Path
+
 import pandas as pd
 import streamlit as st
 
@@ -10,9 +11,11 @@ ARTIFACT_ROOT = Path("/app/artifacts")
 DATA_ROOT = Path("/app/data")
 LATEST = ARTIFACT_ROOT / "latest-weekly"
 
+
 @st.cache_data(ttl=300)
 def load_csv(path: str):
     return pd.read_csv(path)
+
 
 @st.cache_data(ttl=300)
 def load_schedule(root: str):
@@ -31,6 +34,7 @@ def load_schedule(root: str):
     schedule["away_points"] = pd.to_numeric(schedule["away_points"], errors="coerce")
     schedule["completed"] = schedule["completed"].astype(str).str.lower().isin(["true", "1"])
     return schedule.drop_duplicates("game_id")
+
 
 @st.cache_data(ttl=300)
 def load_live_results(root: str):
@@ -93,6 +97,7 @@ def grade_forecast(predictions, schedule):
     graded["total_error"] = graded.projected_total - graded.actual_total
     return graded
 
+
 st.title("CFB Forecast Dashboard")
 st.caption("Weekly predictions and historical results backtesting")
 
@@ -102,12 +107,105 @@ if not forecast_path.exists():
     st.info("Run the weekly forecast first, then refresh this page.")
     st.stop()
 
-page = st.sidebar.radio("View", ["Current forecast", "Historical backtest"])
+page = st.sidebar.radio("View", ["Current forecast", "Historical backtest", "Learning & blend audit"])
 schedule = load_schedule(str(DATA_ROOT))
 live_results = load_live_results(str(ARTIFACT_ROOT))
 if not live_results.empty:
     live_results["completed"] = live_results["is_final"]
-    schedule = pd.concat([schedule, live_results[["game_id", "completed", "home_points", "away_points"]]], ignore_index=True).drop_duplicates("game_id", keep="last")
+    schedule = pd.concat(
+        [schedule, live_results[["game_id", "completed", "home_points", "away_points"]]], ignore_index=True
+    ).drop_duplicates("game_id", keep="last")
+
+if page == "Learning & blend audit":
+    st.header("Continuous learning: expert blend and settled-prediction audit")
+    st.caption(
+        "Every forecast is frozen before kickoff into artifacts/learning/predictions.jsonl, "
+        "graded when the final score settles, and used to update Beta posteriors over each "
+        "expert's credibility. The blend weights below are what tomorrow's forecasts use."
+    )
+    ledger_dir = ARTIFACT_ROOT / "learning"
+    state_path = ledger_dir / "blend_state.json"
+
+    @st.cache_data(ttl=120)
+    def load_blend_weights(path: str):
+        from cfb_forecast.adaptive import AdaptiveBlend
+
+        return AdaptiveBlend.load(path).weights()
+
+    @st.cache_data(ttl=120)
+    def load_learning_audit(path: str):
+        from cfb_forecast.learning import learning_audit
+
+        return learning_audit(ledger_dir=path, blend_path=Path(path) / "blend_state.json")
+
+    if not (ledger_dir / "predictions.jsonl").exists():
+        st.info("No learning ledger yet. Run `cfb-forecast daily-cycle` or `learning-freeze` first.")
+        st.stop()
+
+    try:
+        audit = load_learning_audit(str(ledger_dir))
+    except Exception as exc:  # pragma: no cover - surfaced to the user
+        st.error(f"Audit failed: {exc}")
+        st.stop()
+
+    if state_path.exists():
+        try:
+            weights = load_blend_weights(str(state_path))
+            cols = st.columns(len(weights))
+            for column, (name, weight) in zip(cols, weights.items(), strict=True):
+                column.metric(f"{name} weight", f"{weight:.1%}")
+        except Exception as exc:  # pragma: no cover
+            st.warning(f"Could not read blend state: {exc}")
+
+    st.subheader("Settled prospective predictions by expert")
+    rows = []
+    for name, stats in audit.get("experts", {}).items():
+        if stats.get("status") == "insufficient" or "hit_rate" not in stats:
+            rows.append({"Expert": name, "Games": stats.get("games", 0), "Note": "insufficient sample"})
+            continue
+        lo, hi = stats["hit_rate_ci95"]
+        rows.append(
+            {
+                "Expert": name,
+                "Games": stats["games"],
+                "Hit rate": f"{stats['hit_rate']:.1%}",
+                "95% CI (Clopper-Pearson)": f"{lo:.1%} – {hi:.1%}",
+                "Brier": round(stats["brier"], 4),
+                "Log loss": round(stats["log_loss"], 4),
+                "Calib. slope": round(stats["calibration_slope"], 2),
+                "Calib. intercept": round(stats["calibration_intercept"], 2),
+            }
+        )
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.caption(
+        "Calibration slope near 1.0 with intercept near 0.0 means probabilities are honest; "
+        "slope < 1 indicates overconfidence (the early-season blowout failure mode)."
+    )
+
+    boot = audit.get("paired_bootstrap", {})
+    if boot:
+        st.subheader("Paired bootstrap: blend vs each single expert (log-loss gain)")
+        boot_rows = []
+        for name, entry in boot.items():
+            if entry.get("status") == "insufficient":
+                boot_rows.append({"Vs": name, "Games": entry.get("games", 0), "Note": "insufficient sample"})
+                continue
+            lo, hi = entry["ci95"]
+            boot_rows.append(
+                {
+                    "Vs": name,
+                    "Games": entry["games"],
+                    "Mean log-loss gain": round(entry["mean_logloss_gain"], 4),
+                    "95% CI": f"{lo:.4f} – {hi:.4f}",
+                    "p(blend better)": round(entry["p_blend_better"], 3),
+                }
+            )
+        st.dataframe(pd.DataFrame(boot_rows), use_container_width=True, hide_index=True)
+
+    for note in audit.get("notes", []):
+        st.info(note)
+    st.write(f"Ledger: `{ledger_dir / 'predictions.jsonl'}` — {audit.get('settled_games', 0)} settled games.")
+    st.stop()
 
 if page == "Historical backtest":
     st.header("Historical backtest against actual results")
@@ -115,7 +213,12 @@ if page == "Historical backtest":
     if not directories:
         st.warning("No prior forecast artifacts were found.")
         st.stop()
-    labels = {str(path): f"{path.name} ({load_manifest(path / 'weekly_manifest.json').get('as_of', '')[:10]})" if (path / "weekly_manifest.json").exists() else path.name for path in directories}
+    labels = {
+        str(path): f"{path.name} ({load_manifest(path / 'weekly_manifest.json').get('as_of', '')[:10]})"
+        if (path / "weekly_manifest.json").exists()
+        else path.name
+        for path in directories
+    }
     selected_path = st.selectbox("Forecast run", list(labels), format_func=lambda value: labels[value])
     predictions = load_csv(str(Path(selected_path) / "forecasts.csv"))
     graded = grade_forecast(predictions, schedule)
@@ -136,24 +239,56 @@ if page == "Historical backtest":
     m5.metric("Margin MAE", f"{margin_mae:.1f}")
     st.metric("Total MAE", f"{total_mae:.1f}")
 
-    display = graded[[
-        "kickoff", "away_team", "home_team", "expected_away_score", "expected_home_score",
-        "away_points", "home_points", "home_win_probability", "predicted_home_win",
-        "actual_home_win", "correct", "margin_error", "total_error",
-    ]].copy()
-    display.columns = ["Kickoff", "Away", "Home", "Pred away", "Pred home", "Actual away", "Actual home", "Home win probability", "Predicted home win", "Actual home win", "Correct", "Margin error", "Total error"]
+    display = graded[
+        [
+            "kickoff",
+            "away_team",
+            "home_team",
+            "expected_away_score",
+            "expected_home_score",
+            "away_points",
+            "home_points",
+            "home_win_probability",
+            "predicted_home_win",
+            "actual_home_win",
+            "correct",
+            "margin_error",
+            "total_error",
+        ]
+    ].copy()
+    display.columns = [
+        "Kickoff",
+        "Away",
+        "Home",
+        "Pred away",
+        "Pred home",
+        "Actual away",
+        "Actual home",
+        "Home win probability",
+        "Predicted home win",
+        "Actual home win",
+        "Correct",
+        "Margin error",
+        "Total error",
+    ]
     display["Home win probability"] = display["Home win probability"].map(lambda x: f"{x:.1%}")
     st.subheader("Game results")
     st.dataframe(display, use_container_width=True, hide_index=True)
 
     st.subheader("Prediction versus actual score")
-    chart = graded[["away_team", "home_team", "expected_home_score", "expected_away_score", "home_points", "away_points"]].copy()
+    chart = graded[
+        ["away_team", "home_team", "expected_home_score", "expected_away_score", "home_points", "away_points"]
+    ].copy()
     chart["matchup"] = chart.away_team + " at " + chart.home_team
-    chart = chart.set_index("matchup")[["expected_away_score", "away_points", "expected_home_score", "home_points"]]
+    chart = chart.set_index("matchup")[
+        ["expected_away_score", "away_points", "expected_home_score", "home_points"]
+    ]
     chart.columns = ["Pred away", "Actual away", "Pred home", "Actual home"]
     st.bar_chart(chart, y_label="Points")
     with st.expander("Backtest definition"):
-        st.write("Completed results are joined by immutable game_id. Winner accuracy uses predicted home win probability >= 50%. Brier score grades the home-win probability. Score, margin, and total errors are mean absolute errors.")
+        st.write(
+            "Completed results are joined by immutable game_id. Winner accuracy uses predicted home win probability >= 50%. Brier score grades the home-win probability. Score, margin, and total errors are mean absolute errors."
+        )
     st.stop()
 
 # Current forecast view
@@ -176,7 +311,9 @@ with st.sidebar:
 
 view = df.copy()
 view["winner"] = view.apply(probability_label, axis=1)
-view["winner_probability"] = view.apply(lambda r: r.home_win_probability if r.winner == r.home_team else 1 - r.home_win_probability, axis=1)
+view["winner_probability"] = view.apply(
+    lambda r: r.home_win_probability if r.winner == r.home_team else 1 - r.home_win_probability, axis=1
+)
 if selected_teams:
     view = view[view.home_team.isin(selected_teams) | view.away_team.isin(selected_teams)]
 view = view[view.winner_probability >= min_confidence]
@@ -198,8 +335,34 @@ st.subheader("Projected games")
 if view.empty:
     st.info("No games match the selected filters.")
 else:
-    display = view[["kickoff", "away_team", "home_team", "expected_away_score", "expected_home_score", "projected_home_margin", "projected_total", "winner", "winner_probability", "margin_interval_80", "total_interval_80"]].copy()
-    display.columns = ["Kickoff", "Away", "Home", "Away score", "Home score", "Home margin", "Total", "Pick", "Pick probability", "Margin 80% interval", "Total 80% interval"]
+    display = view[
+        [
+            "kickoff",
+            "away_team",
+            "home_team",
+            "expected_away_score",
+            "expected_home_score",
+            "projected_home_margin",
+            "projected_total",
+            "winner",
+            "winner_probability",
+            "margin_interval_80",
+            "total_interval_80",
+        ]
+    ].copy()
+    display.columns = [
+        "Kickoff",
+        "Away",
+        "Home",
+        "Away score",
+        "Home score",
+        "Home margin",
+        "Total",
+        "Pick",
+        "Pick probability",
+        "Margin 80% interval",
+        "Total 80% interval",
+    ]
     display["Pick probability"] = display["Pick probability"].map(lambda x: f"{x:.1%}")
     for column in ["Away score", "Home score", "Home margin", "Total"]:
         display[column] = display[column].map(lambda x: f"{x:.1f}")

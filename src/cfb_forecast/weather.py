@@ -19,6 +19,7 @@ step returns a status row carrying the failure reason and leaves the
 weather columns empty. Downstream consumers decide whether that counts as a
 blocker.
 """
+
 from __future__ import annotations
 
 import json
@@ -106,9 +107,7 @@ def _request_json(url: str, timeout: float = 15.0) -> dict:
     Any non-2xx response, timeout, DNS failure or parse error is raised to
     the caller; the caller decides whether to convert that into a sentinel.
     """
-    request = urllib.request.Request(
-        url, headers={"User-Agent": "cfb-forecast/0.3"}
-    )
+    request = urllib.request.Request(url, headers={"User-Agent": "cfb-forecast/0.3"})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
@@ -263,9 +262,7 @@ def capture_weather(
     kickoff_ts = timestamp(kickoff)
     reference_now = datetime.now(UTC) if now is None else now
     observed_ts = (
-        timestamp(observed_at)
-        if observed_at is not None
-        else pd.Timestamp(reference_now).tz_convert("UTC")
+        timestamp(observed_at) if observed_at is not None else pd.Timestamp(reference_now).tz_convert("UTC")
     )
     if indoor:
         return _indoor_snapshot(observed_ts, "Indoor venue; API call skipped.")
@@ -337,9 +334,7 @@ def enrich_forecasts_with_weather(
         kickoff = row.kickoff
         game_id = int(row.game_id)
         if home_id not in indexed.index:
-            snapshot = capture_weather(
-                kickoff, observed_at=observed_at, timeout=timeout, now=now
-            )
+            snapshot = capture_weather(kickoff, observed_at=observed_at, timeout=timeout, now=now)
         else:
             venue_row = indexed.loc[home_id]
             latitude = float(venue_row["latitude"])

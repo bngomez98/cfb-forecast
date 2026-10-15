@@ -3,6 +3,7 @@
 Network and disk fetches are mocked. The historical path uses a locally
 written parquet file to stand in for the SportsDataverse download.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -250,9 +251,7 @@ def test_fetch_historical_rosters_span_covers_each_season(monkeypatch, tmp_path)
         frame.to_parquet(target)
 
     monkeypatch.setattr(rosters_module, "_download_file", fake_download)
-    captures = fetch_historical_rosters_span(
-        2021, 2024, cache_dir=tmp_path / "rosters"
-    )
+    captures = fetch_historical_rosters_span(2021, 2024, cache_dir=tmp_path / "rosters")
     assert [capture.season for capture in captures] == [2021, 2022, 2023, 2024]
     assert all(capture.status == STATUS_CAPTURED for capture in captures)
     assert seasons_requested == [2021, 2022, 2023, 2024]
@@ -267,9 +266,7 @@ def test_fetch_historical_rosters_span_rejects_inverted_range(tmp_path):
         raise AssertionError("expected ValueError for inverted range")
 
 
-def test_fetch_historical_rosters_span_continues_past_single_failure(
-    monkeypatch, tmp_path
-):
+def test_fetch_historical_rosters_span_continues_past_single_failure(monkeypatch, tmp_path):
     calls: list[int] = []
 
     def half_fails(url, target, timeout=60.0):
@@ -295,9 +292,7 @@ def test_fetch_historical_rosters_span_continues_past_single_failure(
         ).to_parquet(target)
 
     monkeypatch.setattr(rosters_module, "_download_file", half_fails)
-    captures = fetch_historical_rosters_span(
-        2021, 2023, cache_dir=tmp_path / "rosters"
-    )
+    captures = fetch_historical_rosters_span(2021, 2023, cache_dir=tmp_path / "rosters")
     statuses = {capture.season: capture.status for capture in captures}
     assert statuses[2021] == STATUS_CAPTURED
     assert statuses[2022] == STATUS_NETWORK_ERROR
