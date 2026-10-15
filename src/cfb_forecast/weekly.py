@@ -130,6 +130,11 @@ def _forecast_email(preds):
 
 
 def _validation_email(graded):
+    graded = graded.copy()
+    # rows restored from the ledger store finals as home_points/away_points
+    if "home_points" not in graded.columns and "actual_home_points" in graded.columns:
+        graded["home_points"] = graded["actual_home_points"]
+        graded["away_points"] = graded["actual_away_points"]
     m = metrics(graded.actual_home_win, graded.home_win_probability,
                 graded.projected_home_margin, graded.home_points - graded.away_points,
                 graded.projected_total, graded.home_points + graded.away_points)
@@ -206,12 +211,18 @@ def validate_pending(data_root, model_root, db_path, season, recipient=DEFAULT_R
         if graded.empty:
             continue
         g = log.log_validations(run_id, graded)
+        # email uses the forecast row's projections; carry them onto the graded frame
+        graded["as_of"] = graded["issued_at"]
+        graded["expected_home_score"] = graded["projected_home_margin"] / 2 + graded["projected_total"] / 2
+        graded["expected_away_score"] = graded["projected_total"] - graded["expected_home_score"]
         log.conn.execute("UPDATE runs SET validated_at=? WHERE run_id=?",
                          (validation_sunday(row.iloc[0].last_kickoff).isoformat(), run_id))
         log.conn.commit()
         _email(recipient, log, run_id, "validation",
                f"[CFB] {int(season)} week {int(week)} validation complete ({g} games)",
-               _validation_email(graded))
+               _validation_email(graded.rename(columns={
+                   "home_points": "actual_home_points",
+                   "away_points": "actual_away_points"})))
         done.append((run_id, week, g))
     return done
 

@@ -1,0 +1,11 @@
+{
+  "provider": "ESPN public scoreboard API",
+  "endpoint": "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard",
+  "season": 2026,
+  "week": null,
+  "start": "2026-08-27T00:00:00+00:00",
+  "end": "2026-12-12T00:00:00+00:00",
+  "retrieved_at": "2026-10-12T22:35:10.421164+00:00",
+  "games": 903,
+  "final_games": 448
+}

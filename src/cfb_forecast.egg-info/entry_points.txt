@@ -1,0 +1,2 @@
+[console_scripts]
+cfb-forecast = cfb_forecast.cli:main

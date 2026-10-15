@@ -60,6 +60,14 @@ def main():
     pr.add_argument("--now",default=None); pr.add_argument("--lead-hours",type=float,default=24.0)
     pr.add_argument("--market",default="data/market_history.csv"); pr.add_argument("--market-provider",default=None); pr.add_argument("--draws",type=int,default=50000)
     pr.add_argument("--primary-lateness-minutes",type=float,default=60.0); pr.add_argument("--skip-market-capture",action="store_true")
+    app = sub.add_parser("up", help="Run the forecasting application: autonomous daemon (R analysis -> weekly forecast -> Sunday validation -> ledger -> email), driven by config.toml")
+    app.add_argument("--config", default=None); app.add_argument("--once", action="store_true", help="execute a single pass and exit")
+    st_ = sub.add_parser("status", help="Live application state read from the ledger database")
+    st_.add_argument("--config", default=None)
+    sh = sub.add_parser("show", help="Current forecasts per game from the ledger")
+    sh.add_argument("--config", default=None); sh.add_argument("--week", type=int, default=None); sh.add_argument("--team", default=None)
+    sp = sub.add_parser("stop", help="Stop a running daemon via its pid file")
+    sp.add_argument("--config", default=None)
     wf=sub.add_parser("weekly-cycle",help="Autonomous pass: R source analysis, point-in-time forecast at each FPS week start, validation after that week's Sunday; logs to SQLite and emails bngomez@ieee.org")
     wf.add_argument("--data",default="data"); wf.add_argument("--model",default="artifacts/backtest/model")
     wf.add_argument("--db",default="cfb_ledger.db"); wf.add_argument("--season",type=int,required=True)
@@ -239,6 +247,19 @@ def main():
         results,manifest=refresh_results(args.data,args.out,args.season,args.week,args.start,args.end)
         print(pd.DataFrame([manifest]).to_string(index=False))
         print(results[["game_id","status","is_final","away_team","away_points","home_team","home_points"]].tail(20).to_string(index=False))
+    elif args.command in ("up", "status", "show", "stop"):
+        from .application import daemon, load_config, show, status, stop
+        cfg = load_config(args.config)
+        if args.command == "up":
+            daemon(cfg, once=args.once)
+        elif args.command == "stop":
+            print("stopped" if stop(cfg) else "no running daemon")
+        elif args.command == "status":
+            import json as _json
+            print(_json.dumps(status(cfg), indent=2, default=str))
+        else:
+            frame = show(cfg, week=args.week, team=args.team)
+            print(frame.to_string(index=False) if len(frame) else "no forecasts in ledger")
     elif args.command in ("weekly-cycle","season-backtest"):
         from .weekly import run_cycle
         results,pending=run_cycle(args.data,args.model,args.db,args.season,now=args.now,

@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS source_checks (
 );
 CREATE TABLE IF NOT EXISTS forecasts (
     run_id INTEGER NOT NULL REFERENCES runs(run_id),
+    week INTEGER,
     game_id INTEGER NOT NULL,
     issued_at TEXT NOT NULL,
     kickoff TEXT NOT NULL,
@@ -69,6 +70,11 @@ class RunLog:
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(str(db_path))
         self.conn.executescript(SCHEMA)
+        # migration: older databases predate the forecasts.week column
+        cols = [c[1] for c in self.conn.execute("PRAGMA table_info(forecasts)")]
+        if "week" not in cols:
+            self.conn.execute("ALTER TABLE forecasts ADD COLUMN week INTEGER")
+            self.conn.commit()
 
     @staticmethod
     def _now():
@@ -103,16 +109,16 @@ class RunLog:
         for r in frame.itertuples(index=False):
             payload = {k: v for k, v in r._asdict().items()}
             rows.append((
-                run_id, int(r.game_id), str(r.as_of), str(r.kickoff),
+                run_id, int(getattr(r, "week", 0)), int(r.game_id), str(r.as_of), str(r.kickoff),
                 str(r.home_team), str(r.away_team),
                 float(r.expected_home_score), float(r.expected_away_score),
                 float(r.projected_home_margin), float(r.projected_total),
                 float(r.home_win_probability), json.dumps(payload, default=str),
             ))
         self.conn.executemany(
-            "INSERT INTO forecasts(run_id,game_id,issued_at,kickoff,home_team,away_team,"
+            "INSERT INTO forecasts(run_id,week,game_id,issued_at,kickoff,home_team,away_team,"
             "expected_home_score,expected_away_score,projected_home_margin,projected_total,"
-            "home_win_probability,payload) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", rows,
+            "home_win_probability,payload) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", rows,
         )
         self.conn.commit()
         return len(rows)
@@ -144,7 +150,15 @@ class RunLog:
         return self.conn.execute(q, (int(season),)).fetchall()
 
     def week_forecasts(self, run_id):
-        return pd_read(self.conn, "SELECT * FROM forecasts WHERE run_id=?", (run_id,))
+        frame = pd_read(self.conn, "SELECT * FROM forecasts WHERE run_id=?", (run_id,))
+        if frame.empty:
+            return frame
+        meta = self.conn.execute(
+            "SELECT season_type, as_of FROM runs WHERE run_id=?", (int(run_id),)
+        ).fetchone()
+        frame["season_type"] = meta[0] if meta else None
+        frame["as_of"] = meta[1] if meta else frame["issued_at"]
+        return frame
 
     def close(self):
         self.conn.close()
