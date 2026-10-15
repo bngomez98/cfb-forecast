@@ -83,6 +83,36 @@ jobs:
           else
             python -m cfb_forecast sunday-run --data runtime/data --artifacts runtime/artifacts --season "$SEASON"
           fi
+      - name: Write a run summary to the Actions page
+        if: always() && steps.schedule.outputs.run == 'true'
+        continue-on-error: true
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path("runtime/artifacts/latest/run_manifest.json")
+          lines = [f"## Sunday FBS forecast, season {os.environ['SEASON']}", ""]
+          if not path.exists():
+              lines.append("No run manifest was written. Check the step logs above for the error.")
+          else:
+              receipt = json.loads(path.read_text())
+              for key in ("status", "run_id", "as_of", "games", "price_rows", "slate_start", "slate_end"):
+                  if key in receipt:
+                      lines.append(f"- **{key}**: {receipt[key]}")
+              for key in ("learning", "distribution"):
+                  part = receipt.get(key)
+                  if isinstance(part, dict):
+                      detail = part.get("message") or part.get("reason") or ""
+                      lines.append(f"- **{key}**: {part.get('status', 'unknown')} {detail}".rstrip())
+              validation = receipt.get("validation")
+              reports = validation if isinstance(validation, list) else [validation] if isinstance(validation, dict) else []
+              for report in reports:
+                  scalars = {k: v for k, v in report.items() if isinstance(v, (int, float, str))}
+                  if scalars:
+                      lines.append("- **validation**: " + ", ".join(f"{k} {v}" for k, v in scalars.items()))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("\n".join(lines) + "\n")
+          PY
       - name: Save runtime for next Sunday's validation
         if: always() && steps.schedule.outputs.run == 'true'
         uses: actions/upload-artifact@v4

@@ -28,3 +28,11 @@ where = ["src"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = ["--basetemp=.pytest_tmp"]
+
+[tool.ruff]
+extend-exclude = ["web", ".pytest_tmp"]
+
+[tool.ruff.lint]
+# Only rules that point at code that would fail when it runs (syntax errors,
+# undefined names, broken comparisons), not style. CI runs `ruff check`.
+select = ["E9", "F63", "F7", "F82"]
