@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from cfb_forecast.config import StateConfig
+from cfb_forecast.config import METRICS, StateConfig
 from cfb_forecast.storage.database import connect
 from cfb_forecast.ingest.features import feature_columns
 from cfb_forecast.modeling.learning import learn, validate_in_r
@@ -29,7 +29,7 @@ def training_files(tmp_path):
     pd.DataFrame(summaries).to_parquet(data / "adv_team_test.parquet", index=False)
     (data / "source_manifest.json").write_text("{}")
     cols = feature_columns("score")
-    model = dict(schema_version=1, variant="score", warmup_season=2021, train_start_season=2022, training_through_season=2022, center=[24, 6, 8, 5, .3], scale=[10, 1, 1, 1, .1], state_config=StateConfig().to_dict(), score_covariance=[[144, 0], [0, 144]], head=dict(variant="score", alpha=10, cols=cols, mean=[0] * len(cols), scale=[1] * len(cols), coef=[0] * len(cols), intercept=24))
+    model = dict(schema_version=1, variant="score", metric_names=list(METRICS), warmup_season=2021, train_start_season=2022, training_through_season=2022, center=[24, 6, 8, 5, .3], scale=[10, 1, 1, 1, .1], state_config=StateConfig().to_dict(), score_covariance=[[144, 0], [0, 144]], head=dict(variant="score", alpha=10, cols=cols, mean=[0] * len(cols), scale=[1] * len(cols), coef=[0] * len(cols), intercept=24))
     base = tmp_path / "base"
     write_model(base, model)
     return data, base, tmp_path / "learning", tmp_path / "model.sqlite3"
