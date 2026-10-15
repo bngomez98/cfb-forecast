@@ -105,7 +105,7 @@ def detail_page(page):
         st.caption("Same-season and prior-season facts stored after each forecast run. Missing files stay missing.")
         try:
             from contextlib import closing
-            from cfb_forecast.database import connect
+            from cfb_forecast.storage.database import connect
             from cfb_forecast.paths import database_path
             with closing(connect(database_path())) as conn:
                 names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}

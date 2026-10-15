@@ -114,7 +114,7 @@ jobs:
           clean/bin/cfb-forecast --help >/dev/null
           clean/bin/cfb-pipeline --help >/dev/null
           clean/bin/cfb-data-watchdog --help >/dev/null
-          clean/bin/python -c "import importlib.resources as r; assert r.files('cfb_forecast').joinpath('validate_learning.R').is_file(), 'R script missing from wheel'"
+          clean/bin/python -c "import importlib.resources as r; assert r.files('cfb_forecast.modeling').joinpath('validate_learning.R').is_file(), 'R script missing from wheel'"
       - uses: actions/upload-artifact@v4
         with:
           name: cfb-forecast-dist

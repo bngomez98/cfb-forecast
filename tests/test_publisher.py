@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from cfb_forecast.publisher import board_row, publish_forecast_update
-from cfb_forecast.sources import source_registry
+from cfb_forecast.pipeline.publisher import board_row, publish_forecast_update
+from cfb_forecast.ingest.sources import source_registry
 
 
 def test_board_row_names_the_winner_and_confidence():

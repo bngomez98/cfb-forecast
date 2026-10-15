@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from cfb_forecast.evaluate import calibration, calibration_test
+from cfb_forecast.evaluation.evaluate import calibration, calibration_test
 
 
 def test_honest_probabilities_pass_and_biased_ones_fail():

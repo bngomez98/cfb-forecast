@@ -6,7 +6,7 @@ sends the forecast email when SMTP is configured.
 """
 
 import os
-from cfb_forecast.sunday import sunday_run
+from cfb_forecast.pipeline.sunday import sunday_run
 
 
 def main():

@@ -11,8 +11,8 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from .database import connect, insert_forecasts, list_published_board, register_model
-from .forecast import forecast
+from .storage.database import connect, insert_forecasts, list_published_board, register_model
+from .modeling.forecast import forecast
 
 from .paths import data_root, artifacts_root, model_root, database_path
 
@@ -65,7 +65,7 @@ def ready():
 
 @app.get("/awareness")
 def awareness():
-    from .awareness import awareness_report
+    from .monitoring.awareness import awareness_report
     report = awareness_report(DATA_ROOT, MODEL_ROOT, DATABASE_PATH)
     if report["overall"] != "pass":
         raise HTTPException(status_code=503, detail=report)
@@ -88,7 +88,7 @@ def model_info():
 @app.post("/api/forecasts")
 def create_forecasts(request: ForecastRequest):
     from uuid import uuid4
-    from .data import timestamp
+    from .ingest.data import timestamp
     if request.model_path is not None or request.market_path is not None:
         raise HTTPException(status_code=400, detail="Server controls model and market artifact paths")
     try:
@@ -119,7 +119,7 @@ def create_forecasts(request: ForecastRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     manifest = {"request": request.model_dump(), "model": model}
     from contextlib import closing
-    from .data import sha256
+    from .ingest.data import sha256
     with closing(connect(DATABASE_PATH)) as conn:
         model_id = register_model(conn, sha256(model_path / "model.json"), str(model_path), manifest)
         insert_forecasts(conn, model_id, _records(frame))
@@ -136,7 +136,7 @@ def get_forecasts(season: int | None = Query(default=None)):
 @app.get("/api/learning")
 def learning_status():
     from contextlib import closing
-    from .learning import SCHEMA
+    from .modeling.learning import SCHEMA
     with closing(connect(DATABASE_PATH)) as conn:
         conn.executescript(SCHEMA)
         rows = conn.execute("SELECT report_json FROM learning_versions ORDER BY created_at DESC LIMIT 20").fetchall()
@@ -154,7 +154,7 @@ def pipeline_status():
 @app.get("/api/watchdog")
 def watchdog_status():
     from contextlib import closing
-    from .data_watchdog import WATCHDOG_SCHEMA
+    from .monitoring.data_watchdog import WATCHDOG_SCHEMA
     with closing(connect(DATABASE_PATH)) as conn:
         conn.executescript(WATCHDOG_SCHEMA)
         row = conn.execute("SELECT details_json FROM watchdog_events WHERE event_type='check' ORDER BY id DESC LIMIT 1").fetchone()
