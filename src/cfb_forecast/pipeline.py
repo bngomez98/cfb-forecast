@@ -4,8 +4,7 @@ One entry point replaces the earlier shell and Docker wrapper scripts. Every
 stage runs in-process, so the same command works on a laptop, inside the
 container image and in GitHub Actions:
 
-    cfb-forecast pipeline weekly --season 2026
-    cfb-pipeline weekly --season 2026            # installed alias
+    cfb-forecast pipeline forecast --season 2026
 
 Stages are either required (a failure stops the run with a nonzero exit code)
 or optional (a failure is recorded in the run receipt and the run continues).
@@ -350,7 +349,7 @@ def run_from_args(args):
 
 
 def main(argv=None):
-    parser = add_arguments(argparse.ArgumentParser(prog="cfb-pipeline", description="Run the CFB forecast pipeline"))
+    parser = add_arguments(argparse.ArgumentParser(prog="cfb-forecast pipeline", description="Run the CFB forecast pipeline"))
     raise SystemExit(run_from_args(parser.parse_args(argv)))
 
 
