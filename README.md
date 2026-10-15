@@ -44,14 +44,13 @@ flowchart TD
   R["Team ratings<br/>offense and defense in 5 stats"] --> P["Expected points for each team"]
   P --> A["Adjust for season scoring rates,<br/>rest days, and the betting line"]
   A --> S["Expected margin and total"]
-  S --> W["Win chance<br/>fitted curve"]
-  S --> L["Spread and total chances<br/>bell curve"]
-  C["Weather and injuries<br/>only after 150 graded games,<br/>and only if they help"] -.-> W
+  S --> W["One Gaussian score distribution<br/>win, spread and total chances"]
+  C["Weather and injuries<br/>only after 150 graded games,<br/>and only if they help"] -.-> A
 ```
 
 **1. Team ratings.** Every FBS team has an offense rating and a defense rating for five stats: points, yards per play, yards per pass, yards per rush, and first-down rate. After each game, both teams' ratings move toward what happened. A rating the model is unsure about moves more than a well-established one, and a good game against a strong defense counts for more than the same game against a weak one. Home field is worth 2.5 points, and neutral sites get none. Each week every rating drifts slightly back toward average. 21 days before each season starts, ratings are pulled further back toward average to account for roster and coaching changes; how far is chosen by testing on the 2024 season.
 
-**2. Expected points.** A regression turns the two teams' ratings into expected points for each side. It is refit at every forecast on all earlier games, with recent games counting more.
+**2. Expected points.** A regression turns the two teams' ratings into expected points for each side. The learning stage proposes refits with recent games counting more. It keeps the current regression unless a candidate does at least as well on 30 or more independent later games. Forecasting uses that selected regression; the Bayesian team ratings still update as results arrive.
 
 **3. Adjustments.** The expected margin and total are then shifted using:
 
@@ -59,13 +58,15 @@ flowchart TD
 - each team's days of rest;
 - the betting spread and total, when one was recorded before the forecast.
 
-The model learns how much each of these matters from past games. Past games use their real closing spread and total, downloaded from the SportsDataverse ESPN betting files. A game this week only uses a line that was captured before the forecast was made. A game with no captured line uses a second version of the model that was fit without lines, so a missing line is never replaced with a guess.
+The model learns how much each of these matters from past games. Each historical score location used to learn adjustments comes from a regression fitted on earlier seasons only. When there is too little history, the model keeps its unadjusted score location. Missing-input indicators let it distinguish an unavailable stat from an observed average. Past games use their real closing spread and total, downloaded from the SportsDataverse ESPN betting files. A game this week only uses a line that was captured before the forecast was made. The existing no-line parameter branch handles games without a captured line.
 
-**4. Win chance.** The win chance comes from a curve fitted on past games that turns the expected margin into a probability.
+**4. Win chance.** The win chance comes from the same Gaussian score distribution used for spreads and totals. A separate logistic winner curve cannot override it. Requesting other games alongside a matchup does not change that matchup's forecast.
 
 **5. Spread and total chances.** These come from a bell curve centred on the expected margin and total. Whole-number lines can push. No scores are simulated.
 
-**6. Weather and injuries.** These are recorded for every game, but there is no downloadable history of them to learn from. They can only change a prediction once the project has saved at least 150 graded games across at least 3 Sunday runs. Even then, they are used only if they improve accuracy on the most recent graded week, and they can move a 50% win chance by at most about 5 points.
+**6. Weather and injuries.** These are recorded for every game, but there is no downloadable history of them to learn from. They can only change a prediction once the project has saved at least 150 graded games across at least 3 Sunday runs. Even then, they are used only if they improve accuracy on the most recent graded week. Their bounded effect adjusts the score margin while preserving the projected total; win, spread and total chances are then recalculated together.
+
+The Bayesian rating updates and Gaussian score approximation remain in place. Expected scores are also exposed as Poisson rate parameters; production probabilities use the Gaussian approximation with historical residual covariance, not an exact Poisson posterior. See [the model contract](docs/MODEL_CONTRACT.md) for equations and the limited ideas adapted from CRAFT.
 
 Before a run trusts any number, it checks timing: a result only counts once it was available before the forecast (kickoff plus 8 hours, unless the real finish time is known), a betting line only counts if it was seen before the forecast and before kickoff, and a run refuses to start if a source marks a future game as finished.
 

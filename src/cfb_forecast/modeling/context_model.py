@@ -4,8 +4,11 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 from scipy.special import expit, logit
+from scipy.stats import norm
 
 from ..evaluation.evaluate import metrics
+from .analytic import score_summary
+from .simulate import checked_covariance
 
 
 def feature_columns(frame):
@@ -86,16 +89,48 @@ def predict_context(probabilities, features, spec):
     return adjusted, delta
 
 
+def apply_score_context(predictions, features, spec, covariance):
+    """Express the learned context effect as a score-location adjustment.
+
+    Keep the projected total and covariance fixed. Invert the Gaussian margin
+    CDF to obtain the requested margin, then regenerate all market probabilities
+    from that same distribution. Nonnegative scores bound the achievable margin.
+    """
+    covariance = checked_covariance(covariance)
+    desired, delta = predict_context(predictions.home_win_probability, features, spec)
+    margin_sd = np.sqrt(covariance[0, 0] + covariance[1, 1] - 2 * covariance[0, 1])
+    records = predictions.to_dict("records")
+    for row, probability, contribution in zip(records, desired, delta):
+        total = float(row["projected_total"])
+        margin = float(np.clip(norm.ppf(np.clip(probability, 1e-9, 1 - 1e-9)) * margin_sd, -total, total))
+        means = [(total + margin) / 2, (total - margin) / 2]
+        # Pandas represents absent optional market fields as NaN.
+        market = {key: value for key, value in row.items()
+                  if key in ("home_spread", "total_line", "home_decimal", "away_decimal")
+                  and value is not None and pd.notna(value)}
+        row.update(score_summary(means, covariance, **market))
+        row.update(
+            gaussian_home_win_probability=row["home_win_probability"],
+            model_spread=-margin,
+            home_poisson_rate=means[0],
+            away_poisson_rate=means[1],
+            context_logit_contribution=float(contribution),
+            distribution_method="forecast_model",
+            win_link="gaussian",
+        )
+    return pd.DataFrame(records, index=predictions.index)
+
+
 def select_context_model(history):
     """Reserve the latest recorded week for selection; refit only if it improves."""
     if history.empty or len(history) < 150:
         return None, {"status": "insufficient_validated_games", "games": len(history)}
     history = history.sort_values("as_of").copy()
-    batches = sorted(history.run_id.unique())
+    batches = history.drop_duplicates("run_id", keep="last").run_id.tolist()
     if len(batches) < 3:
         return None, {"status": "insufficient_validation_weeks", "weeks": len(batches)}
-    train = history[history.run_id != batches[-1]]
     test = history[history.run_id == batches[-1]]
+    train = history[(history.run_id != batches[-1]) & (history.as_of < test.as_of.min())]
     columns = feature_columns(train.drop(columns=["home_win"], errors="ignore"))
     if (
         not columns

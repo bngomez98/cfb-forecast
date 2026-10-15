@@ -17,10 +17,11 @@ else:
 import pandas as pd
 
 from ..evaluation.backtest import run_backtest
-from ..modeling.context_model import select_context_model, predict_context
+from ..modeling.context_model import select_context_model, apply_score_context
 from ..ingest.data import fetch, load_data, normalize_schedule, sha256, timestamp
 from ..odds.decision import american_to_decimal, moneyline_diagnostics
 from ..modeling.forecast import forecast
+from ..modeling.forecast_model import METHOD
 from ..odds.market import append_market_history
 from ..ingest.results import _event_row
 from ..ingest.sources import collect, collect_game_inputs, ESPN, utc_now
@@ -361,7 +362,7 @@ def sunday_run(
                 "strength_log_loss": strength["evaluation"]["log_loss"],
                 "strength_adopted": adopted,
                 "sets_win_chances": False,
-                "note": "2025 results guide 2026 deployment; they are not an untouched evaluation of that deployment choice. The strength model is saved for comparison; win chances come from the score model through the fitted logistic curve.",
+                "note": "2025 results guide 2026 deployment; they are not an untouched evaluation of that deployment choice. The strength model is saved for comparison; win, spread and total chances come from the same Gaussian score distribution.",
             }
             if adopted:
                 base["win_strength_model"] = strength
@@ -407,10 +408,10 @@ def sunday_run(
         predictions["context_model_status"] = context_report["status"]
         predictions["context_logit_contribution"] = 0.0
         if context_spec:
-            (
-                predictions["home_win_probability"],
-                predictions["context_logit_contribution"],
-            ) = predict_context(predictions.home_win_probability, ordered, context_spec)
+            selected_model = json.loads((model_path / "model.json").read_text())
+            predictions = apply_score_context(
+                predictions, ordered, context_spec, selected_model["score_covariance"]
+            )
             (work / "context_model.json").write_text(json.dumps(context_spec, indent=2))
         # Incomplete lineup/injury information affects eligibility, not an invented probability adjustment.
         predictions["inputs_complete"] = ordered.inputs_complete.to_numpy()
@@ -472,7 +473,7 @@ def sunday_run(
                 for p in (work / "inputs").rglob("*")
                 if p.is_file()
             },
-            "calculation_method": "One forecasting model: hierarchical state, historical team and player rates, known-future Koopman map, Gaussian scores, Poisson rates, logistic win probability, direct Gaussian spread and total",
+            "calculation_method": METHOD,
         }
         if timestamp(utc_now()) >= games.start_date.min():
             raise ValueError(
