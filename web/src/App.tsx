@@ -1,5 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
-import { RefreshCw, Search } from 'lucide-react'
+import {
+  Activity,
+  ArrowRight,
+  BarChart3,
+  BookOpen,
+  CalendarDays,
+  ChevronDown,
+  CircleDot,
+  Database,
+  Gauge,
+  Info,
+  LineChart,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
+  Target,
+  TrendingUp,
+} from 'lucide-react'
 
 type Forecast = {
   game_id: number
@@ -18,29 +36,42 @@ type Forecast = {
   confidence: number
 }
 type Source = { name: string; url: string }
-type Board = { forecasts?: Forecast[]; sources?: Source[]; games?: number; as_of?: string; model?: string; week?: number | null; run_id?: string }
+type Board = {
+  forecasts?: Forecast[]
+  sources?: Source[]
+  games?: number
+  as_of?: string
+  model?: string
+  week?: number | null
+  run_id?: string
+}
 type Validation = { status: string; games?: number; log_loss?: number; brier?: number; margin_mae?: number }
-type Page = 'predictions' | 'lines' | 'statistics' | 'methodology'
+type Page = 'forecast' | 'moneylines' | 'methodology' | 'data'
 type Range = 'week' | 'all'
+type Sort = 'kickoff' | 'confidence' | 'margin'
 
 const PAGES: { id: Page; label: string }[] = [
-  { id: 'predictions', label: 'Predictions' },
-  { id: 'lines', label: 'Odds' },
-  { id: 'statistics', label: 'Data' },
-  { id: 'methodology', label: 'How it works' },
+  { id: 'forecast', label: 'Forecast board' },
+  { id: 'moneylines', label: 'Moneylines' },
+  { id: 'methodology', label: 'Methodology' },
+  { id: 'data', label: 'Data & validation' },
 ]
 const DAY = 24 * 60 * 60 * 1000
 
-function pct(value: number) { return `${Math.round(value * 100)}%` }
-function homeChance(game: Forecast) { return Math.min(Math.max(Number(game.home_win_probability), 0), 1) }
-function margin(game: Forecast) {
-  const value = game.projected_home_margin ?? game.expected_home_score - game.expected_away_score
-  return Number(value)
+function pct(value: number, digits = 0) {
+  return `${(value * 100).toFixed(digits)}%`
 }
-// Fair American odds from a win chance, the same conversion the forecast uses.
+function homeChance(game: Forecast) {
+  return Math.min(Math.max(Number(game.home_win_probability), 0), 1)
+}
+function margin(game: Forecast) {
+  return Number(game.projected_home_margin ?? game.expected_home_score - game.expected_away_score)
+}
 function fairMoneyline(probability: number) {
   if (!(probability > 0 && probability < 1)) return null
-  return probability >= 0.5 ? -Math.round((100 * probability) / (1 - probability)) : Math.round((100 * (1 - probability)) / probability)
+  return probability >= 0.5
+    ? -Math.round((100 * probability) / (1 - probability))
+    : Math.round((100 * (1 - probability)) / probability)
 }
 function oddsLabel(value?: number | null) {
   if (value == null || Number.isNaN(Number(value))) return '—'
@@ -48,21 +79,16 @@ function oddsLabel(value?: number | null) {
 }
 function spreadFor(game: Forecast, side: 'home' | 'away') {
   const home = game.model_spread ?? -margin(game)
-  const value = side === 'home' ? home : -home
-  if (value == null || Number.isNaN(value)) return '—'
-  if (Math.abs(value) < 0.05) return 'Pick’em'
+  const value = side === 'home' ? Number(home) : -Number(home)
+  if (Number.isNaN(value)) return '—'
+  if (Math.abs(value) < 0.05) return 'PK'
   return value > 0 ? `+${value.toFixed(1)}` : value.toFixed(1)
 }
 function bookSpreadFor(game: Forecast, side: 'home' | 'away') {
-  if (game.market_spread == null || Number.isNaN(Number(game.market_spread))) return null
+  if (game.market_spread == null || Number.isNaN(Number(game.market_spread))) return '—'
   const value = side === 'home' ? Number(game.market_spread) : -Number(game.market_spread)
-  if (value === 0) return 'Pick’em'
+  if (value === 0) return 'PK'
   return value > 0 ? `+${value}` : String(value)
-}
-function pickLabel(game: Forecast) {
-  const lead = Math.abs(margin(game))
-  if (!(lead >= 0.05)) return 'Even'
-  return `${homeChance(game) >= 0.5 ? game.home_team : game.away_team} by ${lead.toFixed(1)}`
 }
 function dayKey(value: string) {
   return new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date(value))
@@ -71,19 +97,27 @@ function timeLabel(value: string) {
   return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(new Date(value))
 }
 function shortDate(value: Date) {
-  return new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).format(value)
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(value)
+}
+function confidenceLabel(value: number) {
+  if (value >= 0.75) return 'Strong'
+  if (value >= 0.62) return 'Moderate'
+  return 'Lean'
+}
+function initials(team: string) {
+  return team.split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase()
 }
 
 export function App() {
-  const [page, setPage] = useState<Page>('predictions')
+  const [page, setPage] = useState<Page>('forecast')
   const [forecasts, setForecasts] = useState<Forecast[]>([])
   const [sources, setSources] = useState<Source[]>([])
-  const [week, setWeek] = useState<number | null>(null)
+  const [boardMeta, setBoardMeta] = useState<Board>({})
   const [validation, setValidation] = useState<Validation>({ status: 'awaiting_results' })
   const [loading, setLoading] = useState(false)
-  const [updated, setUpdated] = useState<Date | null>(null)
   const [query, setQuery] = useState('')
   const [range, setRange] = useState<Range>('week')
+  const [sort, setSort] = useState<Sort>('kickoff')
 
   async function refresh() {
     setLoading(true)
@@ -91,10 +125,9 @@ export function App() {
       const published = await fetch('/forecasts.json', { cache: 'no-store' })
       if (published.ok) {
         const board = await published.json() as Board
+        setBoardMeta(board)
         if (Array.isArray(board.forecasts)) setForecasts(board.forecasts)
         if (Array.isArray(board.sources)) setSources(board.sources)
-        if (typeof board.week === 'number') setWeek(board.week)
-        if (board.as_of) setUpdated(new Date(board.as_of))
       }
       const response = await fetch('/api/forecasts?season=2026')
       if (response.ok && response.headers.get('content-type')?.includes('json')) {
@@ -103,26 +136,33 @@ export function App() {
         if (data.validation) setValidation(data.validation)
       }
     } catch {
-      // The published board is enough; the API only exists on the self-hosted desk.
+      // The static publication is the production fallback when the self-hosted API is unavailable.
     } finally {
       setLoading(false)
     }
   }
-  useEffect(() => { refresh() }, [])
 
-  const sorted = useMemo(() => [...forecasts].sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()), [forecasts])
-  // The board's own week: games from the forecast date through the following eight days.
+  useEffect(() => { void refresh() }, [])
+
+  const updated = boardMeta.as_of ? new Date(boardMeta.as_of) : null
+  const chronological = useMemo(() => [...forecasts].sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()), [forecasts])
   const weekEnd = useMemo(() => {
-    const start = updated ?? (sorted.length ? new Date(sorted[0].kickoff) : null)
+    const start = updated ?? (chronological.length ? new Date(chronological[0].kickoff) : null)
     return start ? start.getTime() + 8 * DAY : null
-  }, [updated, sorted])
-  const weekGames = useMemo(() => weekEnd == null ? sorted : sorted.filter(game => new Date(game.kickoff).getTime() < weekEnd), [sorted, weekEnd])
+  }, [updated, chronological])
+  const weekGames = useMemo(() => weekEnd == null ? chronological : chronological.filter(game => new Date(game.kickoff).getTime() < weekEnd), [chronological, weekEnd])
   const shown = useMemo(() => {
     const text = query.trim().toLowerCase()
-    const pool = range === 'week' ? weekGames : sorted
-    return text ? pool.filter(game => `${game.home_team} ${game.away_team}`.toLowerCase().includes(text)) : pool
-  }, [query, range, weekGames, sorted])
+    const pool = range === 'week' ? weekGames : chronological
+    const filtered = text ? pool.filter(game => `${game.home_team} ${game.away_team}`.toLowerCase().includes(text)) : pool
+    return [...filtered].sort((a, b) => {
+      if (sort === 'confidence') return Math.max(homeChance(b), 1 - homeChance(b)) - Math.max(homeChance(a), 1 - homeChance(a))
+      if (sort === 'margin') return Math.abs(margin(b)) - Math.abs(margin(a))
+      return new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()
+    })
+  }, [query, range, sort, weekGames, chronological])
   const days = useMemo(() => {
+    if (sort !== 'kickoff') return [{ day: sort === 'confidence' ? 'Ranked by model confidence' : 'Ranked by projected margin', games: shown }]
     const groups: { day: string; games: Forecast[] }[] = []
     for (const game of shown) {
       const day = dayKey(game.kickoff)
@@ -130,130 +170,225 @@ export function App() {
       groups[groups.length - 1].games.push(game)
     }
     return groups
-  }, [shown])
+  }, [shown, sort])
   const avgConfidence = weekGames.length ? weekGames.reduce((sum, game) => sum + Math.max(homeChance(game), 1 - homeChance(game)), 0) / weekGames.length : 0
-  const closeGames = weekGames.filter(game => Math.max(homeChance(game), 1 - homeChance(game)) < 0.6).length
-  const weekName = week ? `Week ${week}` : 'This week'
+  const strongPicks = weekGames.filter(game => Math.max(homeChance(game), 1 - homeChance(game)) >= 0.7).length
+  const closest = weekGames.length ? [...weekGames].sort((a, b) => Math.abs(margin(a)) - Math.abs(margin(b)))[0] : null
+  const weekName = boardMeta.week ? `Week ${boardMeta.week}` : 'This week'
 
-  return <div className="page">
-    <header className="site-header">
-      <div className="header-inner">
-        <div className="brand"><span className="brand-mark">CF</span><span>College Football Forecasts</span></div>
-        <nav aria-label="Pages">
-          {PAGES.map(item => <button key={item.id} className={page === item.id ? 'active' : ''} aria-current={page === item.id ? 'page' : undefined} onClick={() => setPage(item.id)}>{item.label}</button>)}
-        </nav>
-      </div>
+  return <div className="app-shell">
+    <header className="topbar">
+      <a className="brand" href="#top" onClick={() => setPage('forecast')} aria-label="FieldQuant home">
+        <span className="brand-mark"><LineChart aria-hidden="true" /></span>
+        <span><strong>FIELDQUANT</strong><small>FBS FORECAST DESK</small></span>
+      </a>
+      <nav aria-label="Primary navigation">
+        {PAGES.map(item => <button key={item.id} className={page === item.id ? 'active' : ''} aria-current={page === item.id ? 'page' : undefined} onClick={() => setPage(item.id)}>{item.label}</button>)}
+      </nav>
+      <div className="model-status"><i aria-hidden="true" /> Model live</div>
     </header>
 
-    <main className="content">
-      <section className="intro">
-        <div>
-          <h1>{page === 'predictions' ? `${weekName} predictions` : PAGES.find(item => item.id === page)!.label}</h1>
-          <p className="updated">{updated ? `Forecast made ${shortDate(updated)}` : 'No forecast published yet'}{sorted.length ? ` · ${sorted.length} games on the board` : ''}</p>
-        </div>
-        <button className="reload" onClick={refresh} disabled={loading}><RefreshCw className={loading ? 'spin' : ''} aria-hidden /> {loading ? 'Loading' : 'Reload'}</button>
-      </section>
-
-      {(page === 'predictions' || page === 'lines') && <>
-        <section className="summary" aria-label="Summary">
-          <Summary label={`${weekName} games`} value={weekGames.length ? String(weekGames.length) : '—'} />
-          <Summary label="Average chance for the pick" value={weekGames.length ? pct(avgConfidence) : '—'} />
-          <Summary label="Close calls (under 60%)" value={weekGames.length ? String(closeGames) : '—'} />
-          <Summary label="Last week checked" value={validation.status === 'settled' && validation.games ? `${validation.games} games` : 'Not yet'} />
-        </section>
-
-        <section className="controls">
-          <label className="search"><Search aria-hidden /><input type="search" placeholder="Find a team" value={query} onChange={event => setQuery(event.target.value)} aria-label="Find a team" /></label>
-          <div className="toggle" role="group" aria-label="Which games">
-            <button className={range === 'week' ? 'active' : ''} onClick={() => setRange('week')}>{weekName}</button>
-            <button className={range === 'all' ? 'active' : ''} onClick={() => setRange('all')}>All games</button>
+    <main id="top">
+      {page === 'forecast' && <>
+        <Hero weekName={weekName} updated={updated} games={weekGames.length} onRefresh={refresh} loading={loading} />
+        <section className="content-section">
+          <div className="metric-grid" aria-label="Weekly forecast summary">
+            <Metric icon={CalendarDays} label="Games in window" value={weekGames.length ? String(weekGames.length) : '—'} detail={`${weekName} slate`} />
+            <Metric icon={Gauge} label="Mean confidence" value={weekGames.length ? pct(avgConfidence, 1) : '—'} detail="Winning side average" />
+            <Metric icon={Target} label="70%+ forecasts" value={weekGames.length ? String(strongPicks) : '—'} detail="Higher-conviction games" />
+            <Metric icon={CircleDot} label="Tightest matchup" value={closest ? `${Math.abs(margin(closest)).toFixed(1)} pts` : '—'} detail={closest ? `${closest.away_team} at ${closest.home_team}` : 'Awaiting slate'} />
           </div>
+          <BoardControls query={query} setQuery={setQuery} range={range} setRange={setRange} sort={sort} setSort={setSort} weekName={weekName} />
+          <Board days={days} mode="forecast" hasGames={chronological.length > 0} query={query} />
         </section>
-
-        {page === 'lines' && <p className="lede">The spread and fair odds are our forecast written the way a sportsbook would write them. They are not sportsbook prices. A Book column appears when a sportsbook line was recorded before the forecast.</p>}
-
-        {!sorted.length && <p className="empty">No forecast has been published yet. The board fills when the weekly run writes forecasts.json.</p>}
-        {sorted.length > 0 && !shown.length && <p className="empty">No games match “{query}”.</p>}
-        {days.map(group => <section className="day" key={group.day}>
-          <h2>{group.day}</h2>
-          <div className="cards">{group.games.map(game => page === 'predictions' ? <PredictionCard key={game.game_id} game={game} /> : <LineCard key={game.game_id} game={game} />)}</div>
-        </section>)}
       </>}
 
-      {page === 'statistics' && <section className="prose">
-        <p>Before each game, the forecast reads what both teams have recorded in games already played. The previous season is the starting point, and every game this season updates it.</p>
-        <ul>
-          <li>Points scored and allowed</li>
-          <li>Yards per play, success rate and explosive plays</li>
-          <li>Expected points added and turnovers</li>
-          <li>Passing, rushing and receiving totals</li>
-          <li>Days of rest since each team's last game</li>
-          <li>The betting line and total, when one was recorded before the forecast</li>
-        </ul>
-        <h2>Sources</h2>
-        <ul className="sources">{(sources.length ? sources : [{ name: 'sportsdataverse', url: 'https://github.com/sportsdataverse/sportsdataverse-data' }]).map(source => <li key={source.name}><a href={source.url} target="_blank" rel="noreferrer">{source.name}</a></li>)}</ul>
-      </section>}
-
-      {page === 'methodology' && <section className="prose">
-        <p>Every Sunday the forecast is made for the coming week using only results that were final at that time.</p>
-        <ol>
-          <li>Each team has an offense and a defense rating, updated after every game it plays.</li>
-          <li>Those ratings, plus each team's recorded rates and rest, give an expected score for both teams.</li>
-          <li>When a betting line was recorded before the forecast, it adjusts the expected score. Games without one use a version of the forecast that never relies on a line.</li>
-          <li>The difference between the two expected scores becomes a win chance. The pick is the team with the higher chance.</li>
-          <li>The spread and fair odds on the Odds page are the same forecast written the way a sportsbook would write it.</li>
-          <li>After the games finish, the forecast is checked against the real results before the next Sunday run.</li>
-        </ol>
-        <p>Weather and injury reports are recorded with each forecast. They only start to adjust the win chance once enough weeks have been recorded to show that they help.</p>
-        <p className="note">These are forecasts, not guarantees, and not betting advice.</p>
-      </section>}
+      {page === 'moneylines' && <MoneylinePage
+        weekName={weekName}
+        updated={updated}
+        games={shown}
+        allGames={chronological}
+        query={query}
+        setQuery={setQuery}
+        range={range}
+        setRange={setRange}
+        sort={sort}
+        setSort={setSort}
+      />}
+      {page === 'methodology' && <MethodologyPage model={boardMeta.model} />}
+      {page === 'data' && <DataPage sources={sources} validation={validation} board={boardMeta} />}
     </main>
 
-    <footer className="site-footer">Forecasts, not guarantees. {updated ? `Published ${updated.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}.` : ''}</footer>
+    <footer>
+      <div><strong>FIELDQUANT</strong><span>Independent college football forecasting</span></div>
+      <p>Probabilities are estimates, not guarantees. No wagers are placed.</p>
+      <span>{updated ? `Run ${boardMeta.run_id ?? 'current'} · ${shortDate(updated)}` : 'Awaiting publication'}</span>
+    </footer>
   </div>
 }
 
-function Summary({ label, value }: { label: string; value: string }) {
-  return <div className="summary-item"><span>{label}</span><strong>{value}</strong></div>
+function Hero({ weekName, updated, games, onRefresh, loading }: { weekName: string; updated: Date | null; games: number; onRefresh: () => void; loading: boolean }) {
+  return <section className="hero">
+    <div className="hero-inner">
+      <div className="eyebrow"><span>2026 FBS</span><span>{weekName}</span><span>{games} games</span></div>
+      <h1>Every game, quantified.</h1>
+      <p>Independent score projections, win probabilities, and fair market prices generated from a dynamic team-strength model.</p>
+      <div className="hero-actions">
+        <button className="primary-action" onClick={() => document.querySelector('.forecast-board')?.scrollIntoView({ behavior: 'smooth' })}>View the board <ArrowRight aria-hidden="true" /></button>
+        <button className="secondary-action" onClick={onRefresh} disabled={loading}><RefreshCw className={loading ? 'spin' : ''} aria-hidden="true" />{loading ? 'Refreshing' : 'Refresh data'}</button>
+      </div>
+      <div className="run-meta"><ShieldCheck aria-hidden="true" /><span>Point-in-time forecast</span><i /> <span>{updated ? `Generated ${shortDate(updated)}` : 'No forecast published'}</span></div>
+    </div>
+    <div className="hero-visual" aria-hidden="true">
+      <div className="field-line line-one" /><div className="field-line line-two" /><div className="field-line line-three" />
+      <div className="hero-number">26</div><div className="hero-chart"><i /><i /><i /><i /><i /><i /><i /><i /></div>
+    </div>
+  </section>
 }
 
-function PredictionCard({ game }: { game: Forecast }) {
+function Metric({ icon: Icon, label, value, detail }: { icon: typeof Activity; label: string; value: string; detail: string }) {
+  return <article className="metric-card">
+    <div className="metric-label"><Icon aria-hidden="true" /><span>{label}</span></div>
+    <strong>{value}</strong>
+    <p>{detail}</p>
+  </article>
+}
+
+function BoardControls({ query, setQuery, range, setRange, sort, setSort, weekName }: {
+  query: string; setQuery: (value: string) => void; range: Range; setRange: (value: Range) => void; sort: Sort; setSort: (value: Sort) => void; weekName: string
+}) {
+  return <section className="board-controls" aria-label="Forecast filters">
+    <label className="search-field"><Search aria-hidden="true" /><input type="search" placeholder="Search team" value={query} onChange={event => setQuery(event.target.value)} aria-label="Search team" /></label>
+    <div className="segmented" role="group" aria-label="Date range">
+      <button className={range === 'week' ? 'active' : ''} onClick={() => setRange('week')}>{weekName}</button>
+      <button className={range === 'all' ? 'active' : ''} onClick={() => setRange('all')}>Full board</button>
+    </div>
+    <label className="sort-field"><SlidersHorizontal aria-hidden="true" /><span className="sr-only">Sort forecasts</span><select value={sort} onChange={event => setSort(event.target.value as Sort)}><option value="kickoff">Sort: Kickoff</option><option value="confidence">Sort: Confidence</option><option value="margin">Sort: Margin</option></select><ChevronDown aria-hidden="true" /></label>
+  </section>
+}
+
+function Board({ days, mode, hasGames, query }: { days: { day: string; games: Forecast[] }[]; mode: 'forecast' | 'moneyline'; hasGames: boolean; query: string }) {
+  if (!hasGames) return <div className="empty-state"><Database aria-hidden="true" /><h2>No forecast published</h2><p>The board fills when the weekly run writes the public forecast file.</p></div>
+  if (!days.some(day => day.games.length)) return <div className="empty-state"><Search aria-hidden="true" /><h2>No matching games</h2><p>No team matches “{query}”.</p></div>
+  return <div className="forecast-board">
+    {days.map(day => <section className="day-group" key={day.day}>
+      <div className="day-heading"><h2>{day.day}</h2><span>{day.games.length} {day.games.length === 1 ? 'game' : 'games'}</span></div>
+      <div className="game-grid">{day.games.map(game => mode === 'forecast' ? <ForecastCard key={game.game_id} game={game} /> : <MoneylineRow key={game.game_id} game={game} />)}</div>
+    </section>)}
+  </div>
+}
+
+function ForecastCard({ game }: { game: Forecast }) {
   const home = homeChance(game)
+  const away = 1 - home
   const pickHome = home >= 0.5
-  const rows = [
-    { side: 'away' as const, team: game.away_team, score: game.expected_away_score, chance: 1 - home, pick: !pickHome },
-    { side: 'home' as const, team: game.home_team, score: game.expected_home_score, chance: home, pick: pickHome },
-  ]
-  return <article className="card">
-    <header><span>{timeLabel(game.kickoff)}</span><span className="pick-note">{pickLabel(game)}</span></header>
-    <div className="table" role="table" aria-label={`${game.away_team} at ${game.home_team}`}>
-      <div className="row head" role="row"><span role="columnheader">Team</span><span role="columnheader">Points</span><span role="columnheader">Win chance</span></div>
-      {rows.map(row => <div key={row.side} className={`row${row.pick ? ' picked' : ''}`} role="row">
-        <span className="team" role="cell">{row.side === 'home' && <em>at</em>}{row.team}</span>
-        <span className="num" role="cell">{Math.round(row.score)}</span>
-        <span className="chance" role="cell"><b>{pct(row.chance)}</b><i aria-hidden><i style={{ width: `${row.chance * 100}%` }} /></i></span>
-      </div>)}
+  const confidence = Math.max(home, away)
+  const projectedTotal = game.expected_home_score + game.expected_away_score
+  return <article className="game-card">
+    <header>
+      <div><span className="live-dot" aria-hidden="true" /><span>{timeLabel(game.kickoff)}</span></div>
+      <span className={`confidence ${confidence >= 0.7 ? 'high' : ''}`}>{confidenceLabel(confidence)} · {pct(confidence)}</span>
+    </header>
+    <div className="matchup">
+      <TeamLine team={game.away_team} score={game.expected_away_score} chance={away} picked={!pickHome} side="Away" />
+      <TeamLine team={game.home_team} score={game.expected_home_score} chance={home} picked={pickHome} side="Home" />
     </div>
+    <div className="probability-track" aria-label={`${game.away_team} ${pct(away)}, ${game.home_team} ${pct(home)}`}><i style={{ width: `${away * 100}%` }} /><i style={{ width: `${home * 100}%` }} /></div>
+    <dl className="game-details">
+      <div><dt>Model line</dt><dd>{pickHome ? game.home_team : game.away_team} {spreadFor(game, pickHome ? 'home' : 'away')}</dd></div>
+      <div><dt>Projected total</dt><dd>{projectedTotal.toFixed(1)}</dd></div>
+      <div><dt>Fair ML</dt><dd>{oddsLabel(fairMoneyline(confidence))}</dd></div>
+    </dl>
   </article>
 }
 
-function LineCard({ game }: { game: Forecast }) {
+function TeamLine({ team, score, chance, picked, side }: { team: string; score: number; chance: number; picked: boolean; side: string }) {
+  return <div className={`team-line ${picked ? 'picked' : ''}`}>
+    <span className="team-badge" aria-hidden="true">{initials(team)}</span>
+    <span className="team-name"><strong>{team}</strong><small>{side}{picked ? ' · Model pick' : ''}</small></span>
+    <span className="projected-score">{score.toFixed(1)}</span>
+    <span className="win-probability">{pct(chance)}</span>
+  </div>
+}
+
+function MoneylinePage(props: {
+  weekName: string; updated: Date | null; games: Forecast[]; allGames: Forecast[]; query: string; setQuery: (value: string) => void; range: Range; setRange: (value: Range) => void; sort: Sort; setSort: (value: Sort) => void
+}) {
+  const days = [{ day: 'Model prices', games: props.games }]
+  return <>
+    <PageHeader eyebrow="MARKET VIEW" title="Fair moneylines" description="Probability translated into an American-odds break-even price—without sportsbook margin." updated={props.updated} />
+    <section className="content-section">
+      <div className="notice"><Info aria-hidden="true" /><div><strong>Read this as a price ceiling, not a recommendation.</strong><p>A fair line of −150 means the model estimates a 60% win probability. A sportsbook price shorter than −150 requires a higher break-even rate and offers no model edge before uncertainty.</p></div></div>
+      <BoardControls {...props} />
+      <div className="moneyline-header" aria-hidden="true"><span>Matchup</span><span>Win probability</span><span>Fair moneyline</span><span>Published price</span></div>
+      <Board days={days} mode="moneyline" hasGames={props.allGames.length > 0} query={props.query} />
+      <section className="odds-guide">
+        <div><BookOpen aria-hidden="true" /><h2>How to read American odds</h2></div>
+        <div className="odds-formulas">
+          <article><span>Favorite</span><strong>−150</strong><p>Risk $150 to profit $100. Break-even probability: 60.0%.</p></article>
+          <article><span>Underdog</span><strong>+180</strong><p>Risk $100 to profit $180. Break-even probability: 35.7%.</p></article>
+          <article><span>Model edge</span><strong>Probability gap</strong><p>Model win probability minus the sportsbook&apos;s implied probability after accounting for price.</p></article>
+        </div>
+      </section>
+    </section>
+  </>
+}
+
+function MoneylineRow({ game }: { game: Forecast }) {
   const home = homeChance(game)
-  const odds = {
-    home: game.home_moneyline ?? fairMoneyline(home),
-    away: game.away_moneyline ?? fairMoneyline(1 - home),
-  }
-  const hasBook = game.market_spread != null && !Number.isNaN(Number(game.market_spread))
-  return <article className="card">
-    <header><span>{timeLabel(game.kickoff)}</span><span className="pick-note">{pickLabel(game)}</span></header>
-    <div className={`table${hasBook ? ' four' : ''}`} role="table" aria-label={`${game.away_team} at ${game.home_team}`}>
-      <div className="row head" role="row"><span role="columnheader">Team</span><span role="columnheader">Spread</span><span role="columnheader">Fair odds</span>{hasBook && <span role="columnheader">Book</span>}</div>
-      {(['away', 'home'] as const).map(side => <div key={side} className={`row${(side === 'home') === (home >= 0.5) ? ' picked' : ''}`} role="row">
-        <span className="team" role="cell">{side === 'home' && <em>at</em>}{side === 'home' ? game.home_team : game.away_team}</span>
-        <span className="num" role="cell">{spreadFor(game, side)}</span>
-        <span className="num" role="cell">{oddsLabel(odds[side])}</span>
-        {hasBook && <span className="num" role="cell">{bookSpreadFor(game, side)}</span>}
-      </div>)}
-    </div>
+  const away = 1 - home
+  return <article className="moneyline-row">
+    <div className="moneyline-matchup"><span>{timeLabel(game.kickoff)}</span><strong>{game.away_team} <em>at</em> {game.home_team}</strong></div>
+    <div className="dual-value"><span>{game.away_team} <b>{pct(away, 1)}</b></span><span>{game.home_team} <b>{pct(home, 1)}</b></span></div>
+    <div className="dual-value mono"><span>{oddsLabel(fairMoneyline(away))}</span><span>{oddsLabel(fairMoneyline(home))}</span></div>
+    <div className="dual-value mono muted"><span>{oddsLabel(game.away_moneyline)}</span><span>{oddsLabel(game.home_moneyline)}</span></div>
   </article>
+}
+
+function PageHeader({ eyebrow, title, description, updated }: { eyebrow: string; title: string; description: string; updated?: Date | null }) {
+  return <header className="page-header"><div className="page-header-inner"><span className="section-eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p>{updated && <small>Current run · {shortDate(updated)}</small>}</div></header>
+}
+
+const METHOD_STEPS = [
+  { icon: Database, number: '01', title: 'Time-safe inputs', text: 'Schedules, final scores, per-game team statistics, current-season rates, rest, and captured market lines are timestamped. A result cannot enter a forecast until it was knowable, and future games marked final stop the run.' },
+  { icon: Activity, number: '02', title: 'Dynamic team ratings', text: 'Every FBS team carries separate offense and defense states for points, yards per play, pass efficiency, rush efficiency, and first-down rate. Bayesian updates move uncertain teams more and established teams less.' },
+  { icon: SlidersHorizontal, number: '03', title: 'Score expectation', text: 'A regularized regression converts the two teams’ rating states into expected points. Recent games receive more weight, home field is worth 2.5 points, neutral sites receive none, and ratings drift toward average between games.' },
+  { icon: LineChart, number: '04', title: 'Context adjustment', text: 'Current scoring and efficiency rates, rest, and a pre-forecast spread or total can shift the score location. Missing-input indicators distinguish unavailable evidence from a genuinely average observation.' },
+  { icon: BarChart3, number: '05', title: 'Joint distribution', text: 'Expected margin and total enter one Gaussian score distribution using historical residual covariance. That single distribution produces win, spread, and total probabilities so the outputs cannot contradict each other.' },
+  { icon: ShieldCheck, number: '06', title: 'Walk-forward grading', text: 'Each forecast is immutable after publication. Later results are joined to the saved prediction and scored with log loss, Brier score, margin error, calibration, and hypothetical return—without rewriting history.' },
+]
+
+function MethodologyPage({ model }: { model?: string }) {
+  return <>
+    <PageHeader eyebrow="MODEL DOCUMENTATION" title="From raw games to one probability" description="A transparent, point-in-time forecasting pipeline built to answer one question consistently: how likely is each team to win?" />
+    <section className="content-section methodology">
+      <div className="method-intro"><div><span>PRODUCTION SPECIFICATION</span><h2>{model ?? 'Dynamic Gaussian state + regularized score head'}</h2></div><p>The model predicts scores first. Win probabilities, model spreads, totals, and fair moneylines are all transformations of the same score distribution—not separate opinions.</p></div>
+      <div className="method-flow">{METHOD_STEPS.map(step => <article key={step.number}><div className="step-icon"><step.icon aria-hidden="true" /></div><span>{step.number}</span><h2>{step.title}</h2><p>{step.text}</p></article>)}</div>
+      <section className="technical-grid">
+        <article><span className="section-eyebrow">RATING LAYER</span><h2>Opponent-adjusted learning</h2><p>A strong performance against a strong opponent moves the latent state differently from the same raw output against a weak opponent. Uncertainty controls update size, and weekly mean reversion prevents stale early-season information from dominating indefinitely.</p><dl><div><dt>Home-field prior</dt><dd>+2.5 points</dd></div><div><dt>Season transition</dt><dd>Preseason shrinkage</dd></div><div><dt>Update form</dt><dd>Bayesian state</dd></div></dl></article>
+        <article><span className="section-eyebrow">SCORE LAYER</span><h2>One coherent distribution</h2><p>The score head estimates each team&apos;s expected points. Historical residual covariance captures how paired scores vary around those means; the production probabilities use the resulting Gaussian approximation.</p><div className="equation"><span>Projected margin</span><strong>μ<sub>home</sub> − μ<sub>away</sub></strong></div><div className="equation"><span>Win probability</span><strong>P(margin &gt; 0)</strong></div></article>
+      </section>
+      <section className="guardrails"><div><ShieldCheck aria-hidden="true" /><h2>What the model refuses to do</h2></div><ul><li>It does not invent missing lines, weather, injuries, scores, or starters.</li><li>It does not use a result or line that was unavailable at forecast time.</li><li>It does not let a separate winner curve override the score distribution.</li><li>It does not activate weather or injury effects until enough graded forecasts show out-of-sample improvement.</li><li>It does not present hypothetical betting returns as realized performance.</li></ul></section>
+      <section className="training-timeline"><span className="section-eyebrow">SEASON ROLES</span><h2>Walk-forward model development</h2><div><article><strong>2000+</strong><span>Historical base</span><p>Schedules and game-level statistics establish priors and scales.</p></article><article><strong>2022–23</strong><span>Estimation</span><p>Fit the initial expected-points regression.</p></article><article><strong>2024</strong><span>Selection</span><p>Choose rating settings and regularization strength.</p></article><article><strong>2025</strong><span>Evaluation</span><p>Compare candidate systems on a later season.</p></article><article><strong>2026</strong><span>Forecast</span><p>Publish immutable weekly predictions.</p></article></div></section>
+      <div className="disclosure"><Info aria-hidden="true" /><p><strong>Important limitation:</strong> because 2025 informed model selection, it is not a fully untouched test of the final specification. Published 2026 forecasts provide the cleanest prospective record.</p></div>
+    </section>
+  </>
+}
+
+function DataPage({ sources, validation, board }: { sources: Source[]; validation: Validation; board: Board }) {
+  return <>
+    <PageHeader eyebrow="AUDIT DESK" title="Data & validation" description="The evidence entering the model, the checks applied before publication, and the metrics used after games finish." />
+    <section className="content-section data-page">
+      <div className="validation-grid">
+        <Metric icon={Database} label="Published records" value={board.games ? String(board.games) : '—'} detail="Forecasts in current file" />
+        <Metric icon={Target} label="Margin MAE" value={validation.margin_mae != null ? validation.margin_mae.toFixed(2) : 'Pending'} detail="Points per graded game" />
+        <Metric icon={Gauge} label="Brier score" value={validation.brier != null ? validation.brier.toFixed(3) : 'Pending'} detail="Probability accuracy" />
+        <Metric icon={TrendingUp} label="Log loss" value={validation.log_loss != null ? validation.log_loss.toFixed(3) : 'Pending'} detail="Penalizes overconfidence" />
+      </div>
+      <div className="data-columns">
+        <section><span className="section-eyebrow">INPUT FAMILIES</span><h2>What enters the forecast</h2><ul className="check-list"><li><b>Game results</b><span>Final scores and game-level team statistics</span></li><li><b>Efficiency</b><span>Points, yards per play, pass, rush, and first-down rates</span></li><li><b>Situation</b><span>Venue, neutral-site status, and days of rest</span></li><li><b>Market context</b><span>Spread and total only when captured before forecast time</span></li><li><b>Conditional context</b><span>Weather and injuries recorded, but gated by validation</span></li></ul></section>
+        <section><span className="section-eyebrow">PUBLIC SOURCES</span><h2>Traceable inputs</h2><div className="source-list">{(sources.length ? sources : [{ name: 'sportsdataverse', url: 'https://github.com/sportsdataverse/sportsdataverse-data' }]).map(source => <a key={source.name} href={source.url} target="_blank" rel="noreferrer"><span>{source.name.replace(/_/g, ' ')}</span><ArrowRight aria-hidden="true" /></a>)}</div></section>
+      </div>
+    </section>
+  </>
 }
