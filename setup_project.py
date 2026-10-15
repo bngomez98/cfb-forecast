@@ -29,6 +29,20 @@ def run(command: list[str], *, check: bool = True) -> subprocess.CompletedProces
     return subprocess.run(command, cwd=PROJECT_ROOT, check=check)
 
 
+def check_command(command: list[str], label: str) -> bool:
+    """Run an optional check and report the result without stopping setup."""
+    print(f"Running {label}")
+    try:
+        result = subprocess.run(command, cwd=PROJECT_ROOT, check=False)
+    except FileNotFoundError:
+        print(f"{label} skipped: {command[0]} is not installed")
+        return False
+    if result.returncode != 0:
+        print(f"{label} failed with exit code {result.returncode}")
+        return False
+    return True
+
+
 def python_executable() -> Path:
     return VENV_DIR / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 
@@ -101,10 +115,12 @@ if report['overall'] != 'pass':
     if not skip_tests:
         run([str(py), "-m", "pytest", "-q"])
 
-    check_command(["docker", "info"], "Docker daemon check")
-    check_command(["docker", "compose", "config"], "Docker Compose validation")
+    docker_ok = check_command(["docker", "info"], "Docker daemon check")
+    compose_ok = docker_ok and check_command(["docker", "compose", "config"], "Docker Compose validation")
 
     if start_stack:
+        if not compose_ok:
+            raise SystemExit("--start-stack needs a running Docker daemon and a valid docker-compose.yml")
         run(["docker", "compose", "up", "--build", "-d"])
         wait_for_url("http://localhost:8000/ready")
         wait_for_url("http://localhost:8000/awareness")
