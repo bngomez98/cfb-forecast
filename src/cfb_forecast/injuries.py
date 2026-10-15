@@ -12,6 +12,7 @@ details string. We do not try to resolve a player's expected production;
 that is a separate modeling step and not something a scraping module
 should decide.
 """
+
 from __future__ import annotations
 
 import json
@@ -87,9 +88,7 @@ class TeamInjuryReport:
             "injury_request_url": self.request_url,
             "injury_count": self.count,
             "injury_out_count": sum(1 for p in self.players if p.status == "out"),
-            "injury_questionable_count": sum(
-                1 for p in self.players if p.status == "questionable"
-            ),
+            "injury_questionable_count": sum(1 for p in self.players if p.status == "questionable"),
             "injury_note": self.note,
         }
 
@@ -117,9 +116,7 @@ def _normalize_status(status: str | None) -> tuple[str, str]:
 
 
 def _request_json(url: str, timeout: float = 15.0) -> dict:
-    request = urllib.request.Request(
-        url, headers={"User-Agent": "cfb-forecast/0.3"}
-    )
+    request = urllib.request.Request(url, headers={"User-Agent": "cfb-forecast/0.3"})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
@@ -179,11 +176,7 @@ def fetch_team_injuries(
         a sentinel status with the reason in ``note``.
     """
     url = _ESPN_INJURIES_ENDPOINT.format(team_id=int(team_id))
-    observed_ts = (
-        timestamp(observed_at)
-        if observed_at is not None
-        else datetime.now(UTC)
-    )
+    observed_ts = timestamp(observed_at) if observed_at is not None else datetime.now(UTC)
     observed = observed_ts.isoformat() if hasattr(observed_ts, "isoformat") else str(observed_ts)
     try:
         payload = _request_json(url, timeout=timeout)
@@ -234,9 +227,7 @@ def fetch_injuries_for_games(
         if key in seen:
             continue
         seen.add(key)
-        reports.append(
-            fetch_team_injuries(key, observed_at=observed_at, timeout=timeout)
-        )
+        reports.append(fetch_team_injuries(key, observed_at=observed_at, timeout=timeout))
     return reports
 
 

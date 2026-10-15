@@ -9,6 +9,7 @@ Residual covariance for the simulated score distribution is estimated from
 an out-of-fit validation season; its eigenvalues are floored at 1 so the
 simulation can never see a degenerate joint distribution.
 """
+
 from __future__ import annotations
 
 import json
@@ -58,8 +59,7 @@ class ScoreHead:
         y = Y[mask, :, 0].reshape(-1)
         if len(y) < _MIN_FIT_GAMES:
             raise ValueError(
-                f"Need at least {_MIN_FIT_GAMES // 2} completed games with finite "
-                "pregame features to fit"
+                f"Need at least {_MIN_FIT_GAMES // 2} completed games with finite pregame features to fit"
             )
         if not np.isfinite(x).all() or not np.isfinite(y).all():
             raise ValueError("Need at least 50 completed games with finite pregame features to fit")
@@ -106,7 +106,7 @@ class ScoreHead:
             raise ValueError("Saved regression coefficients do not match the feature column set")
         head.scaler.mean_ = mean
         head.scaler.scale_ = scale
-        head.scaler.var_ = scale ** 2
+        head.scaler.var_ = scale**2
         head.scaler.n_features_in_ = len(head.cols)
         head.regressor.coef_ = coef
         head.regressor.intercept_ = value["intercept"]
@@ -123,9 +123,7 @@ def residual_covariance(actual: np.ndarray, predicted: np.ndarray) -> np.ndarray
     """
     residual = actual - predicted
     if len(residual) < _MIN_CALIBRATION_GAMES:
-        raise ValueError(
-            f"At least {_MIN_CALIBRATION_GAMES} out-of-fit calibration games are required"
-        )
+        raise ValueError(f"At least {_MIN_CALIBRATION_GAMES} out-of-fit calibration games are required")
     cov = np.cov(residual.T)
     values, vectors = np.linalg.eigh(cov)
     return (vectors * np.maximum(values, 1.0)) @ vectors.T

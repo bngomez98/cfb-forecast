@@ -3,6 +3,7 @@
 Network access is never used. Each module's HTTP entry point is
 monkeypatched to return canned payloads so behavior is verified offline.
 """
+
 from __future__ import annotations
 
 from cfb_forecast import injuries as injuries_module

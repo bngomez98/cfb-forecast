@@ -1,4 +1,5 @@
 """Tests for the player-PPG module."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -130,9 +131,7 @@ def test_compute_player_ppg_empty_before_games():
 
 def test_compute_player_ppg_min_games_filter():
     frame = _fixture_player_games()
-    result = compute_player_ppg(
-        frame, as_of="2026-09-10T00:00:00Z", min_games=2
-    )
+    result = compute_player_ppg(frame, as_of="2026-09-10T00:00:00Z", min_games=2)
     ids = set(result.player_id)
     # P1 has 2 games before cutoff, P2 and P3 only one. Only P1 survives.
     assert ids == {"P1"}
@@ -162,7 +161,5 @@ def test_summarize_player_ppg_ranks_by_ppg():
 def test_season_filter_narrows_to_requested_year():
     frame = _fixture_player_games().copy()
     frame.loc[frame.player_id.eq("P3"), "season"] = 2025
-    result = compute_player_ppg(
-        frame, as_of="2026-09-10T00:00:00Z", season=2026
-    )
+    result = compute_player_ppg(frame, as_of="2026-09-10T00:00:00Z", season=2026)
     assert set(result.player_id) == {"P1", "P2"}

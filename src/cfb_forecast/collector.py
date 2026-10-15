@@ -5,6 +5,7 @@ point-in-time market capture, then appends only newly due games to the immutable
 chronological holdout. Market failure is recorded but does not backdate, delay,
 or mutate forecasts.
 """
+
 from __future__ import annotations
 
 import json

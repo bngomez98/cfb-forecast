@@ -16,6 +16,7 @@ enrichment pass will mark those games as ``venue_not_in_registry`` instead
 of calling the API. The registry can be extended by the user without a code
 change.
 """
+
 from __future__ import annotations
 
 import logging

@@ -1,4 +1,5 @@
 """Ledger schema and small helpers shared across the chronology submodules."""
+
 from __future__ import annotations
 
 import json
@@ -12,14 +13,32 @@ from ..data import sha256
 #: Columns of the ledger CSV, in the order they are written. New columns go at
 #: the end so older ledger files remain readable.
 LEDGER_COLUMNS = [
-    "game_id", "season", "away_team", "home_team", "kickoff",
-    "scheduled_cutoff", "actual_forecast_at", "target_lead_hours",
-    "actual_lead_hours", "cutoff_delay_minutes", "primary_cutoff_eligible",
-    "run_id", "run_integrity_sha256", "model_variant",
-    "home_win_probability", "projected_home_margin", "projected_total",
-    "expected_home_score", "expected_away_score", "market_status",
-    "market_observed_at", "market_provider", "market_snapshot_count",
-    "home_spread", "total_line", "market_home_win_probability_no_vig",
+    "game_id",
+    "season",
+    "away_team",
+    "home_team",
+    "kickoff",
+    "scheduled_cutoff",
+    "actual_forecast_at",
+    "target_lead_hours",
+    "actual_lead_hours",
+    "cutoff_delay_minutes",
+    "primary_cutoff_eligible",
+    "run_id",
+    "run_integrity_sha256",
+    "model_variant",
+    "home_win_probability",
+    "projected_home_margin",
+    "projected_total",
+    "expected_home_score",
+    "expected_away_score",
+    "market_status",
+    "market_observed_at",
+    "market_provider",
+    "market_snapshot_count",
+    "home_spread",
+    "total_line",
+    "market_home_win_probability_no_vig",
 ]
 
 

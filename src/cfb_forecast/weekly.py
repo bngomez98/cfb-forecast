@@ -1,4 +1,5 @@
 """Weekly forecast orchestration for upcoming FBS games."""
+
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path

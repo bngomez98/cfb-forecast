@@ -9,6 +9,7 @@ The configuration is intentionally small and immutable: everything that would
 normally live in a sprawling config file is either a selected hyperparameter
 (stored inside a trained model's JSON) or a validated constant here.
 """
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -62,9 +63,7 @@ class StateConfig:
 
     def __post_init__(self) -> None:
         if self.process_variance < 0 or self.prior_variance <= 0:
-            raise ValueError(
-                "State variances must be nonnegative; prior variance must be positive"
-            )
+            raise ValueError("State variances must be nonnegative; prior variance must be positive")
         if not 0 < self.offseason_carry <= 1 or not 0 < self.weekly_carry <= 1:
             raise ValueError("Carry factors must be in (0, 1]")
         if not -1 < self.observation_correlation < 1:

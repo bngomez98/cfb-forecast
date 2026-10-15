@@ -1,4 +1,5 @@
 """Timestamped market history and cutoff-safe market diagnostics."""
+
 from __future__ import annotations
 
 import json
@@ -57,7 +58,8 @@ def read_market_history(path):
 
 
 def write_market_history(frame, path):
-    path = Path(path); path.parent.mkdir(parents=True, exist_ok=True)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     f = normalize_market_history(frame)
     if path.suffix.lower() in {".parquet", ".pq"}:
         f.to_parquet(path, index=False)
@@ -77,7 +79,9 @@ def append_market_history(store_path, incoming, default_provider="unspecified", 
         for col in NUMERIC:
             a, b = f"{col}_old", f"{col}_new"
             if a in overlap and b in overlap:
-                same = (overlap[a].isna() & overlap[b].isna()) | np.isclose(overlap[a], overlap[b], equal_nan=True)
+                same = (overlap[a].isna() & overlap[b].isna()) | np.isclose(
+                    overlap[a], overlap[b], equal_nan=True
+                )
                 if not bool(np.all(same)):
                     raise ValueError(f"Conflicting market history for duplicate key in {col}")
         combined = pd.concat([old, new], ignore_index=True).drop_duplicates(KEYS, keep="first")
@@ -93,7 +97,11 @@ def import_market_file(input_path, store_path, provider="unspecified", source=No
 
 def _eligible(frame, game_id, as_of, kickoff, provider=None):
     f = normalize_market_history(frame)
-    rows = f[(f.game_id == int(game_id)) & (f.observed_at <= timestamp(as_of)) & (f.observed_at < timestamp(kickoff))]
+    rows = f[
+        (f.game_id == int(game_id))
+        & (f.observed_at <= timestamp(as_of))
+        & (f.observed_at < timestamp(kickoff))
+    ]
     if provider is not None:
         rows = rows[rows.provider == provider]
     return rows
@@ -106,7 +114,11 @@ def market_at_cutoff(frame, game_id, as_of, kickoff, provider=None):
         return {}
     if provider is not None or rows.provider.nunique() == 1:
         r = rows.sort_values("observed_at").iloc[-1]
-        result = {"market_observed_at": r.observed_at.isoformat(), "market_provider": str(r.provider), "market_provider_count": 1}
+        result = {
+            "market_observed_at": r.observed_at.isoformat(),
+            "market_provider": str(r.provider),
+            "market_provider_count": 1,
+        }
         for col in NUMERIC:
             if col in r and pd.notna(r[col]):
                 result[col] = float(r[col])
@@ -158,7 +170,8 @@ def market_history_summary(frame, game_id, as_of, kickoff, provider=None):
 def empty_market_history(path):
     cols = KEYS + NUMERIC + ["source"]
     f = pd.DataFrame({c: pd.Series(dtype="float64" if c in NUMERIC else "object") for c in cols})
-    path = Path(path); path.parent.mkdir(parents=True, exist_ok=True)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     if path.suffix.lower() in {".parquet", ".pq"}:
         f.to_parquet(path, index=False)
     else:
@@ -175,8 +188,9 @@ def empty_market_history(path):
 def _download_csv(url):
     import io
     import urllib.request
-    req=urllib.request.Request(url,headers={"User-Agent":"cfb-forecast/0.2"})
-    with urllib.request.urlopen(req,timeout=60) as response:
+
+    req = urllib.request.Request(url, headers={"User-Agent": "cfb-forecast/0.2"})
+    with urllib.request.urlopen(req, timeout=60) as response:
         return pd.read_csv(io.BytesIO(response.read()))
 
 
@@ -186,20 +200,26 @@ def capture_sportsdataverse_snapshot(season, store_path, observed_at=None):
     Repeating this command over time creates a prospective line-history series.
     It intentionally records retrieval time, not an invented bookmaker quote time.
     """
-    at=timestamp(observed_at or datetime.now(UTC))
-    url=f"https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_cfb_betting/betting_{int(season)}.csv"
-    raw=_download_csv(url)
-    require_columns(raw,["game_id","home_team_spread","over_under","game_spread_available"],"SportsDataverse betting")
-    usable=raw[raw.game_spread_available.astype(str).str.lower().isin(["true","1"])].copy()
-    snap=pd.DataFrame({
-        "game_id":pd.to_numeric(usable.game_id,errors="raise").astype("int64"),
-        "provider":"sportsdataverse_espn_resolved",
-        "observed_at":at,
-        "home_spread":pd.to_numeric(usable.home_team_spread,errors="coerce"),
-        "total_line":pd.to_numeric(usable.over_under,errors="coerce"),
-        "source":url,
-    }).dropna(subset=["home_spread","total_line"],how="all")
-    return append_market_history(store_path,snap,default_provider="sportsdataverse_espn_resolved",source=url)
+    at = timestamp(observed_at or datetime.now(UTC))
+    url = f"https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_cfb_betting/betting_{int(season)}.csv"
+    raw = _download_csv(url)
+    require_columns(
+        raw, ["game_id", "home_team_spread", "over_under", "game_spread_available"], "SportsDataverse betting"
+    )
+    usable = raw[raw.game_spread_available.astype(str).str.lower().isin(["true", "1"])].copy()
+    snap = pd.DataFrame(
+        {
+            "game_id": pd.to_numeric(usable.game_id, errors="raise").astype("int64"),
+            "provider": "sportsdataverse_espn_resolved",
+            "observed_at": at,
+            "home_spread": pd.to_numeric(usable.home_team_spread, errors="coerce"),
+            "total_line": pd.to_numeric(usable.over_under, errors="coerce"),
+            "source": url,
+        }
+    ).dropna(subset=["home_spread", "total_line"], how="all")
+    return append_market_history(
+        store_path, snap, default_provider="sportsdataverse_espn_resolved", source=url
+    )
 
 
 def backfill_sportsdataverse_closing(seasons, out_path):
@@ -208,10 +228,16 @@ def backfill_sportsdataverse_closing(seasons, out_path):
     Historical rows are not assigned observed_at and must never be used as
     point-in-time forecast inputs. They are closing/resolved market benchmarks.
     """
-    rows=[]; retrieved=datetime.now(UTC).isoformat()
+    rows = []
+    retrieved = datetime.now(UTC).isoformat()
     for season in seasons:
-        url=f"https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_cfb_betting/betting_{int(season)}.csv"
-        f=_download_csv(url).copy(); f["retrieved_at"]=retrieved; f["source_url"]=url; rows.append(f)
-    out=pd.concat(rows,ignore_index=True) if rows else pd.DataFrame()
-    path=Path(out_path); path.parent.mkdir(parents=True,exist_ok=True); out.to_csv(path,index=False)
+        url = f"https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_cfb_betting/betting_{int(season)}.csv"
+        f = _download_csv(url).copy()
+        f["retrieved_at"] = retrieved
+        f["source_url"] = url
+        rows.append(f)
+    out = pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
+    path = Path(out_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    out.to_csv(path, index=False)
     return out

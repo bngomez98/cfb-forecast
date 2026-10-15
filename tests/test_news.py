@@ -3,6 +3,7 @@
 HTTP calls are mocked; classification and injury filtering are checked
 against a canned ESPN-style payload.
 """
+
 from __future__ import annotations
 
 from cfb_forecast import news as news_module
