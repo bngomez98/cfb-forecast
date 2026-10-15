@@ -38,6 +38,8 @@ def training_files(tmp_path):
 def test_sql_training_promotes_and_preserves_temporal_evidence(training_files):
     report = learn(*training_files, "2023-12-01T00:00Z")
     assert report["status"] == "promoted"
+    assert report["gate_independent"] is True
+    assert report["probability_layer"] == "score_head_margin_through_fitted_logistic_curve"
     assert report["candidate"]["log_loss"] < report["incumbent"]["log_loss"]
     with closing(connect(training_files[-1])) as conn:
         rows = conn.execute("SELECT * FROM training_examples").fetchall()
@@ -48,6 +50,30 @@ def test_sql_training_promotes_and_preserves_temporal_evidence(training_files):
     assert repeated["model_path"] == report["model_path"]
     with closing(connect(training_files[-1])) as conn:
         assert conn.execute("SELECT count(*) FROM learning_versions").fetchone()[0] == 1
+
+
+def test_refit_that_forecasts_worse_is_retained(training_files, monkeypatch):
+    import cfb_forecast.learning as learning
+
+    class Backwards(learning.ScoreHead):
+        """Fits normally, then predicts each side's score swapped."""
+
+        def fit(self, *args, **kwargs):
+            self.backwards = True
+            return super().fit(*args, **kwargs)
+
+        def predict(self, F):
+            mu = super().predict(F)
+            return mu[:, ::-1] if getattr(self, "backwards", False) else mu
+
+    monkeypatch.setattr(learning, "ScoreHead", Backwards)
+    report = learn(*training_files, "2023-12-01T00:00Z")
+    assert report["gate_independent"] is True
+    assert report["candidate"]["log_loss"] > report["incumbent"]["log_loss"]
+    assert report["status"] == "retained"
+    assert report["model_path"] == str(training_files[1].resolve())
+    with closing(connect(training_files[-1])) as conn:
+        assert tuple(conn.execute("SELECT status, model_path FROM learning_versions").fetchone()) == ("retained", report["model_path"])
 
 
 def test_insufficient_results_do_not_create_candidate(training_files):

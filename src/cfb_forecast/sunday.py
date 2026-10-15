@@ -360,7 +360,8 @@ def sunday_run(
                 "score_head_log_loss": base_loss,
                 "strength_log_loss": strength["evaluation"]["log_loss"],
                 "strength_adopted": adopted,
-                "note": "2025 results guide 2026 deployment; they are not an untouched evaluation of that deployment choice.",
+                "sets_win_chances": False,
+                "note": "2025 results guide 2026 deployment; they are not an untouched evaluation of that deployment choice. The strength model is saved for comparison; win chances come from the score model through the fitted logistic curve.",
             }
             if adopted:
                 base["win_strength_model"] = strength

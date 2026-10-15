@@ -3,6 +3,7 @@ from html import escape
 import re
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 from cfb_forecast.paths import artifacts_root
@@ -82,6 +83,8 @@ def load_results():
         margin = frame.expected_home_score - frame.expected_away_score
     frame["margin_miss"] = (margin - (frame.home_points - frame.away_points)).abs()
     frame["brier"] = (frame.home_win_probability - frame.actual_home_win) ** 2
+    chance = frame.home_win_probability.clip(1e-9, 1 - 1e-9)
+    frame["log_loss"] = -(frame.actual_home_win * np.log(chance) + (1 - frame.actual_home_win) * np.log(1 - chance))
     if "kickoff" in frame:
         frame["kickoff"] = pd.to_datetime(frame.kickoff, utc=True, errors="coerce")
     return frame, source, season
@@ -112,11 +115,18 @@ def _tiles(frame):
 def _weekly(frame):
     weekly = (
         frame.groupby(["week_order", "week_label"], sort=True)
-        .agg(games=("correct", "size"), right=("correct", "sum"), accuracy=("correct", "mean"), margin=("margin_miss", "mean"), brier=("brier", "mean"))
+        .agg(games=("correct", "size"), right=("correct", "sum"), accuracy=("correct", "mean"), margin=("margin_miss", "mean"), brier=("brier", "mean"), log_loss=("log_loss", "mean"))
         .reset_index()
     )
     st.html('<h2 class="section">Accuracy by week</h2>')
     st.bar_chart(weekly.set_index("week_label")[["accuracy"]].rename(columns={"accuracy": "Winners picked correctly"}) * 100, y_label="Percent right", x_label="", color="#7dd8c0", height=260)
+    st.html('<h2 class="section">Win-chance scores by week</h2>'
+            '<p class="lede">Both scores grade the win chances themselves, not just the picks, and lower is better. '
+            'Saying 50% for every game would score 0.250 on Brier and 0.693 on log loss.</p>')
+    st.line_chart(
+        weekly.set_index("week_label")[["brier", "log_loss"]].rename(columns={"brier": "Brier score", "log_loss": "Log loss"}),
+        y_label="Score (lower is better)", x_label="", color=["#7dd8c0", "#e3be78"], height=240,
+    )
     table = pd.DataFrame({
         "Week": weekly.week_label,
         "Games": weekly.games,
@@ -124,6 +134,7 @@ def _weekly(frame):
         "Accuracy": weekly.accuracy * 100,
         "Average margin miss (pts)": weekly.margin.round(1),
         "Brier score": weekly.brier.round(3),
+        "Log loss": weekly.log_loss.round(3),
     })
     st.dataframe(
         table,
@@ -136,17 +147,24 @@ def _weekly(frame):
 def _confidence(frame):
     st.html('<h2 class="section">Do the win chances hold up?</h2>'
             '<p class="lede">Games are grouped by how sure the forecast was about its pick. '
-            'If the chances are honest, picks made at 70–80% should come true about 75% of the time.</p>')
+            'If the chances are honest, picks made at 70–80% should come true about 75% of the time. '
+            'Small groups swing by luck, so each group gets the range that luck alone would produce 95% of the time. '
+            'A result outside that range is a real sign the chances are off.</p>')
     rows = []
     for low, high, label in BANDS:
         band = frame[(frame.pick_chance >= low) & (frame.pick_chance < high)]
         if band.empty:
             continue
+        expected = band.pick_chance.mean()
+        spread = 1.96 * np.sqrt((band.pick_chance * (1 - band.pick_chance)).sum()) / len(band)
+        came_true = band.correct.mean()
         rows.append({
             "How sure the forecast was": label,
             "Games": len(band),
-            "Average chance given": band.pick_chance.mean() * 100,
-            "Picks that came true": band.correct.mean() * 100,
+            "Average chance given": expected * 100,
+            "Picks that came true": came_true * 100,
+            "Range luck allows": f"{max(expected - spread, 0):.0%} to {min(expected + spread, 1):.0%}",
+            "Holds up": "Yes" if abs(came_true - expected) <= spread else "No",
         })
     st.dataframe(
         pd.DataFrame(rows),

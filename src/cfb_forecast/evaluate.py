@@ -28,8 +28,35 @@ def spread_regression(actual_margin, point_spread):
 
 
 def calibration(y,p):
-    f=pd.DataFrame({"y":y,"p":p}); f["bin"]=pd.cut(f.p,np.linspace(0,1,11),include_lowest=True)
-    return f.groupby("bin",observed=True).agg(games=("y","size"),mean_probability=("p","mean"),observed_win_rate=("y","mean")).reset_index()
+    """Observed win rate in each tenth of probability, with the range chance alone allows.
+
+    If the probabilities are honest, a bin's win count is a sum of independent
+    coin flips with those probabilities, so its standard error is
+    sqrt(sum p(1-p)) / games. A gap more than 1.96 standard errors from zero is
+    outside the 95% range and is flagged.
+    """
+    f=pd.DataFrame({"y":np.asarray(y,dtype=int),"p":np.asarray(p,dtype=float)}); f["bin"]=pd.cut(f.p,np.linspace(0,1,11),include_lowest=True)
+    f["variance"]=f.p*(1-f.p)
+    out=f.groupby("bin",observed=True).agg(games=("y","size"),mean_probability=("p","mean"),observed_win_rate=("y","mean"),variance=("variance","sum")).reset_index()
+    out["gap"]=out.observed_win_rate-out.mean_probability
+    out["gap_standard_error"]=np.sqrt(out.variance)/out.games
+    out["outside_95_range"]=out.gap.abs()>1.96*out.gap_standard_error
+    return out.drop(columns="variance")
+
+
+def calibration_test(y,p):
+    """Spiegelhalter's z-test: one overall check that the probabilities match the outcomes.
+
+    z is near zero for honest probabilities; |z| above 1.96 rejects calibration at the 5% level.
+    """
+    from scipy.stats import norm
+    y=np.asarray(y,dtype=float); p=np.clip(np.asarray(p,dtype=float),1e-9,1-1e-9)
+    if len(y)==0 or len(y)!=len(p):
+        raise ValueError("Invalid prediction/outcome population")
+    spread=np.sum((1-2*p)**2*p*(1-p))
+    z=float(np.sum((y-p)*(1-2*p))/np.sqrt(spread)) if spread>0 else 0.0
+    bins=calibration(y,p)
+    return {"games":int(len(y)),"spiegelhalter_z":z,"p_value":float(2*norm.sf(abs(z))),"calibrated_at_5_percent":bool(abs(z)<=1.96),"bins_outside_95_range":int(bins.outside_95_range.sum()),"bins":int(len(bins))}
 
 def paired_bootstrap(frame,left,right,draws=3000,seed=20261002):
     f=frame.copy(); y=f.home_win.to_numpy()

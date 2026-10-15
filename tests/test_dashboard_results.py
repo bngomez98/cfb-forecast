@@ -2,6 +2,7 @@
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -56,6 +57,7 @@ def test_results_grade_each_pick(artifacts):
     assert frame.correct.tolist() == [True, True, False, True]
     assert frame.margin_miss.tolist() == pytest.approx([4.0, 4.0, 10.0, 0.0])
     assert frame.pick_chance.tolist() == pytest.approx([0.80, 0.70, 0.65, 0.55])
+    assert frame.log_loss.tolist() == pytest.approx([-np.log(0.8), -np.log(0.7), -np.log(0.35), -np.log(0.55)])
     assert results.season_accuracy() == (pytest.approx(0.75), 4)
 
 
@@ -80,3 +82,7 @@ def test_results_page_shows_accuracy(artifacts):
     assert "2026 results and accuracy" in text
     assert "75.0%" in text and "3 of 4 games" in text
     assert "4.5 pts" in text
+    assert "Win-chance scores by week" in text
+    bands = app.dataframe[1].value
+    assert list(bands["Holds up"]) == ["Yes"] * 4
+    assert bands["Games"].sum() == 4
