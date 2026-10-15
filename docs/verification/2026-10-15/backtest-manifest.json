@@ -1,0 +1,64 @@
+{
+  "created_at": "2026-10-15T20:56:04.465851+00:00",
+  "warmup": 2021,
+  "initial_train_seasons": [
+    2022,
+    2023
+  ],
+  "validation_season": 2024,
+  "test_season": 2025,
+  "selected_variant": "pbp",
+  "selected_settings": {
+    "score": {
+      "variant": "score",
+      "q": 0.02,
+      "carry": 0.8,
+      "alpha": 10.0,
+      "games": 798,
+      "correct": 556,
+      "accuracy": 0.6967418546365914,
+      "log_loss": 0.5527691422000017,
+      "brier": 0.1883185321132557
+    },
+    "pbp": {
+      "variant": "pbp",
+      "q": 0.02,
+      "carry": 0.8,
+      "alpha": 100.0,
+      "games": 798,
+      "correct": 562,
+      "accuracy": 0.7042606516290727,
+      "log_loss": 0.5521062636673415,
+      "brier": 0.1879155475197579
+    }
+  },
+  "elo_selected_C": 0.01,
+  "evaluation_games": 808,
+  "all_cutoffs_before_kickoff": true,
+  "all_latest_results_before_cutoff": true,
+  "missing_pbp_does_not_remove_games": true,
+  "source_hashes": {
+    "schedule_2021.csv": "047cf33a44a3b998f4ef65e530335ebcee0d25965a4e9d530a96d196f99f8fc5",
+    "schedule_2022.csv": "0386dddf8500c45fdb611e4e1bfd4de29782c8ec91e84697f8094b047fd2801d",
+    "schedule_2023.csv": "8a8116975d34ef2278ab8509f785ec1b92d11889e4153478d0c0af84e0b48ba7",
+    "schedule_2024.csv": "43bfbcc84fcfc5976d5ebf16c401fcc35aedda61b9d4d415d86cdd654603aa0b",
+    "schedule_2025.csv": "ee3957d1612b836f4dbb2ada76a318faf53d504a11082f9eb87257b521d463c8",
+    "schedule_2026.csv": "4c9c3fd067db6ab97aede5e942a2b3811b62afc0848773f37bb7782264d0b864",
+    "adv_team_2021.parquet": "3500b3f19388640470900e2e0667fa1dc8666b7143f6b9108c782b47970c6ac0",
+    "adv_team_2022.parquet": "b355203d2ef594514e5aee1482d7426abc719f83b947d326f49c61b0ed8acf50",
+    "adv_team_2023.parquet": "ba836ca6d47b26bbd4713b8c45a927b8eb911093cf7fb790a4e4aaee6a62a1f2",
+    "adv_team_2024.parquet": "58656149b7ad5e0a7879dc714e0455a36c5cd9de56c9843869f058c12f0034c6",
+    "adv_team_2025.parquet": "0d7f1fdc11e9c71a0833b464db187c7ba8f968d97359eaf81a683b08a6e99308",
+    "adv_team_2026.parquet": "dcd69bcfb7f4f667bf3d183e3ef43f56e168148fb332182808565720fb4833be"
+  },
+  "archive_sha256": null,
+  "limitations": [
+    "Historical source statistics may have later revisions",
+    "Unknown final-whistle time uses kickoff plus eight hours",
+    "FBS-v-FBS rating and evaluation population",
+    "Empirical validation covariance includes state-estimation uncertainty; it is not added a second time",
+    "No learned player/injury availability, fitted EPA, or drive-level rules engine",
+    "Archive comparison is a public forecast tracker, not a bookmaker moneyline baseline",
+    "Test season has been studied in earlier work; this is reproducible historical evaluation, not a newly blind experiment"
+  ]
+}

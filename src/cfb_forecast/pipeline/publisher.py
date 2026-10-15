@@ -6,6 +6,7 @@ rows the React app, the Streamlit desk, and the email all read.
 from __future__ import annotations
 
 import json
+from contextlib import closing
 import logging
 import os
 import smtplib
@@ -70,6 +71,8 @@ def board_row(record: dict) -> dict:
         away_moneyline = None
     return {
         "game_id": int(record["game_id"]),
+        "as_of": record.get("as_of"),
+        "forecast_mode": record.get("forecast_mode", "legacy_unspecified"),
         "season": int(record["season"]),
         "kickoff": str(record["kickoff"]),
         "away_team": away,
@@ -124,7 +127,19 @@ def register_sources(conn, season: int) -> int:
     return count
 
 
+def _validate_published_rows(conn, run_id, rows):
+    from ..storage.evidence import canonical_json
+    for row in rows.to_dict("records"):
+        old = conn.execute("SELECT payload_json FROM forecast_log WHERE run_id=? AND game_id=?", (run_id, int(row["game_id"]))).fetchone()
+        if old:
+            original = json.loads(old[0])
+            comparable = {key: row.get(key) for key in original}
+            if canonical_json(original) != canonical_json(comparable):
+                raise ValueError(f"Published forecast changed for {run_id}/{row['game_id']}; use a new run ID")
+
+
 def write_forecast_log(conn, run_id: str, rows: pd.DataFrame, logged_at: str) -> int:
+    _validate_published_rows(conn, run_id, rows)
     for row in rows.to_dict("records"):
         conn.execute(
             """INSERT INTO forecast_log(
@@ -134,21 +149,7 @@ def write_forecast_log(conn, run_id: str, rows: pd.DataFrame, logged_at: str) ->
                  projected_home_margin, model_spread, market_spread, home_cover_probability,
                  home_moneyline, away_moneyline)
                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-               ON CONFLICT(run_id, game_id) DO UPDATE SET
-                 kickoff=excluded.kickoff,
-                 expected_home_score=excluded.expected_home_score,
-                 expected_away_score=excluded.expected_away_score,
-                 winner=excluded.winner,
-                 confidence=excluded.confidence,
-                 home_win_probability=excluded.home_win_probability,
-                 logged_at=excluded.logged_at,
-                 payload_json=excluded.payload_json,
-                 projected_home_margin=excluded.projected_home_margin,
-                 model_spread=excluded.model_spread,
-                 market_spread=excluded.market_spread,
-                 home_cover_probability=excluded.home_cover_probability,
-                 home_moneyline=excluded.home_moneyline,
-                 away_moneyline=excluded.away_moneyline""",
+               ON CONFLICT(run_id, game_id) DO NOTHING""",
             (
                 run_id, int(row["season"]), int(row["game_id"]), row["kickoff"],
                 row["home_team"], row["away_team"], row["expected_home_score"],
@@ -276,6 +277,8 @@ def publish_forecast_update(
     season = int(season or rows.season.iloc[0])
     manifest_path = run_dir / "weekly_manifest.json"
     manifest = {}
+    if not manifest_path.exists():
+        manifest_path = run_dir / "forecast_manifest.json"
     if manifest_path.exists():
         loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
         manifest = loaded[0] if isinstance(loaded, list) and loaded else loaded
@@ -294,6 +297,11 @@ def publish_forecast_update(
         "sources": sources,
         "forecasts": rows.to_dict("records"),
     }
+    # Validate and freeze before changing any public/latest surface.
+    from ..storage.evidence import freeze_forecast
+    with closing(connect(database)) as evidence_conn:
+        _validate_published_rows(evidence_conn, run_id, rows)
+        freeze_forecast(evidence_conn, run_id, frame, run_dir, artifacts / "evidence")
     log_dir = artifacts / "logs"
     _configure_log(log_dir)
     latest = artifacts / "latest"
