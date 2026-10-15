@@ -142,6 +142,8 @@ OMP_NUM_THREADS=1 \
 python -m cfb_forecast sunday-run --season 2026
 ```
 
+The Streamlit dashboard is the main way to read the forecasts. Its Forecasts pages (Predictions, Odds, Past results and How it works) show each game as a card with expected points and win chance, grouped by day, with a team search. The Behind the scenes pages show the saved run's full files. It reads `artifacts/latest/forecast_board.json` or `forecasts.csv`, and falls back to `web/public/forecasts.json` when no run has been saved.
+
 Run the dashboard directly from Linux:
 
 ```bash
