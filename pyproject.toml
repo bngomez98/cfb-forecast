@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 dependencies = ["numpy>=1.26", "pandas>=2.2,<3", "scipy>=1.12", "scikit-learn>=1.4", "pyarrow>=15,<26"]
 
 [project.optional-dependencies]
-test = ["pytest>=8", "httpx>=0.27", "fastapi>=0.115"]
+test = ["pytest>=8", "httpx>=0.27", "fastapi>=0.115", "build>=1"]
 api = ["fastapi>=0.115", "uvicorn>=0.30"]
 
 [tool.setuptools.package-data]
@@ -28,3 +28,11 @@ where = ["src"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = ["--basetemp=.pytest_tmp"]
+
+[tool.ruff]
+extend-exclude = ["web", ".pytest_tmp"]
+
+[tool.ruff.lint]
+# Only rules that point at code that would fail when it runs (syntax errors,
+# undefined names, broken comparisons), not style. CI runs `ruff check`.
+select = ["E9", "F63", "F7", "F82"]

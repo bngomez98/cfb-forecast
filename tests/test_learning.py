@@ -1,4 +1,5 @@
 import json
+import os
 from contextlib import closing
 
 import numpy as np
@@ -72,6 +73,8 @@ def test_future_outcomes_do_not_enter_sql(training_files):
 def test_r_python_metrics_agree(tmp_path):
     import shutil
     if not shutil.which("Rscript"):
+        if os.environ.get("CFB_REQUIRE_R") == "1":
+            pytest.fail("CFB_REQUIRE_R=1 but Rscript is not installed")
         pytest.skip("R is installed in the production image and scheduled runner")
     frame = pd.DataFrame({"game_id": range(40), "home_win": [0, 1] * 20, "candidate_p": [.2, .7] * 20})
     assert validate_in_r(frame, tmp_path)["status"] == "verified"

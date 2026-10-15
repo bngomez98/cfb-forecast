@@ -36,6 +36,9 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements-tested.txt
       - name: Check Sunday execution hour
         id: schedule
         run: |
@@ -52,16 +55,23 @@ jobs:
         if: steps.schedule.outputs.run == 'true'
         run: |
           sudo apt-get update && sudo apt-get install -y --no-install-recommends r-base-core
-          python -m pip install -e '.[test]'
+          # Same library versions the "tested versions" CI job checks, so a new
+          # upstream release can't change Sunday's numbers without being tested first.
+          python -m pip install -c requirements-tested.txt -e '.[test]'
+          python -m pip check
           python -m pytest -q
       - name: Restore previous predictions, model, and downloaded sources
         if: steps.schedule.outputs.run == 'true'
         run: |
           mkdir -p runtime
-          ARTIFACT_ID=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" --jq "[.artifacts[] | select(.name == \"cfb-runtime-$SEASON\" and .expired == false)][0].id // empty")
+          # Ask for this artifact by name, newest first, so other uploads can't push it off the first page.
+          ARTIFACT_ID=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=cfb-runtime-$SEASON&per_page=20" --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | last | .id // empty')
           if [ -n "$ARTIFACT_ID" ]; then
-            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > /tmp/cfb-runtime.zip
-            unzip -q /tmp/cfb-runtime.zip -d runtime
+            echo "Restoring artifact $ARTIFACT_ID"
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > "$RUNNER_TEMP/cfb-runtime.zip"
+            unzip -q "$RUNNER_TEMP/cfb-runtime.zip" -d runtime
+          else
+            echo "::warning::No saved cfb-runtime-$SEASON artifact found; starting without last week's predictions."
           fi
       - name: Collect inputs, validate last week, and calculate this week
         if: steps.schedule.outputs.run == 'true'
@@ -73,6 +83,36 @@ jobs:
           else
             python -m cfb_forecast sunday-run --data runtime/data --artifacts runtime/artifacts --season "$SEASON"
           fi
+      - name: Write a run summary to the Actions page
+        if: always() && steps.schedule.outputs.run == 'true'
+        continue-on-error: true
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path("runtime/artifacts/latest/run_manifest.json")
+          lines = [f"## Sunday FBS forecast, season {os.environ['SEASON']}", ""]
+          if not path.exists():
+              lines.append("No run manifest was written. Check the step logs above for the error.")
+          else:
+              receipt = json.loads(path.read_text())
+              for key in ("status", "run_id", "as_of", "games", "price_rows", "slate_start", "slate_end"):
+                  if key in receipt:
+                      lines.append(f"- **{key}**: {receipt[key]}")
+              for key in ("learning", "distribution"):
+                  part = receipt.get(key)
+                  if isinstance(part, dict):
+                      detail = part.get("message") or part.get("reason") or ""
+                      lines.append(f"- **{key}**: {part.get('status', 'unknown')} {detail}".rstrip())
+              validation = receipt.get("validation")
+              reports = validation if isinstance(validation, list) else [validation] if isinstance(validation, dict) else []
+              for report in reports:
+                  scalars = {k: v for k, v in report.items() if isinstance(v, (int, float, str))}
+                  if scalars:
+                      lines.append("- **validation**: " + ", ".join(f"{k} {v}" for k, v in scalars.items()))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("\n".join(lines) + "\n")
+          PY
       - name: Save runtime for next Sunday's validation
         if: always() && steps.schedule.outputs.run == 'true'
         uses: actions/upload-artifact@v4
