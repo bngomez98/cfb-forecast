@@ -13,7 +13,7 @@ export default async function handler(request, response) {
   }
 
   try {
-    const file = path.join(process.cwd(), 'public', 'forecasts.json')
+    const file = path.join(process.cwd(), process.cwd().endsWith(`${path.sep}web`) ? 'public' : 'web/public', 'forecasts.json')
     const board = JSON.parse(await readFile(file, 'utf8'))
     if (Number(board.season) !== requestedSeason) {
       return response.status(404).json({ error: `No published forecast is available for ${requestedSeason}` })

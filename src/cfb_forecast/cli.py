@@ -93,6 +93,18 @@ def main():
     pu.add_argument("--run",required=True); pu.add_argument("--artifacts",default="artifacts")
     pu.add_argument("--database",default=None); pu.add_argument("--web",default=None); pu.add_argument("--run-id",default=None)
     pu.add_argument("--fetch-sources",action="store_true")
+    cn=sub.add_parser("capture-news",help="Capture ESPN's college-football news feed and flag injury and roster items")
+    cn.add_argument("--team-ids",nargs="*",type=int,default=None); cn.add_argument("--out",required=True)
+    cn.add_argument("--observed-at",default=None); cn.add_argument("--timeout",type=float,default=15.0)
+    cr=sub.add_parser("capture-historical-rosters",help="Download SportsDataverse rosters for every season in a range")
+    cr.add_argument("--start-season",type=int,required=True); cr.add_argument("--end-season",type=int,required=True)
+    cr.add_argument("--out",required=True); cr.add_argument("--cache-dir",default="data/rosters"); cr.add_argument("--timeout",type=float,default=60.0)
+    sp=sub.add_parser("season-ppg",help="Team season-to-date points scored and allowed per game at a cutoff")
+    sp.add_argument("--data",default="data"); sp.add_argument("--season",type=int,required=True); sp.add_argument("--as-of",required=True)
+    sp.add_argument("--out",required=True); sp.add_argument("--attach-forecasts",default=None); sp.add_argument("--include-fcs",action="store_true")
+    pp=sub.add_parser("player-ppg",help="Player season-to-date points per game from a player-game stats file")
+    pp.add_argument("--player-games",required=True); pp.add_argument("--as-of",required=True); pp.add_argument("--season",type=int,default=None)
+    pp.add_argument("--out",required=True); pp.add_argument("--min-games",type=int,default=1)
     args=parser.parse_args()
     from .paths import cli_path
     for name in ("data", "artifacts", "model", "models", "out", "store", "ledger", "predictions", "archive", "market", "input", "previous", "forecast", "holdout", "frozen_batch", "run", "web", "database"):
@@ -200,3 +212,85 @@ def main():
         result,manifest=run_weekly_forecast(args.data,args.model,args.out,args.season,args.week,args.as_of,args.market,args.draws)
         print(pd.DataFrame([manifest]).to_string(index=False))
         print(result[["away_team","home_team","kickoff","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
+    elif args.command == "capture-news":
+        from .ingest.capture_log import CAPTURE_LOG_FILENAME, append_capture
+        from .ingest.news import fetch_news, fetch_news_for_teams, summarize_captures
+
+        if args.team_ids:
+            captures = fetch_news_for_teams(args.team_ids, observed_at=args.observed_at, timeout=args.timeout)
+        else:
+            captures = [fetch_news(observed_at=args.observed_at, timeout=args.timeout)]
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        frames = [capture.to_frame() for capture in captures]
+        combined = pd.concat(frames, ignore_index=True) if any(not f.empty for f in frames) else frames[0]
+        combined.to_csv(out / "news.csv", index=False)
+        for capture in captures:
+            append_capture(
+                out / CAPTURE_LOG_FILENAME,
+                source="news.espn.cfb",
+                status=capture.status,
+                observed_at=capture.observed_at,
+                request_url=capture.request_url,
+                extra={"team_id": capture.team_id, "items": capture.count, "injury_items": capture.injury_count},
+            )
+        print(pd.Series(summarize_captures(captures)).to_string())
+    elif args.command == "capture-historical-rosters":
+        from .ingest.capture_log import CAPTURE_LOG_FILENAME, append_capture
+        from .ingest.rosters import fetch_historical_rosters_span, summarize_captures
+
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        captures = fetch_historical_rosters_span(args.start_season, args.end_season, cache_dir=args.cache_dir, timeout=args.timeout)
+        frames = [capture.to_frame() for capture in captures]
+        combined = pd.concat(frames, ignore_index=True) if any(not f.empty for f in frames) else frames[0]
+        combined.to_csv(out / "rosters_historical.csv", index=False)
+        for capture in captures:
+            append_capture(
+                out / CAPTURE_LOG_FILENAME,
+                source="rosters.sportsdataverse.historical",
+                status=capture.status,
+                observed_at=capture.observed_at,
+                request_url=capture.request_url,
+                extra={"season": capture.season, "player_count": capture.count},
+            )
+        print(pd.Series(summarize_captures(captures)).to_string())
+    elif args.command == "season-ppg":
+        from .ingest.capture_log import CAPTURE_LOG_FILENAME, append_capture
+        from .ingest.data import load_data
+        from .ingest.season_ppg import attach_ppg_to_forecasts, compute_season_ppg
+
+        schedules, _, _ = load_data(args.data)
+        ppg = compute_season_ppg(schedules, season=args.season, as_of=args.as_of, fbs_only=not args.include_fcs)
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        ppg.to_csv(out / "season_ppg.csv", index=False)
+        append_capture(
+            out / CAPTURE_LOG_FILENAME,
+            source="season_ppg.local",
+            status="captured" if len(ppg) else "no_games_before_cutoff",
+            observed_at=args.as_of,
+            extra={"season": args.season, "teams": int(len(ppg))},
+        )
+        if args.attach_forecasts:
+            attach_ppg_to_forecasts(pd.read_csv(args.attach_forecasts), ppg).to_csv(out / "forecasts_with_ppg.csv", index=False)
+        print(f"PPG for {len(ppg)} teams written to {out / 'season_ppg.csv'}")
+    elif args.command == "player-ppg":
+        from .ingest.capture_log import CAPTURE_LOG_FILENAME, append_capture
+        from .ingest.player_ppg import compute_player_ppg, summarize_player_ppg
+
+        source = Path(args.player_games)
+        player_games = pd.read_parquet(source) if source.suffix.lower() == ".parquet" else pd.read_csv(source)
+        result = compute_player_ppg(player_games, as_of=args.as_of, season=args.season, min_games=args.min_games)
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        result.to_csv(out / "player_ppg.csv", index=False)
+        append_capture(
+            out / CAPTURE_LOG_FILENAME,
+            source="player_ppg.local",
+            status="captured" if len(result) else "no_player_rows_before_cutoff",
+            observed_at=args.as_of,
+            extra={"season": args.season, "players": int(len(result)), "source_file": str(source)},
+        )
+        summary = summarize_player_ppg(result)
+        print(f"PPG for {summary['players']} players written to {out / 'player_ppg.csv'}")
