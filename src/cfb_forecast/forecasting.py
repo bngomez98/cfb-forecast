@@ -21,9 +21,6 @@ from scipy.stats import nbinom
 from . import football_model as fm
 from . import model_spec as sp
 
-L = 121                    # points 0..120 per team
-M_FFT = 256
-NMAX = 36                  # most possessions per team considered
 GLOBAL_SITES = ["alpha", "eta", "loading", "gamma", "W_raw", "tau_W", "fg_distance_coef", "outcome_intercept", "outcome_coef",
                 "outcome_field_position", "outcome_home", "outcome_covariates", "td_points_logits", "rare_off_logits",
                 "rare_opp_logits", "drives_intercept", "drives_tempo", "drives_sustain", "drives_concentration", "sigma"] + \
@@ -61,10 +58,19 @@ def extract_bundle(f: "fm.Fit", n_draws=200, batch=20, seed=7, calculation_versi
     from numpyro.infer import Predictive
     sites = GLOBAL_SITES + ["S_keep"] + [f"pstate_{g}" for g in sp.PLAYER_GROUPS]
     chunks = []
-    for b, start in enumerate(range(0, n_draws, batch)):
-        pred = Predictive(fm.model, guide=f.guide, params=f.params, num_samples=min(batch, n_draws - start), return_sites=sites)
-        out = pred(jax.random.PRNGKey(seed + b), f.A)
-        chunks.append({k: np.asarray(v) for k, v in out.items() if k in sites})
+    if f.kind == "nuts":
+        available = len(next(iter(f.samples.values())))
+        n_draws = min(n_draws, available)
+        for start in range(0, n_draws, batch):
+            part = {k: v[start:start + batch] for k, v in f.samples.items()}
+            pred = Predictive(fm.model, posterior_samples=part, return_sites=sites)
+            out = pred(jax.random.PRNGKey(seed + start), f.A)
+            chunks.append({k: np.asarray(v) for k, v in out.items() if k in sites})
+    else:
+        for b, start in enumerate(range(0, n_draws, batch)):
+            pred = Predictive(fm.model, guide=f.guide, params=f.params, num_samples=min(batch, n_draws - start), return_sites=sites)
+            out = pred(jax.random.PRNGKey(seed + b), f.A)
+            chunks.append({k: np.asarray(v) for k, v in out.items() if k in sites})
     draws = {k: np.concatenate([c[k] for c in chunks], axis=0) for k in chunks[0]}
     d = f.data
     meta = dict(
@@ -72,10 +78,10 @@ def extract_bundle(f: "fm.Fit", n_draws=200, batch=20, seed=7, calculation_versi
         keep_periods=[int(x) for x in np.asarray(f.A["keep_periods"])],
         nodes={g: dict(player_id=d.nodes[g]["player_id"], y=d.nodes[g]["y"], team=d.nodes[g]["team"], cov=d.nodes[g]["cov"],
                        n_obs=d.nodes[g]["n_obs"]) for g in d.nodes},
-        fp_quantiles=np.quantile(d.drive_fp, [0.1, 0.3, 0.5, 0.7, 0.9]), stream_init=d.stream_init,
+        fp_grid=np.nanquantile(d.drive_fp, (np.arange(21) + 0.5) / 21), stream_init=d.stream_init,
         unit=np.asarray(f.A["unit"]), calculation_version=calculation_version,
     )
-    digest = hashlib.sha256(json.dumps([d.seasons, str(d.cutoff), len(d.obs_gd), float(f.losses[-1]), calculation_version], default=str).encode()).hexdigest()[:16]
+    digest = hashlib.sha256(json.dumps([d.seasons, str(d.cutoff), len(d.obs_gd), float(f.losses[-1]) if f.losses is not None else f.kind, calculation_version], default=str).encode()).hexdigest()[:16]
     return Bundle(f"ps-{digest}", draws, meta)
 
 
@@ -141,41 +147,80 @@ def _softmax(x, axis=-1):
     return e / e.sum(axis=axis, keepdims=True)
 
 
-def _pmf_sets(p_out, td_pmf, rare_off, rare_opp):
-    """Per-possession point PMFs (draws, M_FFT) for the offense and the credit its defense gets."""
+MAX_POINTS_PER_POSSESSION = max(max(sp.TD_POINTS), max(sp.RARE_POINTS), 3)
+NEGLECTED = 1e-12           # probability mass left out when sizing the support of possession counts
+
+
+def _support(lam, phi):
+    """Largest number of possessions per team needed so that the neglected probability is below NEGLECTED."""
+    n = 8
+    while float(np.max(nbinom.sf(2 * n, phi, phi / (phi + lam)))) > NEGLECTED:
+        n += 4
+    return n
+
+
+def _pmf_sets(p_out, td_pmf, rare_off, rare_opp, size):
+    """Per-possession point PMFs (draws, size) for the offense and the credit its defense gets."""
     n = p_out.shape[0]
-    off = np.zeros((n, M_FFT))
+    off = np.zeros((n, size))
     for k, pts in enumerate(sp.TD_POINTS):
         off[:, pts] += p_out[:, 1] * td_pmf[:, k]
     off[:, 3] += p_out[:, 2]
     for k, pts in enumerate(sp.RARE_POINTS):
         off[:, pts] += p_out[:, 7] * rare_off[:, k]
     off[:, 0] += 1.0 - off.sum(axis=1)
-    credit = np.zeros((n, M_FFT))
+    credit = np.zeros((n, size))
     for k, pts in enumerate(sp.RARE_POINTS):
         credit[:, pts] += p_out[:, 7] * rare_opp[:, k]
     credit[:, 0] += 1.0 - credit.sum(axis=1)
     return off, credit
 
 
-def _powers(pmf):
-    """rfft(pmf)^n for n = 0..NMAX; shape (draws, NMAX+1, M_FFT//2+1)."""
+def _powers(pmf, nmax):
+    """rfft(pmf)^n for n = 0..nmax; shape (draws, nmax+1, size//2+1)."""
     F = np.fft.rfft(pmf, axis=-1)
-    out = np.ones((F.shape[0], NMAX + 1, F.shape[1]), complex)
-    for n in range(1, NMAX + 1):
+    out = np.ones((F.shape[0], nmax + 1, F.shape[1]), complex)
+    for n in range(1, nmax + 1):
         out[:, n] = out[:, n - 1] * F
     return out
 
 
-def game_distribution(p_home, p_away, td_pmf, rare_off, rare_opp, lam, phi, rng=None):
-    """Exact joint score distribution for each draw, averaged. p_*: (draws, 8) outcome probabilities."""
+def overtime_home_share(p_ot_home, p_ot_away, td_pmf):
+    """P(home wins | regulation tie) from the possession-outcome model at the overtime start (opponent 25-yard line).
+
+    Each overtime round gives both teams one possession; the first round with unequal points ends the game.
+    """
+    n = p_ot_home.shape[0]
+    pts = np.array([0, 3, *sp.TD_POINTS])
+
+    def round_pmf(p):
+        out = np.zeros((n, len(pts)))
+        out[:, 1] = p[:, 2]
+        out[:, 2:] = p[:, 1:2] * td_pmf
+        out[:, 0] = 1.0 - out[:, 1:].sum(axis=1)
+        return out
+
+    h, a = round_pmf(p_ot_home), round_pmf(p_ot_away)
+    greater = (pts[:, None] > pts[None, :]).astype(float)
+    p_win = np.einsum("di,ij,dj->d", h, greater, a)
+    p_tie = np.einsum("di,ij,dj->d", h, np.eye(len(pts)), a)
+    return p_win / (1.0 - p_tie)
+
+
+def game_distribution(p_home, p_away, td_pmf, rare_off, rare_opp, lam, phi, ot_share=None):
+    """Exact joint score distribution averaged over draws, plus the draw-averaged overtime share of ties.
+
+    p_*: (draws, 8) possession outcome probabilities. ``ot_share``: (draws,) P(home wins overtime).
+    """
     n = p_home.shape[0]
-    off_h, cred_h = _pmf_sets(p_home, td_pmf, rare_off, rare_opp)
-    off_a, cred_a = _pmf_sets(p_away, td_pmf, rare_off, rare_opp)
-    Fh, Fa = _powers(off_h), _powers(off_a)
-    Gh, Ga = _powers(cred_a), _powers(cred_h)       # home gets credit from away possessions, and vice versa
-    # possession-count pairs: total T ~ NegBin, the extra possession of an odd total is a coin toss
-    T = np.arange(0, 2 * NMAX)
+    nmax = _support(lam, phi)
+    size = int(2 ** np.ceil(np.log2(2 * MAX_POINTS_PER_POSSESSION * nmax + 2)))
+    L = MAX_POINTS_PER_POSSESSION * nmax + 1
+    off_h, cred_h = _pmf_sets(p_home, td_pmf, rare_off, rare_opp, size)
+    off_a, cred_a = _pmf_sets(p_away, td_pmf, rare_off, rare_opp, size)
+    Fh, Fa = _powers(off_h, nmax), _powers(off_a, nmax)
+    Gh, Ga = _powers(cred_a, nmax), _powers(cred_h, nmax)       # each side is credited with the other side's rare scores
+    T = np.arange(0, 2 * nmax + 1)
     pT = nbinom.pmf(T[None, :], phi[:, None], phi[:, None] / (phi[:, None] + lam[:, None]))
     pairs, weights = [], []
     for t in T:
@@ -184,21 +229,26 @@ def game_distribution(p_home, p_away, td_pmf, rare_off, rare_opp, lam, phi, rng=
         else:
             pairs.append(((t + 1) // 2, (t - 1) // 2)); weights.append(0.5 * pT[:, t])
             pairs.append(((t - 1) // 2, (t + 1) // 2)); weights.append(0.5 * pT[:, t])
-    pairs = np.array(pairs)
-    keep = pairs.max(axis=1) <= NMAX
-    pairs, W = pairs[keep], np.stack(weights, axis=1)[:, keep]
-    W = W / W.sum(axis=1, keepdims=True)
+    pairs, W = np.array(pairs), np.stack(weights, axis=1)
     J = np.zeros((L, L))
+    tie_home = 0.0
+    tie_total = 0.0
     for d in range(n):
         nh, na = pairs[:, 0], pairs[:, 1]
-        H = np.fft.irfft(Fh[d, nh] * Gh[d, na], n=M_FFT, axis=-1)[:, :L].clip(0)
-        A = np.fft.irfft(Fa[d, na] * Ga[d, nh], n=M_FFT, axis=-1)[:, :L].clip(0)
-        J += (W[d][:, None] * H).T @ A
+        H = np.fft.irfft(Fh[d, nh] * Gh[d, na], n=size, axis=-1)[:, :L]
+        A = np.fft.irfft(Fa[d, na] * Ga[d, nh], n=size, axis=-1)[:, :L]
+        Jd = (W[d][:, None] * H).T @ A
+        J += Jd
+        if ot_share is not None:
+            tie = float(np.trace(Jd))
+            tie_total += tie
+            tie_home += tie * float(ot_share[d])
     J /= n
-    return J / J.sum()
+    return J, (tie_home / tie_total if tie_total > 0 else 0.5)
 
 
-def summarize(J):
+def summarize(J, ot_home_share=0.5):
+    L = J.shape[0]
     pts = np.arange(L)
     home = J.sum(1)
     away = J.sum(0)
@@ -207,20 +257,20 @@ def summarize(J):
     np.add.at(margin, (diff + L - 1).ravel(), J.ravel())
     total = np.zeros(2 * L - 1)
     np.add.at(total, (pts[:, None] + pts[None, :]).ravel(), J.ravel())
-    p_tie = np.trace(J)
-    p_home = J[np.tril_indices(L, -1)].sum()
-    p_away = J[np.triu_indices(L, 1)].sum()
-    win = p_home / (p_home + p_away)                 # overtime resolves ties in proportion to strength
+    p_tie = float(np.trace(J))
+    p_home = float(J[np.tril_indices(L, -1)].sum()) + p_tie * ot_home_share
+    p_away = float(J[np.triu_indices(L, 1)].sum()) + p_tie * (1.0 - ot_home_share)
     m_axis = np.arange(-(L - 1), L)
     e_margin = float((margin * m_axis).sum())
-    e_total = float((total[: 2 * L - 1] * np.arange(2 * L - 1)).sum())
-    return dict(home_points=float((home * pts).sum()), away_points=float((away * pts).sum()), home_win=float(win), away_win=float(1 - win),
+    e_total = float((total * np.arange(2 * L - 1)).sum())
+    return dict(home_points=float((home * pts).sum()), away_points=float((away * pts).sum()), home_win=p_home, away_win=p_away,
                 margin=margin, total=total, expected_margin=e_margin, margin_variance=float((margin * (m_axis - e_margin) ** 2).sum()),
-                expected_total=e_total, total_variance=float((total * (np.arange(2 * L - 1) - e_total) ** 2).sum()), tie_mass=float(p_tie))
+                expected_total=e_total, total_variance=float((total * (np.arange(2 * L - 1) - e_total) ** 2).sum()), tie_mass=p_tie)
 
 
 def cover_probability(margin_pmf, spread):
     """P(home covers) for a home spread (negative = home favored); pushes are split evenly."""
+    L = (len(margin_pmf) + 1) // 2
     m = np.arange(-(L - 1), L)
     edge = m + spread
     return float(margin_pmf[edge > 0].sum() + 0.5 * margin_pmf[edge == 0].sum())
@@ -233,20 +283,32 @@ def over_probability(total_pmf, line):
 
 # ------------------------------------------------------------------------ lineup and game features
 
-def recent_group_fractions(conn, team_id, before, n_games=6):
-    """Share of a team's carries/targets recently going to each player group (team-level context)."""
-    q = """SELECT p.is_rush, p.is_pass, p.sack, p.rusher_id, p.receiver_id, g.start_date FROM plays p JOIN games g ON g.game_id=p.game_id
+def _group_fractions(df, pos):
+    rush = df[df.is_rush == 1]
+    passes = df[(df.is_pass == 1) & (df.sack == 0)]
+    g = rush.rusher_id.map(pos)
+    r = passes.receiver_id.map(pos)
+    return dict(qb_carry=float((g == "QB").mean()) if len(rush) else np.nan, rb_carry=float((g == "RB").mean()) if len(rush) else np.nan,
+                rec_target=float((r == "REC").mean()) if len(passes) else np.nan)
+
+
+def league_group_fractions(conn):
+    """Share of carries and targets by position group across every recorded play (the prior for a team with none)."""
+    df = pd.read_sql_query("SELECT is_rush, is_pass, sack, rusher_id, receiver_id FROM plays WHERE scrimmage_play=1", conn)
+    pos = pd.read_sql_query("SELECT player_id, position FROM players", conn).set_index("player_id").position
+    return _group_fractions(df, pos)
+
+
+def recent_group_fractions(conn, team_id, before, league=None):
+    """Share of a team's carries and targets recently going to each player group; league shares if it has no plays."""
+    q = """SELECT p.is_rush, p.is_pass, p.sack, p.rusher_id, p.receiver_id FROM plays p JOIN games g ON g.game_id=p.game_id
            WHERE p.offense_team_id=? AND p.scrimmage_play=1 AND g.start_date < ? AND g.result_usable=1
            ORDER BY g.start_date DESC LIMIT 1200"""
     df = pd.read_sql_query(q, conn, params=[int(team_id), str(before)])
     pos = pd.read_sql_query("SELECT player_id, position FROM players", conn).set_index("player_id").position
-    if df.empty:
-        return dict(qb_carry=0.12, rb_carry=0.75, rec_target=0.72)
-    rush = df[df.is_rush == 1]
-    passes = df[(df.is_pass == 1) & (df.sack == 0)]
-    g = rush.rusher_id.map(pos)
-    return dict(qb_carry=float((g == "QB").mean()) if len(rush) else 0.12, rb_carry=float((g == "RB").mean()) if len(rush) else 0.75,
-                rec_target=float((passes.receiver_id.map(pos) == "REC").mean()) if len(passes) else 0.72)
+    own = _group_fractions(df, pos) if len(df) else {}
+    league = league or league_group_fractions(conn)
+    return {k: (own.get(k) if own.get(k) == own.get(k) and own.get(k) is not None else league[k]) for k in league}
 
 
 class Forecaster:
@@ -307,14 +369,14 @@ class Forecaster:
                 lin[:, s] += (w * st).sum(axis=1)
         return lin, Mx
 
-    def outcome_probs(self, lin, Mx, h, xg):
+    def outcome_probs(self, lin, Mx, h, xg, fps=None):
         d = self.d
         feats = np.concatenate([lin[:, fm.KEY], Mx[:, None]], axis=1)
         base = d["outcome_intercept"] + np.einsum("dk,dkc->dc", feats, d["outcome_coef"]) + h * d["outcome_home"]
         if xg is not None and len(xg):
             base = base + np.einsum("k,dkc->dc", np.asarray(xg), d["outcome_covariates"][:, : len(xg)])
         probs = 0
-        qs = self.m["fp_quantiles"]
+        qs = self.m["fp_grid"] if fps is None else fps
         for q in qs:
             logit = np.concatenate([np.zeros((self.n, 1)), base + q * d["outcome_field_position"]], axis=1)
             probs = probs + _softmax(logit)
@@ -333,8 +395,10 @@ class Forecaster:
         rare_off, rare_opp = _softmax(d["rare_off_logits"]), _softmax(d["rare_opp_logits"])
         ti, fi = sp.STREAM_INDEX["tempo_plays"], sp.STREAM_INDEX["first_down_rate"]
         lam = np.exp(d["drives_intercept"] + d["drives_tempo"] * (lin_h[:, ti] + lin_a[:, ti]) + d["drives_sustain"] * (lin_h[:, fi] + lin_a[:, fi]))
-        J = game_distribution(p_h, p_a, td_pmf, rare_off, rare_opp, lam, d["drives_concentration"])
-        return J, dict(outcome_home=p_h.mean(0), outcome_away=p_a.mean(0), possessions=float(lam.mean()))
+        fp_ot = (25.0 - 75.0) / 25.0                                    # overtime starts at the opponent's 25-yard line
+        ot = overtime_home_share(self.outcome_probs(lin_h, M_h, hs, xg_home, fps=[fp_ot]), self.outcome_probs(lin_a, M_a, -hs, xg_away, fps=[fp_ot]), td_pmf)
+        J, share = game_distribution(p_h, p_a, td_pmf, rare_off, rare_opp, lam, d["drives_concentration"], ot_share=ot)
+        return J, dict(outcome_home=p_h.mean(0), outcome_away=p_a.mean(0), possessions=float(lam.mean()), ot_home_share=share)
 
 
 # ------------------------------------------------------------------------ run + store forecasts
@@ -366,6 +430,7 @@ def game_covariates(conn, game_id, meta):
 def forecast_games(conn, bundle: Bundle, game_ids, artifacts, run_id=None, information_cutoff=None, forecaster=None):
     """Forecast the games, store forecasts/inputs/distribution artifact, and return a table of results."""
     fc = forecaster or Forecaster(bundle, conn)
+    league = league_group_fractions(conn)
     meta = bundle.meta
     games = pd.read_sql_query(f"SELECT * FROM games WHERE game_id IN ({','.join('?' * len(game_ids))})", conn, params=[int(g) for g in game_ids])
     run_id = run_id or f"run-{bundle.parameter_set_id}-{datetime.now(timezone.utc):%Y%m%dT%H%M%S}"
@@ -375,7 +440,7 @@ def forecast_games(conn, bundle: Bundle, game_ids, artifacts, run_id=None, infor
                  (run_id, created, cutoff, bundle.parameter_set_id, "completed", json.dumps({"games": len(games)})))
     dist_dir = Path(artifacts) / "forecast_distributions"
     dist_dir.mkdir(parents=True, exist_ok=True)
-    out, Js, ids = [], [], []
+    out, Js, ids, ots = [], [], [], []
     per_of_week = lambda season, week: meta["seasons"].index(int(season)) * sp.WEEKS + min(max(int(week), 1), sp.WEEKS) - 1
     for g in games.itertuples(index=False):
         hi, ai = meta["team_index"].get(int(g.home_id)), meta["team_index"].get(int(g.away_id))
@@ -386,10 +451,10 @@ def forecast_games(conn, bundle: Bundle, game_ids, artifacts, run_id=None, infor
             raise ValueError(f"Period {per} of game {g.game_id} is not among the posterior periods kept at fit time {meta['keep_periods']}")
         kp = meta["keep_periods"].index(per)
         xh, xa = game_covariates(conn, g.game_id, meta)
-        fh = recent_group_fractions(conn, g.home_id, g.start_date)
-        fa = recent_group_fractions(conn, g.away_id, g.start_date)
+        fh = recent_group_fractions(conn, g.home_id, g.start_date, league)
+        fa = recent_group_fractions(conn, g.away_id, g.start_date, league)
         J, info = fc.forecast_game(hi, ai, kp, bool(g.neutral_site), xh, xa, fh, fa)
-        s = summarize(J)
+        s = summarize(J, info["ot_home_share"])
         distribution_ref = f"{run_id}.npz#{len(Js)}"
         cur = conn.execute("""INSERT OR REPLACE INTO forecasts(run_id,game_id,creation_timestamp,information_cutoff,parameter_set_id,home_expected_points,
             away_expected_points,home_win_probability,away_win_probability,expected_margin,margin_variance,expected_total,total_variance,
@@ -404,13 +469,15 @@ def forecast_games(conn, bundle: Bundle, game_ids, artifacts, run_id=None, infor
             (fid, "team_states", "team_state_estimates", f"{bundle.parameter_set_id}:{g.home_id},{g.away_id}", "{}"),
             (fid, "schedule_conditions", "schedule_conditions", str(g.game_id), json.dumps({"home": None if xh is None else xh.tolist(), "away": None if xa is None else xa.tolist()})),
             (fid, "group_fractions", None, None, json.dumps({"home": fh, "away": fa})),
-            (fid, "possessions", None, None, json.dumps({"expected_drives_per_team": info["possessions"] / 2}))])
-        Js.append(J.astype(np.float32)); ids.append(int(g.game_id))
+            (fid, "possessions", None, None, json.dumps({"expected_drives_per_team": info["possessions"] / 2, "overtime_home_share": info["ot_home_share"]}))])
+        Js.append(J); ids.append(int(g.game_id)); ots.append(float(info["ot_home_share"]))
         out.append(dict(game_id=int(g.game_id), forecast_id=fid, home_team=g.home_team, away_team=g.away_team, kickoff=g.start_date,
                         home_points=s["home_points"], away_points=s["away_points"], home_win=s["home_win"], expected_margin=s["expected_margin"],
                         expected_total=s["expected_total"], margin_sd=float(np.sqrt(s["margin_variance"])), total_sd=float(np.sqrt(s["total_variance"]))))
     if Js:
-        np.savez_compressed(dist_dir / f"{run_id}.npz", joint=np.stack(Js), game_ids=np.array(ids))
+        size = max(j.shape[0] for j in Js)          # pad with zero probability to a common support
+        padded = [np.pad(j, ((0, size - j.shape[0]),) * 2) for j in Js]
+        np.savez_compressed(dist_dir / f"{run_id}.npz", joint=np.stack(padded).astype(np.float32), game_ids=np.array(ids), ot_home_share=np.array(ots))
     conn.commit()
     return pd.DataFrame(out)
 
@@ -420,12 +487,13 @@ def store_availability(conn, bundle: Bundle, forecaster: Forecaster, game_ids) -
     meta, rows = bundle.meta, []
     games = pd.read_sql_query(f"SELECT game_id, home_id, away_id FROM games WHERE game_id IN ({','.join('?' * len(game_ids))})", conn, params=[int(g) for g in game_ids])
     as_of = str(meta["cutoff"] or now_iso())
+    league = league_group_fractions(conn)
     for g in games.itertuples(index=False):
         for team_id in (g.home_id, g.away_id):
             ti = meta["team_index"].get(int(team_id))
             if ti is None:
                 continue
-            _, shares = forecaster.lineup(ti, dict(qb_carry=0.12, rb_carry=0.75, rec_target=0.72))
+            _, shares = forecaster.lineup(ti, league)
             for grp, (cand, sh) in shares.items():
                 nd = meta["nodes"][grp]
                 a, su = bundle.draws[f"part_intercept_{grp}"][:, None], bundle.draws[f"part_sd_{grp}"][:, None]
@@ -461,7 +529,7 @@ def evaluate_forecasts(conn, artifacts, run_id=None, now=None) -> pd.DataFrame:
         conn.execute("INSERT OR REPLACE INTO game_results(game_id,actual_home_points,actual_away_points,actual_margin,actual_total,actual_winner,result_retrieved_at,source_id) VALUES(?,?,?,?,?,?,?,?)",
                      (int(r.game_id), hp, ap, margin, total, winner, r.result_available_at, "sportsdataverse"))
         y = 1.0 if margin > 0 else 0.0
-        p = float(np.clip(r.home_win_probability, 1e-6, 1 - 1e-6))
+        p = float(r.home_win_probability)
         crps, cover = None, {}
         ref = r.forecast_distribution_artifact
         if ref and "#" in ref:
@@ -473,13 +541,14 @@ def evaluate_forecasts(conn, artifacts, run_id=None, now=None) -> pd.DataFrame:
                     cache[name] = z["joint"]
                 pmf = summarize(cache[name][int(idx)].astype(float))["margin"]
                 cdf = np.cumsum(pmf)
-                axis = np.arange(-(L - 1), L)
+                size = cache[name].shape[1]
+                axis = np.arange(-(size - 1), size)
                 crps = float(((cdf - (axis >= margin)) ** 2).sum())
                 for lvl in INTERVALS:
                     lo, hi = axis[np.searchsorted(cdf, (1 - lvl) / 2)], axis[np.searchsorted(cdf, 1 - (1 - lvl) / 2)]
                     cover[str(lvl)] = bool(lo <= margin <= hi)
         row = (int(r.forecast_id), now, abs(r.expected_margin - margin), abs(r.expected_total - total), abs(r.home_expected_points - hp),
-               abs(r.away_expected_points - ap), (p - y) ** 2, -(y * np.log(p) + (1 - y) * np.log(1 - p)), int((p > 0.5) == (y == 1.0)), crps, json.dumps(cover))
+               abs(r.away_expected_points - ap), (p - y) ** 2, float(-np.log(p if y == 1.0 else 1.0 - p)), int((p > 0.5) == (y == 1.0)), crps, json.dumps(cover))
         conn.execute("""INSERT OR REPLACE INTO forecast_evaluations(forecast_id,evaluated_at,margin_absolute_error,total_absolute_error,home_absolute_error,
             away_absolute_error,brier,log_loss,winner_correct,crps,interval_coverage_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)""", row)
         out.append(dict(game_id=int(r.game_id), p_home=p, home_win=y, margin_pred=r.expected_margin, margin=margin, total_pred=r.expected_total, total=total,

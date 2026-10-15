@@ -112,7 +112,7 @@ def team_streams(plays: pd.DataFrame, drives: pd.DataFrame, positions: pd.Series
         c = d[d.opp == 1].groupby(["game_id", "team_id"])
         conv = pd.DataFrame({"n": c.size(), "x": c.scored.sum()}).reset_index().rename(columns={"team_id": "offense_team_id"})
         add("scoring_opp_converted", conv, "B")
-        fp = d[d.start_ytg <= 50].groupby(["game_id", "team_id"])
+        fp = d[d.start_ytg.le(50)].groupby(["game_id", "team_id"])
         fpp = pd.DataFrame({"n": fp.size(), "val": fp.points.mean()}).reset_index().rename(columns={"team_id": "offense_team_id"})
         add("field_position_points", fpp, "N")
         od = g.agg(n=("start_ytg", "size"), val=("start_ytg", "mean")).reset_index().rename(columns={"team_id": "offense_team_id"})
@@ -158,7 +158,6 @@ def drive_frame(plays: pd.DataFrame, drives: pd.DataFrame) -> pd.DataFrame:
     opp = s.groupby("drive_id").scoring_opportunity.max().rename("opp")
     d = drives.set_index("drive_id").join(first).join(opp).reset_index()
     d["opp"] = d.opp.fillna(0).astype(int)
-    d["start_ytg"] = d.start_ytg.fillna(75.0)
     d["scored"] = (d.points > 0).astype(int)
     return d
 
@@ -166,7 +165,7 @@ def drive_frame(plays: pd.DataFrame, drives: pd.DataFrame) -> pd.DataFrame:
 def derive_observations(conn, seasons, database_version=MODEL_VERSION) -> dict:
     """Compute and store derived_team_observations for FBS-vs-FBS games of the given seasons."""
     games = pd.read_sql_query(
-        f"SELECT game_id FROM games WHERE fbs_game=1 AND result_usable=1 AND season IN ({','.join('?' * len(seasons))})", conn, params=list(seasons))
+        f"SELECT game_id FROM games WHERE result_usable=1 AND season IN ({','.join('?' * len(seasons))})", conn, params=list(seasons))
     if games.empty:
         return {"games": 0, "observations": 0}
     plays = _load_plays(conn, seasons)
@@ -193,7 +192,7 @@ def _load_plays(conn, seasons):
             FROM plays p
             JOIN games g ON g.game_id = p.game_id
             LEFT JOIN derived_play_observations d ON d.play_id = p.play_id AND d.derivation_model='cfbfastR_ep'
-            WHERE g.fbs_game=1 AND g.result_usable=1 AND g.season IN ({','.join('?' * len(seasons))})"""
+            WHERE g.result_usable=1 AND g.season IN ({','.join('?' * len(seasons))})"""
     plays = pd.read_sql_query(q, conn, params=list(seasons))
     for c in plays.columns:
         if plays[c].dtype == object and c not in ("play_id", "drive_id", "clock", "play_type", "field_goal_result", "passer_id",
@@ -204,7 +203,7 @@ def _load_plays(conn, seasons):
 
 def _load_drives(conn, seasons):
     q = f"""SELECT dr.* FROM drives dr JOIN games g ON g.game_id=dr.game_id
-            WHERE g.fbs_game=1 AND g.result_usable=1 AND g.season IN ({','.join('?' * len(seasons))})
+            WHERE g.result_usable=1 AND g.season IN ({','.join('?' * len(seasons))})
               AND dr.source_id='sportsdataverse'"""
     return pd.read_sql_query(q, conn, params=list(seasons))
 
@@ -213,7 +212,7 @@ def _load_drives(conn, seasons):
 
 def derive_schedule_conditions(conn) -> int:
     """Rest, short week, bye and (when coordinates exist) travel and time-zone change for every game."""
-    g = pd.read_sql_query("SELECT game_id, season, start_date, home_id, away_id, neutral_site FROM games WHERE fbs_game=1", conn)
+    g = pd.read_sql_query("SELECT game_id, season, start_date, home_id, away_id, neutral_site FROM games", conn)
     if g.empty:
         return 0
     g["start"] = pd.to_datetime(g.start_date, utc=True, format="ISO8601")
@@ -335,16 +334,19 @@ def _standardize(frame: pd.DataFrame, stats: dict | None = None):
     return out, new
 
 
-def load_model_data(conn, seasons, cutoff=None, min_participation=3) -> ModelData:
+def load_model_data(conn, seasons, cutoff=None) -> ModelData:
     """Read the database as it stood at ``cutoff`` (result_available_at < cutoff) into model arrays."""
     seasons = sorted(int(s) for s in seasons)
     where_cut = "AND g.result_available_at < ?" if cutoff else ""
     args = [*seasons] + ([pd.Timestamp(cutoff).tz_convert("UTC").isoformat()] if cutoff else [])
+    # every completed game with recorded football observations informs the states; no division filter
     games = pd.read_sql_query(
         f"""SELECT g.game_id, g.season, g.week, g.start_date, g.home_id, g.away_id, g.neutral_site FROM games g
-            WHERE g.fbs_game=1 AND g.result_usable=1 AND g.season IN ({','.join('?' * len(seasons))}) {where_cut}""", conn, params=args)
+            WHERE g.result_usable=1 AND g.season IN ({','.join('?' * len(seasons))}) {where_cut}
+              AND g.game_id IN (SELECT DISTINCT game_id FROM derived_team_observations WHERE derivation_model=? AND derivation_model_version=?)""",
+        conn, params=args + [MODEL_NAME, MODEL_VERSION])
     if games.empty:
-        raise ValueError("No completed FBS games available at the cutoff")
+        raise ValueError("No completed games with football observations available at the cutoff")
     games["y"] = games.season.map({s: n for n, s in enumerate(seasons)})
     games["per"] = games.y * sp.WEEKS + games.week.clip(1, sp.WEEKS).astype(int) - 1
     team_ids = sorted(set(games.home_id) | set(games.away_id))
@@ -405,7 +407,7 @@ def load_model_data(conn, seasons, cutoff=None, min_participation=3) -> ModelDat
             scale[s] = 1.0
         else:
             init[s] = float(np.average(o.value, weights=o.n))
-            scale[s] = max(float(np.sqrt(np.average(o.n * (o.value - init[s]) ** 2))), 1e-2)
+            scale[s] = float(np.sqrt(np.average(o.n * (o.value - init[s]) ** 2)))
 
     data = ModelData(
         seasons=seasons, team_ids=team_ids, cutoff=cutoff,
@@ -420,13 +422,13 @@ def load_model_data(conn, seasons, cutoff=None, min_participation=3) -> ModelDat
     for i, per in zip(data.gd_i, data.gd_per):
         last[i] = max(last[i], per)
     data.last_period = last
-    _attach_players(conn, data, seasons, gd, min_participation)
+    _attach_players(conn, data, seasons, gd)
     _attach_possessions(conn, data, seasons, gd)
     _attach_ratings(conn, data, cutoff)
     return data
 
 
-def _attach_players(conn, data: ModelData, seasons, gd, min_participation):
+def _attach_players(conn, data: ModelData, seasons, gd):
     plays = pd.read_sql_query(
         f"""SELECT p.game_id, p.offense_team_id, p.scrimmage_play, p.is_pass, p.is_rush, p.sack, p.passer_id, p.rusher_id, p.receiver_id
             FROM plays p WHERE p.game_id IN ({','.join('?' * len(set(data.gd_game)))}) AND p.scrimmage_play=1""",
@@ -532,7 +534,7 @@ def _attach_players(conn, data: ModelData, seasons, gd, min_participation):
         for g in range(data.n_gd):
             by_team_year.setdefault((int(data.gd_i[g]), int(data.gd_y[g])), []).append(g)
         part_node, part_gd, part_z = [], [], []
-        active = seen[seen.games >= min_participation]
+        active = seen[seen.games >= 1]
         for r in active.itertuples(index=False):
             tm = data.nodes[group]["team"][r.node]
             for g in by_team_year.get((tm, int(r.y)), []):
@@ -584,7 +586,7 @@ def _attach_possessions(conn, data: ModelData, seasons, gd):
         conn, params=[int(g) for g in sorted(set(data.gd_game))])
     plays["pid"] = pd.to_numeric(plays.play_id, errors="coerce")
     first = plays.sort_values(["drive_id", "pid"]).groupby("drive_id").yards_to_goal.first()
-    d["ytg"] = d.drive_id.map(first).astype(float).fillna(75.0)
+    d["ytg"] = d.drive_id.map(first).astype(float)
     d["gd"] = [data.gd_index.get((int(g), int(t)), -1) for g, t in zip(d.game_id, d.team_id)]
     d = d[(d.gd >= 0)]
     games_total = d.groupby("game_id").size()
@@ -592,7 +594,7 @@ def _attach_possessions(conn, data: ModelData, seasons, gd):
     cls = {c: n for n, c in enumerate(sp.OUTCOMES)}
     data.drive_gd = d.gd.to_numpy()
     data.drive_class = d.outcome_class.map(cls).to_numpy()
-    data.drive_fp = ((d.ytg.to_numpy() - 75.0) / 25.0).astype(float)
+    data.drive_fp = ((d.ytg.to_numpy() - 75.0) / 25.0).astype(float)      # NaN where the start is unrecorded
     near = lambda v, bins: int(np.argmin(np.abs(np.asarray(bins) - v)))
     data.td_idx = np.array([near(p, sp.TD_POINTS) if c == cls["touchdown"] else -1 for p, c in zip(d.points, data.drive_class)])
     data.rare_off_idx = np.array([near(p, sp.RARE_POINTS) if c == cls["rare_score"] else -1 for p, c in zip(d.points, data.drive_class)])

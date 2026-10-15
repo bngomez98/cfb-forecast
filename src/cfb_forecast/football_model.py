@@ -110,6 +110,7 @@ def prepare(data, keep_periods=None):
         game_gd1=j(data.game_gd1), game_gd2=j(data.game_gd2), game_drives=j(data.game_drives, jnp.float32),
         n_rating=len(data.rating_val),
         keep_periods=jnp.asarray(keep_periods if keep_periods is not None else _default_keep(data)),
+        fp_grid=np.nanquantile(data.drive_fp, (np.arange(21) + 0.5) / 21),
     )
     for g in sp.PLAYER_GROUPS:
         nd = data.nodes[g]
@@ -150,7 +151,8 @@ def team_states(P, A):
         sl = slice(sp.TEAM_OFFSETS[g], sp.TEAM_OFFSETS[g] + K)
         unit = A["unit"][sl]
         LS, LQ = P[f"LS_{g}"], P[f"LQ_{g}"]
-        Am = 0.5 * jnp.eye(K) + P[f"Araw_{g}"]
+        mu = P[f"mu_{g}"]
+        Am = P[f"A_{g}"]
         Bm = P[f"B_{g}"]
         kap = unit * P[f"kap_{g}"]
         z0, eps = P[f"z0_{g}"], P[f"eps_{g}"]
@@ -160,9 +162,9 @@ def team_states(P, A):
         prev_end = None
         for y in range(Y):
             if y == 0:
-                s0 = z0[:, 0] @ LS.T
+                s0 = mu + z0[:, 0] @ LS.T
             else:
-                s0 = prev_end @ Am.T + A["R"][:, y] @ Bm.T + z0[:, y] @ LQ.T
+                s0 = mu + (prev_end - mu) @ Am.T + A["R"][:, y] @ Bm.T + z0[:, y] @ LQ.T
             path = s0[:, None, :] + drift[:, y]
             paths.append(path)
             prev_end = path[:, -1]
@@ -174,7 +176,8 @@ def player_states(P, A, g):
     K = len(sp.PLAYER_GROUPS[g])
     nd = A["nodes"][g]
     LS, LQ = P[f"pLS_{g}"], P[f"pLQ_{g}"]
-    Am = 0.5 * jnp.eye(K) + P[f"pAraw_{g}"]
+    mu = P[f"pmu_{g}"]
+    Am = P[f"pA_{g}"]
     Bm = P[f"pB_{g}"]
     z = P[f"pz_{g}"]
     vals = jnp.zeros((nd["n"], K))
@@ -185,7 +188,7 @@ def player_states(P, A, g):
         par = parent[lo:hi]
         has = jnp.asarray(par >= 0)
         prev = vals[jnp.asarray(np.maximum(par, 0))]
-        mean = jnp.where(has[:, None], prev @ Am.T + nd["cov"][lo:hi] @ Bm.T, 0.0)
+        mean = jnp.where(has[:, None], mu + (prev - mu) @ Am.T + nd["cov"][lo:hi] @ Bm.T, mu)
         noise = jnp.where(has[:, None], z[lo:hi] @ LQ.T, z[lo:hi] @ LS.T)
         vals = vals.at[lo:hi].set(mean + noise)
     return vals
@@ -219,8 +222,9 @@ def model(A):
         P[f"LS_{g}"] = _mvn_chol(f"S_{g}", K, unit)
         P[f"LQ_{g}"] = _mvn_chol(f"Q_{g}", K, unit)
         P[f"kap_{g}"] = numpyro.sample(f"kap_{g}", dist.HalfNormal(0.2).expand([K]).to_event(1))
-        P[f"Araw_{g}"] = numpyro.sample(f"Araw_{g}", dist.Normal(0, 0.3).expand([K, K]).to_event(2))
-        P[f"B_{g}"] = numpyro.sample(f"B_{g}", dist.Normal(0, 0.3).expand([K, A["R_dim"]]).to_event(2))
+        P[f"mu_{g}"] = numpyro.sample(f"mu_{g}", dist.Normal(0, unit).to_event(1))
+        P[f"A_{g}"] = numpyro.sample(f"A_{g}", dist.Normal(0, 0.5).expand([K, K]).to_event(2))
+        P[f"B_{g}"] = numpyro.sample(f"B_{g}", dist.Normal(0, 0.5).expand([K, A["R_dim"]]).to_event(2))
         P[f"z0_{g}"] = numpyro.sample(f"z0_{g}", dist.Normal(0, 1).expand([T, Y, K]).to_event(3))
         P[f"eps_{g}"] = numpyro.sample(f"eps_{g}", dist.Normal(0, 1).expand([T, Y, A["W"], K]).to_event(4))
     S_all = team_states(P, A)
@@ -230,14 +234,15 @@ def model(A):
         K = len(comps)
         P[f"pLS_{g}"] = _mvn_chol(f"pS_{g}", K, A["punit"][g])
         P[f"pLQ_{g}"] = _mvn_chol(f"pQ_{g}", K, A["punit"][g])
-        P[f"pAraw_{g}"] = numpyro.sample(f"pAraw_{g}", dist.Normal(0, 0.3).expand([K, K]).to_event(2))
-        P[f"pB_{g}"] = numpyro.sample(f"pB_{g}", dist.Normal(0, 0.3).expand([K, 1]).to_event(2))
+        P[f"pmu_{g}"] = numpyro.sample(f"pmu_{g}", dist.Normal(0, A["punit"][g]).to_event(1))
+        P[f"pA_{g}"] = numpyro.sample(f"pA_{g}", dist.Normal(0, 0.5).expand([K, K]).to_event(2))
+        P[f"pB_{g}"] = numpyro.sample(f"pB_{g}", dist.Normal(0, 0.5).expand([K, 1]).to_event(2))
         P[f"pz_{g}"] = numpyro.sample(f"pz_{g}", dist.Normal(0, 1).expand([A["nodes"][g]["n"], K]).to_event(2))
         players[g] = player_states(P, A, g)
     # ---- observation equations
     P["alpha"] = numpyro.sample("alpha", dist.Normal(A["stream_init"], 1.0).to_event(1))
     P["eta"] = numpyro.sample("eta", dist.Normal(0, 0.2).expand([S]).to_event(1))
-    P["loading"] = numpyro.sample("loading", dist.LogNormal(0, 0.5).expand([S]).to_event(1))
+    P["loading"] = numpyro.sample("loading", dist.Normal(1.0, 0.5).expand([S]).to_event(1))
     P["gamma"] = numpyro.sample("gamma", dist.Normal(1.0, 0.5).expand([S]).to_event(1))
     P["W"] = numpyro.sample("W_raw", dist.Normal(0, 1).expand([O1 - O0, D1 - D0]).to_event(2))
     tauW = numpyro.sample("tau_W", dist.HalfNormal(0.3))
@@ -291,11 +296,21 @@ def model(A):
     hc = numpyro.sample("outcome_home", dist.Normal(0, 0.5).expand([N_OUT]).to_event(1))
     Cc = numpyro.sample("outcome_covariates", dist.Normal(0, 0.5).expand([max(A["n_cov"], 1), N_OUT]).to_event(2))
     dg = A["drive_gd"]
-    logits = b0 + feats[dg] @ Wc + A["drive_fp"][:, None] * fpc + A["gd_h"][dg][:, None] * hc
-    if A["n_cov"]:
-        logits = logits + A["gd_X"][dg] @ Cc[: A["n_cov"]]
-    logits = jnp.concatenate([jnp.zeros((logits.shape[0], 1)), logits], axis=1)
-    numpyro.sample("drive_outcome", dist.Categorical(logits=logits), obs=A["drive_class"])
+    known = ~jnp.isnan(A["drive_fp"])
+    fp_known = jnp.where(known, A["drive_fp"], 0.0)
+
+    def drive_logits(fp):
+        out = b0 + feats[dg] @ Wc + fp[..., None] * fpc + A["gd_h"][dg][:, None] * hc
+        if A["n_cov"]:
+            out = out + A["gd_X"][dg] @ Cc[: A["n_cov"]]
+        return jnp.concatenate([jnp.zeros(out.shape[:-1] + (1,)), out], axis=-1)
+
+    lp = jax.nn.log_softmax(drive_logits(fp_known), axis=-1)
+    ll_known = jnp.take_along_axis(lp, A["drive_class"][:, None], axis=1)[:, 0]
+    grid = A["fp_grid"]
+    lq = jnp.stack([jax.nn.log_softmax(drive_logits(jnp.full_like(fp_known, q)), axis=-1) for q in np.asarray(grid)], axis=0)
+    ll_missing = jax.scipy.special.logsumexp(jnp.take_along_axis(lq, A["drive_class"][None, :, None].repeat(len(grid), 0), axis=2)[..., 0], axis=0) - jnp.log(len(grid))
+    numpyro.factor("drive_outcome", jnp.sum(jnp.where(known, ll_known, ll_missing)))
     td_l = numpyro.sample("td_points_logits", dist.Normal(0, 2.0).expand([len(sp.TD_POINTS)]).to_event(1))
     ro_l = numpyro.sample("rare_off_logits", dist.Normal(0, 2.0).expand([len(sp.RARE_POINTS)]).to_event(1))
     rp_l = numpyro.sample("rare_opp_logits", dist.Normal(0, 2.0).expand([len(sp.RARE_POINTS)]).to_event(1))
@@ -332,33 +347,50 @@ def model(A):
 # ---------------------------------------------------------------------------- inference
 
 class Fit:
-    def __init__(self, data, A, guide, params, losses):
-        self.data, self.A, self.guide, self.params, self.losses = data, A, guide, params, losses
+    """A posterior over the whole model: variational (guide + params) or exact samples (NUTS)."""
+
+    def __init__(self, data, A, kind, guide=None, params=None, losses=None, samples=None, info=None):
+        self.data, self.A, self.kind = data, A, kind
+        self.guide, self.params, self.losses, self.samples, self.info = guide, params, losses, samples, info or {}
 
 
-def fit(data, steps=3000, lr=0.02, seed=0, log_every=250, log=print, keep_periods=None) -> Fit:
-    """Fit the whole model at once by stochastic variational inference."""
+def infer(data, method="svi", steps=3000, lr=0.02, seed=0, log_every=250, log=print, keep_periods=None,
+          warmup=500, samples=500, max_tree_depth=10, target_accept=0.9) -> Fit:
+    """Posterior of the joint model.
+
+    ``svi`` approximates it variationally (fast, used at full scale); ``nuts`` samples it exactly
+    (Hamiltonian Monte Carlo), used where it is affordable and to check the approximation.
+    """
     A = prepare(data, keep_periods)
-    init = {"alpha": A["stream_init"], "sigma": A["stream_scale"]}
+    if method == "nuts":
+        from numpyro.infer import MCMC, NUTS
+        mcmc = MCMC(NUTS(model, max_tree_depth=max_tree_depth, target_accept_prob=target_accept,
+                         init_strategy=init_to_median(num_samples=15)), num_warmup=warmup, num_samples=samples, progress_bar=bool(log))
+        mcmc.run(jax.random.PRNGKey(seed), A)
+        extra = mcmc.get_extra_fields()
+        return Fit(data, A, "nuts", samples=mcmc.get_samples(),
+                   info=dict(divergences=int(np.sum(np.asarray(extra["diverging"]))), steps=np.asarray(extra["num_steps"])))
     guide = AutoNormal(model, init_loc_fn=init_to_median(num_samples=15), init_scale=0.02)
-    schedule = numpyro.optim.optax_to_numpyro(__import__("optax").adamw(
-        __import__("optax").cosine_decay_schedule(lr, steps, alpha=0.05)))
+    import optax
+    schedule = numpyro.optim.optax_to_numpyro(optax.adamw(optax.cosine_decay_schedule(lr, steps, alpha=0.05)))
     svi = SVI(model, guide, schedule, Trace_ELBO())
     state = svi.init(jax.random.PRNGKey(seed), A)
-    update = jax.jit(lambda s: svi.update(s, A))
+    update = jax.jit(lambda st: svi.update(st, A))
     losses = []
     for step in range(steps):
         state, loss = update(state)
         losses.append(float(loss))
         if log and (step % log_every == 0 or step == steps - 1):
             log(f"step {step:5d}  -ELBO {loss:,.1f}")
-    return Fit(data, A, guide, svi.get_params(state), np.array(losses))
+    return Fit(data, A, "svi", guide=guide, params=svi.get_params(state), losses=np.array(losses))
+
+
+def fit(data, steps=3000, lr=0.02, seed=0, log_every=250, log=print, keep_periods=None) -> Fit:
+    return infer(data, "svi", steps=steps, lr=lr, seed=seed, log_every=log_every, log=log, keep_periods=keep_periods)
 
 
 def posterior_draws(f: Fit, n: int, seed: int = 1) -> dict:
-    """Draw n joint samples of every latent and parameter from the fitted posterior."""
+    """Joint samples of every latent and parameter from the posterior."""
+    if f.kind == "nuts":
+        return {k: v[:n] for k, v in f.samples.items()}
     return f.guide.sample_posterior(jax.random.PRNGKey(seed), f.params, sample_shape=(n,))
-
-
-def posterior_median(f: Fit) -> dict:
-    return f.guide.median(f.params)

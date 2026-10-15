@@ -101,16 +101,44 @@ cfb-model cycle --season 2026
 
 ingest -> derive -> fit (jointly, at the current cutoff) -> forecast the coming week -> evaluate finals.
 
-## Approximations, stated plainly
+## What the model does not impose
 
-* Posterior inference is variational (mean-field over latents), not MCMC. Uncertainty is therefore likely
-  somewhat too narrow, especially for correlated components.
+The model is the football system and the probability model of its observations, nothing else.
+
+* No filtering of data: every completed game with recorded plays informs the states, whatever the
+  division of the teams; every player that appears is a node. Missing values stay missing: an unrecorded
+  drive start position is marginalised over the empirical start distribution, an unclassified possession
+  contributes no outcome term, a quantity with no observations has no likelihood term.
+* No constraints on parameters beyond what a probability requires (scales are positive). Population
+  means, persistence matrices, roster-change effects, loadings and matchup interactions all carry weakly
+  informative priors centred on zero (loadings on one) and nothing is clipped, floored, capped or
+  clamped; the score distribution is exact, with support sized so the neglected probability is below 1e-12.
+* No fitted point estimators (ridge/logistic/regression maps): everything unknown is a random variable
+  in the one joint model and is inferred together.
+* No inputs that are not football: market lines are not features of the football forecast (they can
+  condition a separate calculation); betting decisions and sportsbook logic are outside the model.
+* Overtime is part of the model: a regulation tie is resolved by the same possession-outcome model
+  evaluated at the overtime start position, round by round.
+
+## Inference
+
+`football_model.infer(data, method=...)`:
+
+* `nuts` - exact posterior sampling (Hamiltonian Monte Carlo) of the whole model.
+* `svi` - a variational approximation of the same posterior, used at full scale because exact sampling
+  of ~10^6 latent variables is not practical per weekly cycle. It is mean-field, so its uncertainty is
+  likely too narrow. `scripts/validate_inference.py` runs both on the same data and reports how far the
+  approximation is from the exact posterior.
+
+## Remaining approximations, stated plainly
+
 * Observation likelihoods use game-level sufficient statistics (means and counts) of play-level
   quantities: exact for rates, a central-limit approximation for EPA-type means.
-* Population means of the states are fixed at zero; the stream intercepts carry the means (they are not
-  separately identified).
 * Player states are per season (no within-season drift); team states drift weekly.
 * Forecast lineups use the posterior participation/usage model; the split of carries and targets
-  between position groups uses each team's recent shares.
+  between position groups uses each team's recent shares (league shares when a team has none).
+* Not estimated because no source provides the data: offensive-line continuity; separate scramble vs
+  designed-run efficiency; quarterback decision quality.
 
-The legacy `sunday-run` service and its Gaussian score head remain in the repository for comparison.
+The legacy `sunday-run` service and its Gaussian score head remain in the repository for comparison and
+are not used by `cfb-model`.

@@ -68,10 +68,33 @@ def test_score_distribution_is_exact_and_symmetric():
     probs = np.tile([0.5, 0.2, 0.1, 0.05, 0.08, 0.05, 0.015, 0.005], (4, 1))
     td = np.tile([0.05, 0.9, 0.05], (4, 1))
     ro = np.tile([0.2, 0.3, 0.2, 0.2, 0.1], (4, 1))
-    J = fc.game_distribution(probs, probs, td, ro, ro, np.full(4, 11.0), np.full(4, 80.0))
-    s = fc.summarize(J)
+    ot = fc.overtime_home_share(probs[:, None, :][:, 0], probs, td)
+    assert np.allclose(ot, 0.5)                                   # identical teams split overtime evenly
+    J, share = fc.game_distribution(probs, probs, td, ro, ro, np.full(4, 11.0), np.full(4, 80.0), ot_share=ot)
+    s = fc.summarize(J, share)
     assert abs(J.sum() - 1) < 1e-9
-    assert abs(s["home_win"] - 0.5) < 1e-6 and abs(s["home_points"] - s["away_points"]) < 1e-6
+    assert abs(s["home_win"] - 0.5) < 1e-9 and abs(s["home_win"] + s["away_win"] - 1) < 1e-9
+    assert abs(s["home_points"] - s["away_points"]) < 1e-9
     # 5.5 possessions each; per possession 0.2*7.0 + 0.1*3 + 0.005*4.0 own points, plus 0.005*4.0 credit
     assert abs(s["home_points"] - 5.5 * (1.72 + 0.02)) < 0.3
     assert abs(fc.cover_probability(s["margin"], 0.0) - 0.5) < 0.02 + s["tie_mass"]
+
+
+def test_stronger_offense_wins_more_and_overtime_follows_the_model():
+    strong = np.tile([0.40, 0.30, 0.12, 0.04, 0.06, 0.04, 0.03, 0.01], (4, 1))
+    weak = np.tile([0.55, 0.12, 0.07, 0.07, 0.10, 0.06, 0.02, 0.01], (4, 1))
+    td = np.tile([0.05, 0.9, 0.05], (4, 1))
+    ro = np.tile([0.2, 0.3, 0.2, 0.2, 0.1], (4, 1))
+    ot = fc.overtime_home_share(strong, weak, td)
+    assert (ot > 0.5).all()
+    J, share = fc.game_distribution(strong, weak, td, ro, ro, np.full(4, 11.0), np.full(4, 80.0), ot_share=ot)
+    s = fc.summarize(J, share)
+    assert s["home_win"] > 0.7 and s["expected_margin"] > 3
+
+
+def test_exact_posterior_sampler_runs_on_the_same_model(world):
+    """NUTS draws from the identical joint model (the full comparison with the variational posterior is scripts/validate_inference.py)."""
+    _, _, data, _ = world
+    f = fm.infer(data, "nuts", warmup=4, samples=4, log=None, max_tree_depth=3)
+    assert f.kind == "nuts" and len(next(iter(f.samples.values()))) == 4
+    assert all(np.isfinite(np.asarray(v)).all() for k, v in f.samples.items() if k in ("alpha", "sigma", "W_raw"))

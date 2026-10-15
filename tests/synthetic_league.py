@@ -30,7 +30,7 @@ def build(conn, teams=8, seasons=(2023, 2024, 2025), weeks=7, observed_weeks_las
                 hp = ap = None
                 per_team_points = {}
                 for off_t, def_t, side in ((home, away, 1), (away, home, 0)):
-                    n = 44
+                    n = int(rng.integers(36, 52))
                     is_pass = rng.random(n) < 0.5
                     mu_pass = 0.10 + off[off_t - 1] - dfn[def_t - 1] + qb_q[off_t - 1] + 0.02 * side
                     mu_rush = 0.00 + 0.6 * (off[off_t - 1] - dfn[def_t - 1])

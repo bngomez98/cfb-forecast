@@ -44,12 +44,12 @@ def periods_of(games, seasons):
     return sorted({seasons.index(int(r.season)) * sp.WEEKS + min(max(int(r.week), 1), sp.WEEKS) - 1 for r in games.itertuples(index=False)})
 
 
-def fit_model(conn, artifacts, seasons, cutoff, steps=4000, lr=0.02, keep_periods=None, n_draws=200, seed=0, log=print):
+def fit_model(conn, artifacts, seasons, cutoff, steps=4000, lr=0.02, keep_periods=None, n_draws=200, seed=0, log=print, method="svi", warmup=500):
     """Fit the whole joint model at the cutoff, store the estimates, and return the saved bundle."""
     data = load_model_data(conn, seasons, cutoff=cutoff)
-    f = fm.fit(data, steps=steps, lr=lr, seed=seed, keep_periods=keep_periods, log=log)
+    f = fm.infer(data, method, steps=steps, lr=lr, seed=seed, keep_periods=keep_periods, log=log, warmup=warmup, samples=n_draws)
     bundle = fc.extract_bundle(f, n_draws=n_draws, seed=seed + 7)
-    manifest = {"seasons": seasons, "cutoff": str(cutoff), "steps": steps, "final_neg_elbo": float(f.losses[-1]),
+    manifest = {"seasons": seasons, "cutoff": str(cutoff), "steps": steps, "method": method, "final_neg_elbo": None if f.losses is None else float(f.losses[-1]),
                 "retrievals": [dict(zip(("source_id", "n", "last"), r)) for r in conn.execute("SELECT source_id, COUNT(*), MAX(retrieved_at) FROM source_retrievals GROUP BY source_id")]}
     fc.store_estimates(conn, bundle, manifest)
     bundle.save(Path(artifacts) / "bundles")
@@ -97,13 +97,13 @@ def main(argv=None):
     p = sub.add_parser("ingest"); p.add_argument("--season", type=int, nargs="+", required=True); p.add_argument("--no-plays", action="store_true")
     p = sub.add_parser("derive"); p.add_argument("--seasons", type=int, nargs="+", required=True)
     p = sub.add_parser("fit"); p.add_argument("--seasons", type=int, nargs="+", required=True); p.add_argument("--cutoff", default=None)
-    p.add_argument("--steps", type=int, default=4000); p.add_argument("--draws", type=int, default=200); p.add_argument("--weeks-ahead", type=int, default=2)
+    p.add_argument("--steps", type=int, default=4000); p.add_argument("--draws", type=int, default=200); p.add_argument("--method", choices=["svi", "nuts"], default="svi")
     p = sub.add_parser("forecast"); p.add_argument("--bundle", required=True); p.add_argument("--start", required=True); p.add_argument("--end", required=True)
     sub.add_parser("evaluate")
     p = sub.add_parser("backtest"); p.add_argument("--season", type=int, required=True); p.add_argument("--cutoffs", nargs="+", required=True)
     p.add_argument("--steps", type=int, default=3000); p.add_argument("--horizon-days", type=int, default=28)
     p = sub.add_parser("cycle"); p.add_argument("--season", type=int, required=True); p.add_argument("--history", type=int, default=4)
-    p.add_argument("--steps", type=int, default=4000); p.add_argument("--no-ingest", action="store_true")
+    p.add_argument("--steps", type=int, default=4000); p.add_argument("--no-ingest", action="store_true"); p.add_argument("--method", choices=["svi", "nuts"], default="svi")
     args = ap.parse_args(argv)
     artifacts = Path(args.artifacts) if args.artifacts else artifacts_root()
     db = Path(args.database) if args.database else default_database()
@@ -116,7 +116,7 @@ def main(argv=None):
             print(json.dumps(derive_observations(conn, args.seasons)), derive_schedule_conditions(conn))
         elif args.cmd == "fit":
             keep = None
-            bundle, _ = fit_model(conn, artifacts, args.seasons, args.cutoff, steps=args.steps, n_draws=args.draws, keep_periods=keep)
+            bundle, _ = fit_model(conn, artifacts, args.seasons, args.cutoff, steps=args.steps, n_draws=args.draws, keep_periods=keep, method=args.method)
             print(bundle.parameter_set_id)
         elif args.cmd == "forecast":
             bundle = fc.Bundle.load(artifacts / "bundles", args.bundle)
@@ -138,7 +138,7 @@ def main(argv=None):
             now = pd.Timestamp.now(tz="UTC")
             nxt = games_in_window(conn, now, now + pd.Timedelta(days=7), args.season)
             keep = periods_of(nxt, seasons) if len(nxt) else None
-            bundle, _ = fit_model(conn, artifacts, seasons, now.isoformat(), steps=args.steps, keep_periods=keep)
+            bundle, _ = fit_model(conn, artifacts, seasons, now.isoformat(), steps=args.steps, keep_periods=keep, method=args.method)
             out = forecast_window(conn, bundle, artifacts, now, now + pd.Timedelta(days=7))
             fc.evaluate_forecasts(conn, artifacts)
             print(out.to_string(index=False) if len(out) else "no open FBS games in the next 7 days")
