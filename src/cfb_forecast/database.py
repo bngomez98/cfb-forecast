@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS forecasts (
     season INTEGER NOT NULL,
     home_team TEXT NOT NULL,
     away_team TEXT NOT NULL,
+    game_date TEXT,
     kickoff TEXT NOT NULL,
     as_of TEXT NOT NULL,
     expected_home_score REAL NOT NULL,
@@ -211,6 +212,7 @@ CREATE TABLE IF NOT EXISTS forecast_log (
     run_id TEXT NOT NULL,
     season INTEGER NOT NULL,
     game_id INTEGER NOT NULL,
+    game_date TEXT,
     kickoff TEXT NOT NULL,
     home_team TEXT NOT NULL,
     away_team TEXT NOT NULL,
@@ -255,6 +257,9 @@ CREATE TABLE IF NOT EXISTS team_game_facts (
     points_for REAL,
     points_against REAL,
     yards_per_play REAL,
+    yards_per_pass REAL,
+    yards_per_rush REAL,
+    first_downs_created_rate REAL,
     success_rate REAL,
     explosive_rate REAL,
     turnover_rate REAL,
@@ -307,14 +312,40 @@ def _ensure_forecast_columns(conn: sqlite3.Connection) -> None:
     ):
         if name not in present:
             conn.execute(f"ALTER TABLE forecast_log ADD COLUMN {name} REAL")
+    if "game_date" not in present:
+        conn.execute("ALTER TABLE forecast_log ADD COLUMN game_date TEXT")
+    forecast_cols = {row[1] for row in conn.execute("PRAGMA table_info(forecasts)")}
+    if "game_date" not in forecast_cols:
+        conn.execute("ALTER TABLE forecasts ADD COLUMN game_date TEXT")
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if "team_game_facts" in tables:
+        fact_cols = {row[1] for row in conn.execute("PRAGMA table_info(team_game_facts)")}
+        for name in ("yards_per_pass", "yards_per_rush", "first_downs_created_rate"):
+            if name not in fact_cols:
+                conn.execute(f"ALTER TABLE team_game_facts ADD COLUMN {name} REAL")
+    _backfill_game_dates(conn)
     conn.commit()
+
+
+def _backfill_game_dates(conn: sqlite3.Connection) -> None:
+    from .data import game_date
+    for table in ("forecasts", "forecast_log"):
+        rows = conn.execute(
+            f"SELECT id, kickoff FROM {table} WHERE game_date IS NULL OR game_date = ''"
+        ).fetchall()
+        for row in rows:
+            conn.execute(
+                f"UPDATE {table} SET game_date=? WHERE id=?",
+                (game_date(row["kickoff"]), row["id"]),
+            )
 
 
 def record_history_facts(conn: sqlite3.Connection, teams: pd.DataFrame, players: pd.DataFrame | None = None) -> None:
     """Store team and player facts read from historical parquet files."""
     team_columns = [
         "game_id", "team_id", "season", "week", "plays", "points_for", "points_against",
-        "yards_per_play", "success_rate", "explosive_rate", "turnover_rate",
+        "yards_per_play", "yards_per_pass", "yards_per_rush", "first_downs_created_rate",
+        "success_rate", "explosive_rate", "turnover_rate",
         "pass_yards", "rush_yards", "receiving_yards", "epa",
     ]
     if teams is not None and len(teams):
@@ -326,13 +357,16 @@ def record_history_facts(conn: sqlite3.Connection, teams: pd.DataFrame, players:
         conn.executemany(
             """INSERT INTO team_game_facts(
                  game_id, team_id, season, week, plays, points_for, points_against,
-                 yards_per_play, success_rate, explosive_rate, turnover_rate,
+                 yards_per_play, yards_per_pass, yards_per_rush, first_downs_created_rate,
+                 success_rate, explosive_rate, turnover_rate,
                  pass_yards, rush_yards, receiving_yards, epa)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(game_id, team_id) DO UPDATE SET
                  season=excluded.season, week=excluded.week, plays=excluded.plays,
                  points_for=excluded.points_for, points_against=excluded.points_against,
-                 yards_per_play=excluded.yards_per_play, success_rate=excluded.success_rate,
+                 yards_per_play=excluded.yards_per_play, yards_per_pass=excluded.yards_per_pass,
+                 yards_per_rush=excluded.yards_per_rush, first_downs_created_rate=excluded.first_downs_created_rate,
+                 success_rate=excluded.success_rate,
                  explosive_rate=excluded.explosive_rate, turnover_rate=excluded.turnover_rate,
                  pass_yards=excluded.pass_yards, rush_yards=excluded.rush_yards,
                  receiving_yards=excluded.receiving_yards, epa=excluded.epa""",
@@ -425,17 +459,18 @@ def register_model(conn, name: str, path: str, manifest: dict) -> int:
 
 
 def insert_forecasts(conn, model_id: int, rows: Iterable[dict], run_id: int | None = None) -> int:
+    from .data import game_date
     count = 0
     for row in rows:
         cursor = conn.execute(
             """INSERT OR IGNORE INTO forecasts(
-            run_id,model_id,game_id,season,home_team,away_team,kickoff,as_of,
+            run_id,model_id,game_id,season,home_team,away_team,game_date,kickoff,as_of,
             expected_home_score,expected_away_score,projected_home_margin,
             projected_total,home_win_probability,market_home_probability_no_vig,
             best_bet_side,best_bet_edge,best_bet_ev_per_unit,recommended_stake_fraction,
-            bet_status,payload_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            bet_status,payload_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (run_id, model_id, int(row["game_id"]), int(row["season"]), row["home_team"], row["away_team"],
-             row["kickoff"], row["as_of"], float(row["expected_home_score"]), float(row["expected_away_score"]),
+             game_date(row.get("game_date") or row["kickoff"]), row["kickoff"], row["as_of"], float(row["expected_home_score"]), float(row["expected_away_score"]),
              float(row["projected_home_margin"]), float(row["projected_total"]), float(row["home_win_probability"]),
              row.get("market_home_probability_no_vig"), row.get("best_bet_side"), row.get("best_bet_edge"),
              row.get("best_bet_ev_per_unit"), row.get("recommended_stake_fraction"), row.get("bet_status"), json.dumps(row)),
@@ -448,13 +483,13 @@ def insert_forecasts(conn, model_id: int, rows: Iterable[dict], run_id: int | No
 
 def list_forecasts(conn: sqlite3.Connection, season: int | None = None):
     if season is None:
-        return conn.execute("SELECT * FROM forecasts ORDER BY kickoff").fetchall()
-    return conn.execute("SELECT * FROM forecasts WHERE season=? ORDER BY kickoff", (int(season),)).fetchall()
+        return conn.execute("SELECT * FROM forecasts ORDER BY game_date, kickoff").fetchall()
+    return conn.execute("SELECT * FROM forecasts WHERE season=? ORDER BY game_date, kickoff", (int(season),)).fetchall()
 
 
 def list_published_board(conn: sqlite3.Connection, season: int | None = None):
     """Return the published forecast log, which carries winner and confidence."""
-    sql = """SELECT run_id, season, game_id, kickoff, away_team, home_team,
+    sql = """SELECT run_id, season, game_id, game_date, kickoff, away_team, home_team,
         expected_away_score, expected_home_score, projected_home_margin,
         model_spread, market_spread, home_cover_probability, home_moneyline, away_moneyline,
         winner, confidence, home_win_probability, logged_at FROM forecast_log"""
@@ -462,10 +497,11 @@ def list_published_board(conn: sqlite3.Connection, season: int | None = None):
     if season is not None:
         sql += " WHERE season = ?"
         params = (int(season),)
-    rows = conn.execute(sql + " ORDER BY kickoff, game_id", params).fetchall()
-    if rows:
-        return rows
-    return list_forecasts(conn, season)
+    rows = conn.execute(sql + " ORDER BY game_date, kickoff, game_id", params).fetchall()
+    if not rows:
+        return list_forecasts(conn, season)
+    latest_run = max(rows, key=lambda row: row["logged_at"])["run_id"]
+    return [row for row in rows if row["run_id"] == latest_run]
 
 
 def persist_completed_run(database, model_path, records, receipt, schedules, at):

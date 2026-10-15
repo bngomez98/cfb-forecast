@@ -1,7 +1,38 @@
 import argparse
 from pathlib import Path
 import pandas as pd
+from .data import with_game_date
 from .paths import model_root
+
+FORECAST_COLUMNS = [
+    "game_date",
+    "kickoff",
+    "away_team",
+    "home_team",
+    "expected_away_score",
+    "expected_home_score",
+    "home_win_probability",
+    "projected_home_margin",
+]
+
+
+def _print_forecasts(frame):
+    view = with_game_date(frame)
+    columns = [column for column in FORECAST_COLUMNS if column in view.columns]
+    if "game_date" not in columns:
+        raise ValueError("Forecast is missing a game date")
+    print(view[columns].to_string(index=False))
+
+
+def _print_saved_forecasts(artifacts, report):
+    run_id = report.get("run_id") if isinstance(report, dict) else None
+    if not run_id:
+        return
+    root = Path(artifacts)
+    path = next((candidate for candidate in (root / "runs" / run_id / "forecasts.csv", root / "latest" / "forecasts.csv") if candidate.exists()), None)
+    if path is None:
+        return
+    _print_forecasts(pd.read_csv(path))
 
 
 def main():
@@ -103,11 +134,11 @@ def main():
     elif args.command=="forecast":
         from .forecast import forecast
         result=forecast(args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.draws,args.market_provider)
-        print(result[["away_team","home_team","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
+        _print_forecasts(result)
     elif args.command=="forecast-advance":
         from .forecast import advance_forecast_snapshot
         result=advance_forecast_snapshot(args.previous,args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.draws,args.market_provider)
-        print(result[["away_team","home_team","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
+        _print_forecasts(result)
     elif args.command=="market-import":
         from .market import import_market_file
         result=import_market_file(args.input,args.store,args.provider,args.source)
@@ -184,8 +215,9 @@ def main():
         from .sunday import sunday_run
         report = sunday_run(args.data, args.artifacts, args.season, args.model, args.timezone, args.scheduled, not args.no_refresh)
         print(pd.Series(report).to_string())
+        _print_saved_forecasts(args.artifacts, report)
     elif args.command == "weekly-forecast":
         from .weekly import run_weekly_forecast
         result,manifest=run_weekly_forecast(args.data,args.model,args.out,args.season,args.week,args.as_of,args.market,args.draws)
         print(pd.DataFrame([manifest]).to_string(index=False))
-        print(result[["away_team","home_team","kickoff","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
+        _print_forecasts(result)

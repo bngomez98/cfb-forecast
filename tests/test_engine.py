@@ -3,7 +3,6 @@ import pandas as pd
 import pytest
 from cfb_forecast.config import StateConfig
 from cfb_forecast.data import normalize_schedule,timestamp
-from cfb_forecast.features import clean_plays
 from cfb_forecast.ratings import DynamicRatings,build_features
 from cfb_forecast.model import ScoreHead,residual_covariance
 from cfb_forecast.simulate import simulate_scores,win_probability
@@ -108,20 +107,6 @@ def test_elo_is_independent_of_the_game_being_predicted():
 
 def test_timezone_required():
     with pytest.raises(ValueError): timestamp("2024-09-01")
-
-def test_play_filters_and_success_thresholds():
-    row=dict(game_id=1,pos_team_id=1,def_pos_team_id=2,down=1,distance=10,statYardage=5,rush=True,**{"pass":False},sack=False,kneel_down=False,penalty_no_play=False,period=1,**{"start.pos_score_diff":0})
-    p=pd.DataFrame([
-        dict(row,game_play_number=1),
-        dict(row,game_play_number=1),
-        dict(row,game_play_number=2,down=2,statYardage=6),
-        dict(row,game_play_number=3,kneel_down=True),
-        dict(row,game_play_number=4,period=5),
-        dict(row,game_play_number=5,**{"start.pos_score_diff":30}),
-    ])
-    clean=clean_plays(p)
-    assert len(clean)==4
-    np.testing.assert_array_equal(clean.success,[1,0,1,1])
 
 def test_single_class_evaluation_and_score_errors():
     r=metrics([1,1],[.8,.9],margin=[10,20],actual_margin=[7,21])

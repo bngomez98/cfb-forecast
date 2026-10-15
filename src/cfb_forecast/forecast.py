@@ -6,14 +6,25 @@ import json
 import shutil
 import numpy as np
 import pandas as pd
-from .config import StateConfig
-from .data import load_data, timestamp, sha256
-from .features import observations, pregame_history, load_history_facts
+from .config import METRICS, StateConfig
+from .data import game_date, load_data, timestamp, sha256
+from .features import (
+    extend_standardization,
+    load_source_plays,
+    observations,
+    play_rate_observations,
+    points_from_database,
+    pregame_history,
+    summaries_from_database,
+    sync_cleaned_facts,
+    load_history_facts,
+)
 from .ratings import DynamicRatings, build_features
 from .model import load_model, ScoreHead
 from .market import market_at_cutoff, market_history_summary, read_market_history
 from .availability import availability_snapshot
 from .decision import moneyline_diagnostics
+from .external_sources import merge_cfbd_lines
 from .forecast_model import METHOD, ForecastModel, known_future_matrix, rest_days
 from .paths import database_path
 
@@ -26,7 +37,7 @@ def _known_frame(games, schedules, market_rows, extra):
     frame = games.reset_index(drop=True).copy()
     rested = rest_days(frame, schedules)
     frame = frame.merge(rested, on="game_id", how="left")
-    for column in ("home_spread", "total_line", "home_ml_decimal", "away_ml_decimal"):
+    for column in ("home_spread", "total_line", "home_ml_decimal", "away_ml_decimal", "weather_temperature_f"):
         frame[column] = [row.get(column) for row in market_rows]
     if extra is not None and len(extra) and "game_id" in extra.columns:
         keep = [column for column in extra.columns if column == "game_id" or column in frame.columns or column.startswith(("weather_", "home_", "away_"))]
@@ -59,6 +70,7 @@ def _project_rows(targets, means, fitted, covariance, schedules, market_rows, hi
                 market.get("away_ml_decimal"),
             )
         )
+        kickoff = game.start_date.isoformat()
         rows.append(
             {
                 "game_id": int(game.game_id),
@@ -66,7 +78,8 @@ def _project_rows(targets, means, fitted, covariance, schedules, market_rows, hi
                 "week": int(game.week),
                 "home_team": game.home_team,
                 "away_team": game.away_team,
-                "kickoff": game.start_date.isoformat(),
+                "game_date": game_date(kickoff),
+                "kickoff": kickoff,
                 "prediction_method": METHOD,
                 **metadata,
                 **sim,
@@ -131,6 +144,11 @@ def forecast(
     if model["training_through_season"] >= season:
         raise ValueError("Model training must end before the forecast season")
     schedules, summaries, paths = load_data(data_root)
+    calculation_database = database_path()
+    sync_cleaned_facts(data_root, calculation_database, schedules, summaries)
+    stored_summaries = summaries_from_database(calculation_database)
+    if len(stored_summaries) and stored_summaries[list(METRICS[1:])].notna().any().any():
+        summaries = stored_summaries
     population = (
         schedules[
             schedules.fbs_game
@@ -162,10 +180,16 @@ def forecast(
     if not (past.season == model["warmup_season"]).any():
         raise ValueError("Historical warmup season missing")
     teams = sorted(set(population.home_id) | set(population.away_id))
-    state = DynamicRatings(
-        teams, model["center"], model["scale"], StateConfig(**model["state_config"])
+    stored_teams, _stored_players = load_history_facts(data_root, database=calculation_database)
+    observed_past = points_from_database(past, stored_teams)
+    Y = observations(observed_past, summaries)
+    play_rates = play_rate_observations(past, load_source_plays(data_root))
+    if play_rates is not None:
+        Y = np.concatenate([Y, play_rates], axis=2)
+    center, scale = extend_standardization(
+        model["center"], model["scale"], Y, past.season.eq(model["warmup_season"]).to_numpy()
     )
-    Y = observations(past, summaries)
+    state = DynamicRatings(teams, center, scale, StateConfig(**model["state_config"]))
     events = []
     for year, g in population.groupby("season"):
         reset = g.start_date.min() - pd.Timedelta(days=21)
@@ -189,15 +213,16 @@ def forecast(
         ]
     )
     historical_F, _, _ = build_features(
-        past, Y, model["center"], model["scale"],
+        past, Y, center, scale,
         StateConfig(**model["state_config"]), warmup=model["warmup_season"]
     )
-    fit_mask = np.isfinite(historical_F).all(axis=(1, 2)) & np.isfinite(Y).all(axis=(1, 2))
+    core = Y[:, :, :len(METRICS)]
+    fit_mask = np.isfinite(historical_F).all(axis=(1, 2)) & np.isfinite(core).all(axis=(1, 2))
     if int(fit_mask.sum()) < 50:
         raise ValueError("At least 50 completed historical games are required for a live score-head fit")
     age_days = (at - pd.to_datetime(past.result_available_at, utc=True)).dt.total_seconds().to_numpy() / 86400.0
     decay = float(model.get("reinforcement_decay", 0.002))
-    live_head = ScoreHead(model["variant"], model["head"]["alpha"]).fit(
+    live_head = ScoreHead(model["variant"], model["head"]["alpha"], n_metrics=Y.shape[-1]).fit(
         historical_F, Y, fit_mask, np.exp(-decay * np.maximum(age_days, 0.0))
     )
     mu = live_head.predict(F)
@@ -210,6 +235,7 @@ def forecast(
         else {}
         for game in past_games.itertuples(index=False)
     ]
+    past_market = merge_cfbd_lines(past_games, past_market, season)
     history_past = pregame_history(past_games, data_root, past, database=database_path())
     fitted = ForecastModel.fit(
         past_location,
@@ -232,6 +258,7 @@ def forecast(
             if market is not None and not market.empty
             else {"market_snapshot_count": 0}
         )
+    market_rows = merge_cfbd_lines(targets, market_rows, season)
     draw_count = int(min(max(int(draws), 1000), 8000))
     history_future = pregame_history(targets, data_root, past, database=database_path())
     rows = _project_rows(
@@ -419,6 +446,7 @@ def advance_forecast_snapshot(
             if market is not None and not market.empty
             else {"market_snapshot_count": 0}
         )
+    market_rows = merge_cfbd_lines(targets, market_rows, season)
     draw_count = int(min(max(int(draws), 1000), 8000))
     completed = schedules[schedules.result_usable & (schedules.result_available_at < at)]
     history_future = pregame_history(targets, data_root, completed, database=database_path())

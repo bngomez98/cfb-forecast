@@ -6,7 +6,7 @@ import json
 import numpy as np
 import pandas as pd
 
-from .data import sha256, timestamp
+from .data import sha256, timestamp, with_game_date
 from .evaluate import metrics, calibration, spread_regression
 
 
@@ -30,7 +30,7 @@ def validate_runs(run_root, schedules, as_of):
             evidence = path.parent / "inputs" / name
             if not evidence.exists() or sha256(evidence) != expected:
                 raise ValueError(f"Saved pregame inputs changed: {evidence}")
-        pred = pd.read_csv(path)
+        pred = with_game_date(pd.read_csv(path))
         if (
             pd.to_datetime(pred.as_of, utc=True)
             >= pd.to_datetime(pred.kickoff, utc=True)

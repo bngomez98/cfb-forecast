@@ -5,11 +5,12 @@ import pytest
 from cfb_forecast.database import connect, record_weekly_validation
 from cfb_forecast.decision import probability_to_american
 from cfb_forecast.evaluate import spread_regression
+from cfb_forecast.external_sources import cfbd_api_key, quotes_from_cfbd_lines
 from cfb_forecast.forecast_model import METHOD, ForecastModel, known_future_matrix, rest_days
 from cfb_forecast.publisher import board_row
 
 
-def test_koopman_shift_follows_known_future_and_logistic_picks_the_higher_score():
+def test_koopman_shift_follows_known_future_and_the_higher_score_wins():
     rng = np.random.default_rng(7)
     known = rng.normal(size=(80, 9))
     location = np.full((80, 2), 24.0)
@@ -24,13 +25,16 @@ def test_koopman_shift_follows_known_future_and_logistic_picks_the_higher_score(
     wins[1] = 1
     model = ForecastModel.fit(location, actual, known, wins)
     assert model.ready
-    assert model.logistic_ready
     favored = location[:1] + 0
     known_row = np.zeros((1, 9))
     known_row[0, 0] = known[:, 0].mean() + 2 * known[:, 0].std()
     out = model.apply(favored, known_row, [[36, 4], [4, 36]], [{}], [11], draws=500)
-    assert out[0]["distribution_method"] == "forecast_model"
-    assert out[0]["win_link"] == "logistic"
+    assert out[0]["distribution_method"] == "gaussian_poisson_monte_carlo"
+    assert out[0]["home_score_poisson_pmf"] > 0
+    assert out[0]["away_score_poisson_pmf"] > 0
+    assert out[0]["win_link"] == "gaussian"
+    assert out[0]["expected_home_score"] > out[0]["expected_away_score"]
+    assert out[0]["home_win_probability"] > 0.5
     assert 0 < out[0]["home_win_probability"] < 1
     assert out[0]["expected_home_score"] >= 0
     assert "posterior" not in METHOD
@@ -76,6 +80,37 @@ def test_rest_uses_only_the_previous_kickoff():
     assert second.home_rest_days == pytest.approx(7)
 
 
+def test_cfbd_lines_quote_is_the_consensus_home_spread():
+    by_id, by_name = quotes_from_cfbd_lines([
+        {
+            "id": 401871067,
+            "homeTeam": "Middle Tennessee",
+            "awayTeam": "Delaware",
+            "lines": [
+                {"provider": "DraftKings", "spread": -1.5, "formattedSpread": "Delaware -1.5", "spreadOpen": -1.0, "overUnder": 48.5, "overUnderOpen": 47.5, "homeMoneyline": -120, "awayMoneyline": 100},
+                {"provider": "consensus", "spread": -2.5, "formattedSpread": "Delaware -2.5", "spreadOpen": -2.0, "overUnder": 49.5, "overUnderOpen": 48.5, "homeMoneyline": -130, "awayMoneyline": 110},
+            ],
+        }
+    ])
+    quote = by_id[401871067]
+    assert quote["home_spread"] == -2.5
+    assert quote["spread_open"] == -2.0
+    assert quote["total_line"] == 49.5
+    assert quote["total_open"] == 48.5
+    assert quote["formatted_spread"] == "Delaware -2.5"
+    assert quote["line_provider"] == "consensus"
+    assert quote["book_home_moneyline"] == -130
+    assert quote["book_away_moneyline"] == 110
+    assert [line["provider"] for line in quote["lines"]] == ["DraftKings", "consensus"]
+    assert quote["home_ml_decimal"] == pytest.approx(1 + 100 / 130)
+    assert by_name[("middletennessee", "delaware")]["away_ml_decimal"] == pytest.approx(2.1)
+
+
+def test_cfbd_api_key_comes_from_the_project_file(monkeypatch):
+    monkeypatch.delenv("CFBD_API_KEY", raising=False)
+    assert cfbd_api_key()
+
+
 def test_fair_american_moneyline_matches_sportsbook_sign():
     assert probability_to_american(0.5) == 100
     assert probability_to_american(0.7) == -233
@@ -101,6 +136,7 @@ def test_board_and_database_keep_the_spread():
     assert row["market_spread"] == -7
     assert row["home_moneyline"] == -233
     assert row["away_moneyline"] == 233
+    assert row["game_date"] == "2026-10-17"
     fit = spread_regression([3, 7, 10, 14, -3, 6, 9, 1], [-3, -7, -10, -14, 3, -6, -9, -1])
     assert fit["games"] == 8
 
@@ -127,7 +163,8 @@ def test_existing_forecast_log_gains_spread_columns(tmp_path):
     conn.close()
     conn = connect(path)
     columns = {row[1] for row in conn.execute("PRAGMA table_info(forecast_log)")}
-    assert {"model_spread", "market_spread", "home_cover_probability", "home_moneyline", "away_moneyline"} <= columns
+    assert {"model_spread", "market_spread", "home_cover_probability", "home_moneyline", "away_moneyline", "game_date"} <= columns
+    assert conn.execute("SELECT game_date FROM forecast_log").fetchone()[0] == "2026-10-17"
     assert conn.execute("SELECT COUNT(*) FROM forecast_log").fetchone()[0] == 1
     record_weekly_validation(conn, {
         "season": 2026, "week": 6, "run_id": "2026-week-6", "validated_at": "2026-10-13T00:00:00Z",
@@ -215,6 +252,37 @@ def test_database_team_facts_enter_the_pregame_rates(tmp_path):
     })
     matrix = pregame_history(completed, tmp_path, completed, database=db)
     assert matrix is not None
+    assert matrix[1, 0] == pytest.approx(41.0)
+    assert matrix[1, 4] == pytest.approx(7.2)
+
+
+def test_database_facts_override_a_different_file(tmp_path):
+    from cfb_forecast.database import connect, record_history_facts
+    from cfb_forecast.features import pregame_history
+
+    db = tmp_path / "facts.sqlite"
+    conn = connect(db)
+    record_history_facts(conn, pd.DataFrame([{
+        "game_id": 1, "team_id": 10, "season": 2025, "week": 1,
+        "points_for": 41.0, "yards_per_play": 7.2,
+    }]))
+    conn.close()
+    file_rows = pd.DataFrame([{
+        "game_id": 1, "team_id": 10, "season": 2025, "week": 1,
+        "yards_per_play": 1.0,
+    }])
+    file_rows.to_parquet(tmp_path / "adv_team_2025.parquet", index=False)
+    completed = pd.DataFrame({
+        "game_id": [1, 2],
+        "season": [2025, 2025],
+        "week": [1, 2],
+        "home_id": [10, 10],
+        "away_id": [20, 30],
+        "home_points": [20.0, 24.0],
+        "away_points": [10.0, 21.0],
+        "start_date": pd.to_datetime(["2025-09-01T18:00:00Z", "2025-09-08T18:00:00Z"]),
+    })
+    matrix = pregame_history(completed, tmp_path, completed, database=db)
     assert matrix[1, 0] == pytest.approx(41.0)
     assert matrix[1, 4] == pytest.approx(7.2)
 

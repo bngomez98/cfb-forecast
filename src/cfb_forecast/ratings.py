@@ -6,18 +6,20 @@ Hyperparameters are fixed for an entire evaluated season.
 """
 import numpy as np
 import pandas as pd
-from .config import METRICS
 from .data import timestamp
+from .features import feature_width
 
 class DynamicRatings:
     def __init__(self, teams, center, scale, config):
         self.teams = [int(t) for t in teams]
         self.index = {t:i for i,t in enumerate(self.teams)}
         self.n = len(teams); self.dim = 2*self.n
-        self.center = np.asarray(center); self.scale = np.asarray(scale)
+        self.center = np.asarray(center, float); self.scale = np.asarray(scale, float)
+        if len(self.center) != len(self.scale):
+            raise ValueError("State center and scale must have one value per metric")
         self.config = config
-        self.mean = np.zeros((len(METRICS), self.dim))
-        self.cov = np.tile(np.eye(self.dim)*config.prior_variance,(len(METRICS),1,1))
+        self.mean = np.zeros((len(self.center), self.dim))
+        self.cov = np.tile(np.eye(self.dim)*config.prior_variance,(len(self.center),1,1))
         self.clock = None; self.latest_update = None
 
     def advance(self, at):
@@ -43,11 +45,15 @@ class DynamicRatings:
         hi, ai = self.index[int(home)], self.index[int(away)]
         pairs = [(hi,self.n+ai),(ai,self.n+hi)]
         venue = 0 if neutral else 1
-        F = np.zeros((2,26))
+        n_metrics = len(self.center)
+        F = np.zeros((2, feature_width(n_metrics)))
         for side,(oi,di) in enumerate(pairs):
             o,d = self.mean[:,oi],self.mean[:,di]
             variances = self.cov[:,oi,oi]+self.cov[:,di,di]-2*self.cov[:,oi,di]
-            F[side] = np.r_[o,d,o-d,o*d,variances[0],variances[1:].mean(),venue*(1 if side==0 else -1),int(early),o[2]-o[3],d[2]-d[3]]
+            play_variance = variances[1:].mean() if n_metrics > 1 else variances[0]
+            pass_rush_offense = o[2]-o[3] if n_metrics > 3 else 0.0
+            pass_rush_defense = d[2]-d[3] if n_metrics > 3 else 0.0
+            F[side] = np.r_[o,d,o-d,o*d,variances[0],play_variance,venue*(1 if side==0 else -1),int(early),pass_rush_offense,pass_rush_defense]
         return F
 
     def update(self, home, away, neutral, values, available_at):
@@ -56,7 +62,9 @@ class DynamicRatings:
         hi,ai = self.index[int(home)],self.index[int(away)]
         pairs = [(hi,self.n+ai),(ai,self.n+hi)]
         venue = 0 if neutral else 1
-        for j in range(len(METRICS)):
+        if np.shape(values)[-1] != len(self.center):
+            raise ValueError("Observation width must match the hierarchical state")
+        for j in range(len(self.center)):
             sides = np.flatnonzero(np.isfinite(values[:,j]))
             if not len(sides):
                 continue
@@ -88,7 +96,9 @@ def cutoff_for_games(games, explicit=None):
 def build_features(games, Y, center, scale, config, explicit=None, warmup=2021):
     teams = sorted(set(games.home_id)|set(games.away_id))
     states = DynamicRatings(teams,center,scale,config)
-    F = np.full((len(games),2,26),np.nan)
+    if np.shape(Y)[-1] != len(states.center):
+        raise ValueError("Observation width must match the hierarchical state")
+    F = np.full((len(games),2,feature_width(len(states.center))),np.nan)
     cutoffs = cutoff_for_games(games,explicit)
     events = []
     records = list(games.itertuples(index=False))

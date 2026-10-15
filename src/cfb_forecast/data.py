@@ -27,6 +27,38 @@ def timestamp(value):
         raise ValueError("Use an explicit UTC offset, e.g. 2026-10-02T12:00:00Z")
     return t.tz_convert("UTC")
 
+
+def game_date(value, timezone_name="America/Chicago"):
+    """Calendar date that accompanies a forecast, in the slate timezone."""
+    if value is None or pd.isna(value):
+        raise ValueError("Forecast is missing a game date")
+    text = str(value).strip()
+    if not text or text.lower() in {"nan", "nat", "none"}:
+        raise ValueError("Forecast is missing a game date")
+    if len(text) == 10 and text[4] == "-" and text[7] == "-":
+        datetime.strptime(text, "%Y-%m-%d")
+        return text
+    return timestamp(text).tz_convert(timezone_name).strftime("%Y-%m-%d")
+
+
+def with_game_date(frame):
+    """Return a copy whose first forecast column is the game date."""
+    if frame is None or len(frame) == 0:
+        return frame
+    view = frame.copy()
+    source = "kickoff" if "kickoff" in view.columns else "start_date" if "start_date" in view.columns else None
+    if "game_date" not in view.columns:
+        if source is None:
+            raise ValueError("Forecast is missing a game date")
+        view.insert(0, "game_date", [game_date(value) for value in view[source]])
+        return view
+    missing = view["game_date"].isna() | ~view["game_date"].astype(str).str.fullmatch(r"\d{4}-\d{2}-\d{2}")
+    if missing.any():
+        if source is None:
+            raise ValueError("Forecast is missing a game date")
+        view.loc[missing, "game_date"] = [game_date(value) for value in view.loc[missing, source]]
+    return view
+
 def require_columns(df, cols, label):
     missing = sorted(set(cols) - set(df.columns))
     if missing:

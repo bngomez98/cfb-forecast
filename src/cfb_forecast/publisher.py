@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import smtplib
 import urllib.request
 from datetime import datetime, timezone
@@ -16,6 +17,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from .data import game_date
 from .database import connect
 from .paths import artifacts_root, database_path, project_root
 from .sources import source_registry
@@ -52,6 +54,13 @@ def _number(value):
 
 def board_row(record: dict) -> dict:
     probability = float(record["home_win_probability"])
+    kickoff_value = record.get("kickoff")
+    if kickoff_value is None or pd.isna(kickoff_value):
+        raise ValueError("Forecast is missing a game date")
+    supplied = record.get("game_date")
+    if supplied is None or pd.isna(supplied) or not str(supplied).strip():
+        supplied = kickoff_value
+    date = game_date(supplied)
     home = str(record["home_team"])
     away = str(record["away_team"])
     winner = home if probability >= 0.5 else away
@@ -71,7 +80,8 @@ def board_row(record: dict) -> dict:
     return {
         "game_id": int(record["game_id"]),
         "season": int(record["season"]),
-        "kickoff": str(record["kickoff"]),
+        "game_date": date,
+        "kickoff": str(kickoff_value),
         "away_team": away,
         "home_team": home,
         "expected_away_score": round(float(record["expected_away_score"]), 2),
@@ -82,6 +92,17 @@ def board_row(record: dict) -> dict:
         "home_cover_probability": _number(record.get("home_cover_probability")),
         "home_moneyline": home_moneyline,
         "away_moneyline": away_moneyline,
+        "book_home_moneyline": _number(record.get("book_home_moneyline")),
+        "book_away_moneyline": _number(record.get("book_away_moneyline")),
+        "book_total": _number(record.get("total_line")),
+        "spread_open": _number(record.get("spread_open")),
+        "total_open": _number(record.get("total_open")),
+        "formatted_spread": record.get("formatted_spread"),
+        "line_provider": record.get("line_provider"),
+        "cfbd_pregame_home_win_probability": _number(record.get("cfbd_pregame_home_win_probability")),
+        "venue": (record.get("cfbd_weather") or {}).get("venue") if isinstance(record.get("cfbd_weather"), dict) else record.get("venue"),
+        "weather_condition": (record.get("cfbd_weather") or {}).get("condition") if isinstance(record.get("cfbd_weather"), dict) else None,
+        "temperature_f": _number(record.get("weather_temperature_f")),
         "winner": winner,
         "confidence": round(max(probability, 1.0 - probability), 4),
         "home_win_probability": round(probability, 4),
@@ -93,7 +114,7 @@ def board_frame(frame: pd.DataFrame) -> pd.DataFrame:
     if missing:
         raise ValueError(f"Forecast file is missing columns: {missing}")
     rows = [board_row(record) for record in frame.to_dict("records")]
-    return pd.DataFrame(rows).sort_values(["kickoff", "game_id"]).reset_index(drop=True)
+    return pd.DataFrame(rows).sort_values(["game_date", "kickoff", "game_id"]).reset_index(drop=True)
 
 
 def _configure_log(log_dir: Path) -> None:
@@ -128,13 +149,14 @@ def write_forecast_log(conn, run_id: str, rows: pd.DataFrame, logged_at: str) ->
     for row in rows.to_dict("records"):
         conn.execute(
             """INSERT INTO forecast_log(
-                 run_id, season, game_id, kickoff, home_team, away_team,
+                 run_id, season, game_id, game_date, kickoff, home_team, away_team,
                  expected_home_score, expected_away_score, winner, confidence,
                  home_win_probability, logged_at, payload_json,
                  projected_home_margin, model_spread, market_spread, home_cover_probability,
                  home_moneyline, away_moneyline)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(run_id, game_id) DO UPDATE SET
+                 game_date=excluded.game_date,
                  kickoff=excluded.kickoff,
                  expected_home_score=excluded.expected_home_score,
                  expected_away_score=excluded.expected_away_score,
@@ -150,7 +172,7 @@ def write_forecast_log(conn, run_id: str, rows: pd.DataFrame, logged_at: str) ->
                  home_moneyline=excluded.home_moneyline,
                  away_moneyline=excluded.away_moneyline""",
             (
-                run_id, int(row["season"]), int(row["game_id"]), row["kickoff"],
+                run_id, int(row["season"]), int(row["game_id"]), row["game_date"], row["kickoff"],
                 row["home_team"], row["away_team"], row["expected_home_score"],
                 row["expected_away_score"], row["winner"], row["confidence"],
                 row["home_win_probability"], logged_at, json.dumps(row),
@@ -199,11 +221,11 @@ def _email_body(board: dict) -> str:
         f"Season {board['season']} · {board['games']} games · as of {board['as_of']}",
         f"Model: {board.get('model') or 'repository score head'}",
         "",
-        "Kickoff | Away | Home | Score | Winner | Confidence",
+        "Date | Kickoff | Away | Home | Score | Winner | Confidence",
     ]
     for game in board["forecasts"][:40]:
         lines.append(
-            f"{game['kickoff']} | {game['away_team']} {game['expected_away_score']:.1f} @ "
+            f"{game['game_date']} | {game['kickoff']} | {game['away_team']} {game['expected_away_score']:.1f} @ "
             f"{game['home_team']} {game['expected_home_score']:.1f} | "
             f"{game['winner']} | {game['confidence']:.0%}"
         )
@@ -248,6 +270,94 @@ def send_forecast_email(board: dict, outbox: Path) -> dict:
     return {"status": "sent", "to": recipient, "path": str(message_path)}
 
 
+def _same_path(left: Path, right: Path) -> bool:
+    return left.resolve() == right.resolve()
+
+
+def _react_board_paths(web_json: Path) -> list[Path]:
+    """The dev app reads public/forecasts.json. The built app reads dist/forecasts.json."""
+    paths = [web_json]
+    public = project_root() / "web" / "public" / "forecasts.json"
+    if _same_path(web_json, public):
+        paths.append(project_root() / "web" / "dist" / "forecasts.json")
+    return paths
+
+
+def _dashboard_roots(artifacts: Path) -> list[Path]:
+    """Streamlit reads the default artifacts directory even when a run used another one."""
+    roots = [Path(artifacts).resolve()]
+    default = artifacts_root().resolve()
+    if default not in roots:
+        roots.append(default)
+    return roots
+
+
+def _install_run(run_dir: Path, dashboard_root: Path) -> Path:
+    latest = dashboard_root / "latest"
+    if _same_path(run_dir, latest):
+        return latest
+    dashboard_root.mkdir(parents=True, exist_ok=True)
+    temporary = dashboard_root / ".latest-new"
+    if temporary.exists():
+        shutil.rmtree(temporary)
+    shutil.copytree(run_dir, temporary)
+    if latest.exists():
+        shutil.rmtree(latest)
+    temporary.rename(latest)
+    return latest
+
+
+def deliver_forecast_apps(run_dir: Path, artifacts: Path, frame: pd.DataFrame, board: dict, web_json: Path) -> dict:
+    """Write one board to every Streamlit desk and both React copies."""
+    payload = json.dumps(board, indent=2)
+    react = []
+    for path in _react_board_paths(web_json):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(payload, encoding="utf-8")
+        react.append(str(path))
+    desks = []
+    for root in _dashboard_roots(artifacts):
+        latest = _install_run(run_dir, root)
+        frame.to_csv(latest / "forecasts.csv", index=False)
+        (latest / "forecast_board.json").write_text(payload, encoding="utf-8")
+        desks.append(str(latest))
+    return {"react": react, "streamlit": desks}
+
+
+def refresh_forecast_apps(run_dir: str | Path, artifacts: str | Path | None = None, web_json: str | Path | None = None) -> dict:
+    """Push a saved run to Streamlit and React without sending another email."""
+    run_dir = Path(run_dir)
+    artifacts = Path(artifacts) if artifacts is not None else artifacts_root()
+    web_json = Path(web_json) if web_json is not None else project_root() / "web" / "public" / "forecasts.json"
+    prediction_path = run_dir / "forecasts.csv"
+    if not prediction_path.exists():
+        return {"status": "skipped", "reason": "forecasts.csv missing"}
+    frame = pd.read_csv(prediction_path)
+    if frame.empty or any(column not in frame.columns for column in REQUIRED):
+        return {"status": "skipped", "reason": "forecast file has no score board"}
+    rows = board_frame(frame)
+    saved_board = artifacts / "latest" / "forecast_board.json"
+    if saved_board.exists():
+        board = json.loads(saved_board.read_text(encoding="utf-8"))
+    else:
+        board = {
+            "run_id": run_dir.name,
+            "season": int(rows.season.iloc[0]),
+            "games": int(len(rows)),
+            "forecasts": rows.to_dict("records"),
+        }
+        manifest_path = run_dir / "run_manifest.json"
+        if manifest_path.exists():
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            board["as_of"] = manifest.get("as_of")
+            board["model"] = manifest.get("calculation_method")
+    if not board.get("forecasts"):
+        board["forecasts"] = rows.to_dict("records")
+    board["games"] = int(len(board["forecasts"]))
+    delivered = deliver_forecast_apps(run_dir, artifacts, frame, board, web_json)
+    return {"status": "published", **delivered}
+
+
 def publish_forecast_update(
     run_dir: str | Path,
     artifacts: str | Path | None = None,
@@ -256,6 +366,7 @@ def publish_forecast_update(
     run_id: str | None = None,
     season: int | None = None,
     fetch_sources: bool = False,
+    notify: bool = True,
 ) -> dict:
     """Write the forecast board everywhere a completed run is shown."""
     run_dir = Path(run_dir)
@@ -308,8 +419,7 @@ def publish_forecast_update(
         "as_of": board["as_of"],
         "completed_at": logged_at,
     }, indent=2), encoding="utf-8")
-    web_json.parent.mkdir(parents=True, exist_ok=True)
-    web_json.write_text(json.dumps(board, indent=2), encoding="utf-8")
+    apps = deliver_forecast_apps(run_dir, artifacts, frame, board, web_json)
     with (log_dir / "forecast_updates.jsonl").open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({
             "logged_at": logged_at,
@@ -338,7 +448,7 @@ def publish_forecast_update(
         "games": board["games"],
         "logged_at": logged_at,
     }], log_dir)
-    email = send_forecast_email(board, log_dir / "email_outbox")
+    email = send_forecast_email(board, log_dir / "email_outbox") if notify else {"status": "skipped", "reason": "display refresh"}
     LOG.info("Published %s games for %s", board["games"], run_id)
     return {
         "status": "published",
@@ -351,6 +461,7 @@ def publish_forecast_update(
         "datadog": datadog,
         "email": email,
         "source_ingest": source_ingest,
+        "apps": apps,
     }
 
 

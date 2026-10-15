@@ -1,0 +1,8 @@
+From: forecast@localhost
+To: bngomez@ieee.org
+Subject: localhost smtp check
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+MIME-Version: 1.0
+
+The local SMTP server accepted this message.

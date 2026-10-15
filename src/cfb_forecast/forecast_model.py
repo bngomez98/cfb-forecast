@@ -6,23 +6,22 @@ market line, the total, rest, weather, and reported injuries), shift that
 location through one Koopman map. Partial values are filled from the games
 that already have them. Games in the same week are reconciled toward that
 week's slate. The shifted location is the Gaussian mean and the Poisson
-rate. The win probability is the logistic of that margin. Spread prices are
-Monte Carlo frequencies of integer scores drawn from that Gaussian.
+rate. The win probability is the Gaussian probability that the home score
+exceeds the away score. Spread prices are Monte Carlo frequencies of Poisson
+scores whose dependence comes from the Gaussian covariance.
 """
 
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from scipy.special import expit
-from sklearn.linear_model import LogisticRegression
 
 from .analytic import score_summary
 from .simulate import checked_covariance, game_seed, win_probability
 
 METHOD = (
     "hierarchical state, historical team and player rates, known-future Koopman map, "
-    "Gaussian scores, Poisson rates, logistic win probability, Monte Carlo spread"
+    "Gaussian scores, Poisson rates, Gaussian win probability, Monte Carlo spread"
 )
 HISTORY_COLUMNS = (
     "home_points_for",
@@ -131,9 +130,6 @@ class ForecastModel:
         self.koopman = np.zeros((0, 2))
         self.fill = np.zeros(0)
         self.reconcile = 0.0
-        self.logistic_intercept = 0.0
-        self.logistic_coef = 0.0
-        self.logistic_ready = False
         self.score_low = np.array([0.0, 0.0])
         self.score_high = np.array([150.0, 150.0])
         self.input_columns = []
@@ -153,9 +149,6 @@ class ForecastModel:
             "koopman": self.koopman.tolist(),
             "fill": self.fill.tolist(),
             "reconcile": self.reconcile,
-            "logistic_intercept": self.logistic_intercept,
-            "logistic_coef": self.logistic_coef,
-            "logistic_ready": self.logistic_ready,
             "score_low": self.score_low.tolist(),
             "score_high": self.score_high.tolist(),
             **(
@@ -184,9 +177,6 @@ class ForecastModel:
         model.koopman = np.asarray(value["koopman"], float)
         model.fill = np.asarray(value["fill"], float)
         model.reconcile = float(value["reconcile"])
-        model.logistic_intercept = float(value["logistic_intercept"])
-        model.logistic_coef = float(value["logistic_coef"])
-        model.logistic_ready = bool(value["logistic_ready"])
         model.score_low = np.asarray(value["score_low"], float)
         model.score_high = np.asarray(value["score_high"], float)
         if value.get("input_columns"):
@@ -303,13 +293,6 @@ class ForecastModel:
             if denom > 1.0:
                 weight = float(np.sum(delta * (actual - shifted)) / denom)
                 model.reconcile = float(np.clip(weight, 0.0, 1.0))
-        margin = shifted[:, 0] - shifted[:, 1]
-        if len(wins) >= MIN_GAMES and len(np.unique(wins)) == 2 and np.isfinite(margin).all():
-            link = LogisticRegression(C=1.0)
-            link.fit(margin.reshape(-1, 1), wins)
-            model.logistic_intercept = float(link.intercept_[0])
-            model.logistic_coef = float(link.coef_[0, 0])
-            model.logistic_ready = True
         return model
 
     def _shift(self, location, known):
@@ -351,14 +334,10 @@ class ForecastModel:
         rows = []
         for means, known_row, market, game_id in zip(shifted, known, market_rows, game_ids):
             summary = score_summary(means, covariance, **market)
-            summary["gaussian_home_win_probability"] = summary["home_win_probability"]
-            margin = float(means[0] - means[1])
-            if self.logistic_ready:
-                probability = float(expit(self.logistic_intercept + self.logistic_coef * margin))
-            else:
-                probability = float(win_probability(means, covariance))
-            probability = float(np.clip(probability, 1e-6, 1.0 - 1e-6))
+            probability = float(win_probability(means, covariance))
+            summary["gaussian_home_win_probability"] = probability
             summary["home_win_probability"] = probability
+            margin = float(means[0] - means[1])
             summary["expected_home_score"] = float(means[0])
             summary["expected_away_score"] = float(means[1])
             summary["projected_home_margin"] = margin
@@ -366,12 +345,23 @@ class ForecastModel:
             summary["model_spread"] = -margin
             summary["distribution_method"] = "forecast_model"
             summary["score_model"] = "gaussian_location_poisson_rate"
-            summary["win_link"] = "logistic" if self.logistic_ready else "gaussian"
+            summary["win_link"] = "gaussian"
             summary["monte_carlo_draws"] = int(draws)
             if draws:
+                from scipy.stats import norm, poisson
                 seed = game_seed(int(game_id))
-                samples = np.random.default_rng(seed).multivariate_normal(means, covariance, size=int(draws))
-                integer_margin = np.rint(samples[:, 0]).clip(min=0) - np.rint(samples[:, 1]).clip(min=0)
+                rate = np.clip(np.asarray(means, float), 0.0, None)
+                scale = np.sqrt(np.diag(covariance))
+                correlation = covariance / np.outer(scale, scale)
+                np.fill_diagonal(correlation, 1.0)
+                latent = np.random.default_rng(seed).multivariate_normal(np.zeros(2), correlation, size=int(draws))
+                uniforms = np.clip(norm.cdf(latent), 1e-10, 1.0 - 1e-10)
+                home_scores = poisson.ppf(uniforms[:, 0], np.maximum(rate[0], 1e-6))
+                away_scores = poisson.ppf(uniforms[:, 1], np.maximum(rate[1], 1e-6))
+                summary["home_score_poisson_pmf"] = float(poisson.pmf(int(round(rate[0])), np.maximum(rate[0], 1e-6)))
+                summary["away_score_poisson_pmf"] = float(poisson.pmf(int(round(rate[1])), np.maximum(rate[1], 1e-6)))
+                summary["distribution_method"] = "gaussian_poisson_monte_carlo"
+                integer_margin = home_scores - away_scores
                 spread = market.get("home_spread")
                 if spread is not None and _finite(spread) is not None:
                     threshold = -float(spread)
@@ -382,7 +372,7 @@ class ForecastModel:
                     summary["spread_push_probability"] = 1.0 - home - away
                 line = market.get("total_line")
                 if line is not None and _finite(line) is not None:
-                    total = np.rint(samples).clip(min=0).sum(axis=1)
+                    total = home_scores + away_scores
                     over = float(np.mean(total > float(line)))
                     under = float(np.mean(total < float(line)))
                     summary["over_probability"] = over

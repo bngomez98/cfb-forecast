@@ -149,13 +149,16 @@ def persist_forecast(conn, run_id: int, game_id: int, values: dict) -> int:
     if "margin_variance" not in payload and values.get("margin_sd") is not None:
         payload["margin_variance"] = float(values["margin_sd"]) ** 2
     payload.setdefault("away_win_probability", 1 - home_win)
+    from .data import game_date
+    dated = game_date(values.get("game_date") or kickoff)
     conn.execute(
         """INSERT INTO forecasts(
-            run_id,model_id,game_id,season,home_team,away_team,kickoff,as_of,
+            run_id,model_id,game_id,season,home_team,away_team,game_date,kickoff,as_of,
             expected_home_score,expected_away_score,projected_home_margin,
             projected_total,home_win_probability,payload_json)
-           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(model_id, game_id, as_of) DO UPDATE SET
+            game_date=excluded.game_date,
             run_id=excluded.run_id,
             expected_home_score=excluded.expected_home_score,
             expected_away_score=excluded.expected_away_score,
@@ -167,7 +170,7 @@ def persist_forecast(conn, run_id: int, game_id: int, values: dict) -> int:
             canonical_run_id, model_id, int(game_id), season,
             values.get("home_team") or _team_name(conn, int(game_id), "home"),
             values.get("away_team") or _team_name(conn, int(game_id), "away"),
-            kickoff, as_of, home_score, away_score, float(margin), float(total),
+            dated, kickoff, as_of, home_score, away_score, float(margin), float(total),
             home_win, json.dumps(payload),
         ),
     )

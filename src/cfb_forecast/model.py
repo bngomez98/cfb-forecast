@@ -7,8 +7,8 @@ from sklearn.preprocessing import StandardScaler
 from .features import feature_columns
 
 class ScoreHead:
-    def __init__(self, variant="score", alpha=10.):
-        self.variant=variant; self.alpha=float(alpha); self.cols=feature_columns(variant)
+    def __init__(self, variant="score", alpha=10., n_metrics=None):
+        self.variant=variant; self.alpha=float(alpha); self.cols=feature_columns(variant, n_metrics)
         self.scaler=StandardScaler(); self.regressor=Ridge(alpha=self.alpha)
 
     def fit(self,F,Y,mask,sample_weight=None):

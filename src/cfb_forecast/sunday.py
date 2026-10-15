@@ -21,6 +21,7 @@ from .context_model import select_context_model, predict_context
 from .data import fetch, load_data, normalize_schedule, sha256, timestamp
 from .decision import american_to_decimal, moneyline_diagnostics
 from .forecast import forecast
+from .forecast_model import METHOD
 from .market import append_market_history
 from .results import _event_row
 from .sources import collect, collect_game_inputs, ESPN, utc_now
@@ -223,7 +224,14 @@ def sunday_run(
     run_id = f"{season}-{monday.tz_convert(timezone_name):%Y-%m-%d}"
     final = runs / run_id
     if final.exists():
-        return {"status": "already_completed", "run_id": run_id}
+        from .publisher import publish_forecast_update
+        try:
+            distribution = publish_forecast_update(
+                final, root, run_id=run_id, season=season, notify=False
+            )
+        except Exception as exc:
+            distribution = {"status": "failed", "error": type(exc).__name__}
+        return {"status": "already_completed", "run_id": run_id, "distribution": distribution}
     work = root / "work" / run_id
     work.mkdir(parents=True, exist_ok=True)
     lock = root / ".run.lock"
@@ -463,7 +471,7 @@ def sunday_run(
                 for p in (work / "inputs").rglob("*")
                 if p.is_file()
             },
-            "calculation_method": "One forecasting model: hierarchical state, historical team and player rates, known-future Koopman map, Gaussian scores, Poisson rates, logistic win probability, Monte Carlo spread",
+            "calculation_method": METHOD,
         }
         if timestamp(utc_now()) >= games.start_date.min():
             raise ValueError(
@@ -485,6 +493,8 @@ def sunday_run(
         latest_manifest = root / "latest" / "run_manifest.json"
         if latest_manifest.parent.exists():
             latest_manifest.write_text(json.dumps(receipt, indent=2))
+        from .publisher import refresh_forecast_apps
+        receipt["apps"] = refresh_forecast_apps(final, root)
         return receipt
     except Exception as error:
         if work.exists():

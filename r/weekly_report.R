@@ -13,4 +13,4 @@ if (!nrow(board)) {
 }
 latest <- board[board$logged_at == max(board$logged_at), ]
 write.csv(latest, file.path(root, "artifacts", "logs", "r_forecast_report.csv"), row.names = FALSE)
-print(latest[, c("kickoff", "away_team", "home_team", "expected_away_score", "expected_home_score", "winner", "confidence")])
+print(latest[, c("game_date", "kickoff", "away_team", "home_team", "expected_away_score", "expected_home_score", "winner", "confidence")])

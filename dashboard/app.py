@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 import pandas as pd
 import streamlit as st
+from cfb_forecast.data import with_game_date
 from cfb_forecast.paths import artifacts_root
 from desk import shell, overview, render_pipeline, historical, sources, training_root
 
@@ -46,19 +47,19 @@ def main():
     if page == "Forecast log":
         board_path = latest / "forecast_board.json"
         board = read_json(board_path, {})
-        rows = pd.DataFrame(board.get("forecasts", []))
+        rows = with_game_date(pd.DataFrame(board.get("forecasts", [])))
         st.subheader("Published forecast log")
         if rows.empty:
             st.info("No forecast log has been published yet.")
             return
         st.caption(f"Run {board.get('run_id', 'unknown')} · {board.get('games', len(rows))} games · {board.get('as_of', '')}")
         st.dataframe(
-            rows[[column for column in ["kickoff", "away_team", "home_team", "expected_away_score", "expected_home_score", "winner", "confidence"] if column in rows.columns]],
+            rows[[column for column in ["game_date", "kickoff", "away_team", "home_team", "expected_away_score", "expected_home_score", "winner", "confidence"] if column in rows.columns]],
             hide_index=True,
             width="stretch",
         )
         return
-    forecasts = table(latest / "forecasts.csv") if (latest / "forecasts.csv").exists() else pd.DataFrame()
+    forecasts = with_game_date(table(latest / "forecasts.csv")) if (latest / "forecasts.csv").exists() else pd.DataFrame()
     if page in {"Forecast desk", "Game inputs"} and forecasts.empty:
         st.info("No upcoming forecasts in the latest completed run. Historical training, source receipts and pipeline evidence remain available in the sidebar.")
         return
@@ -88,6 +89,7 @@ def main():
             int((view.moneyline_candidate != "none").sum()) if "moneyline_candidate" in view else 0,
         )
         columns = [
+            "game_date",
             "kickoff",
             "away_team",
             "home_team",
@@ -113,14 +115,26 @@ def main():
     elif page == "Lines":
         view = forecasts.copy()
         columns = [
+            "game_date",
             "kickoff",
             "away_team",
             "home_team",
             "model_spread",
             "market_spread",
+            "spread_open",
+            "book_total",
+            "total_open",
+            "formatted_spread",
+            "line_provider",
             "home_spread",
             "home_moneyline",
             "away_moneyline",
+            "book_home_moneyline",
+            "book_away_moneyline",
+            "cfbd_pregame_home_win_probability",
+            "venue",
+            "weather_condition",
+            "temperature_f",
             "home_ml_decimal",
             "away_ml_decimal",
             "projected_home_margin",
@@ -132,6 +146,8 @@ def main():
         if "home_ml_decimal" in priced and "away_ml_decimal" in priced and len(priced):
             st.subheader("Recorded book prices")
             columns = [
+                "game_date",
+                "kickoff",
                 "away_team",
                 "home_team",
                 "home_win_probability",
@@ -187,8 +203,11 @@ def main():
         choice = st.selectbox("Forecast run", [r["run_id"] for r in batches])
         path = ROOT / "runs" / choice
         if (path / "validation.csv").exists():
+            graded = table(path / "validation.csv")
+            if "kickoff" in graded.columns or "start_date" in graded.columns or "game_date" in graded.columns:
+                graded = with_game_date(graded)
             st.dataframe(
-                table(path / "validation.csv"),
+                graded,
                 hide_index=True,
                 width="stretch",
             )
@@ -205,7 +224,7 @@ def main():
             st.info("No game inputs are available for this run.")
             return
         choices = {
-            int(r.game_id): f"{r.away_team} at {r.home_team}"
+            int(r.game_id): f"{r.game_date} · {r.away_team} at {r.home_team}"
             for r in forecasts.itertuples()
         }
         gid = st.selectbox("Game", list(choices), format_func=choices.get)

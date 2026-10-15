@@ -26,7 +26,7 @@ read_watchdog_events <- function(conn, limit = 100L) {
 #' Read the published forecast log.
 #' @export
 read_forecast_log <- function(conn, season = NULL) {
-  sql <- "SELECT run_id, season, game_id, kickoff, away_team, home_team, expected_away_score, expected_home_score, winner, confidence, home_win_probability, logged_at FROM forecast_log"
+  sql <- "SELECT run_id, season, game_id, game_date, kickoff, away_team, home_team, expected_away_score, expected_home_score, winner, confidence, home_win_probability, logged_at FROM forecast_log"
   if (!is.null(season)) sql <- paste0(sql, " WHERE season = ", as.integer(season))
   sql <- paste0(sql, " ORDER BY logged_at, kickoff")
   DBI::dbGetQuery(conn, sql)
