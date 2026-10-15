@@ -1,4 +1,4 @@
-# Exclude only repository metadata, caches, local environments, and transient downloads.
+# Exclude repository metadata, caches, local environments, generated data, and transient downloads.
 .git
 __pycache__
 *.py[cod]
@@ -7,12 +7,15 @@ __pycache__
 .venv
 venv
 env
+activate
+pythonlib1
 *.download
+
+# Mounted runtime data and generated outputs
 data
 artifacts
-runtime
-work
-.env
-.aws
-.codex
-.agents
+
+# Local duplicate/build output directories
+cli
+cfb-forecast
+dist

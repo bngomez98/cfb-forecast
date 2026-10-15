@@ -1,24 +1,64 @@
 services:
   cfb-forecast:
-    user: "${CFB_UID:-10001}:${CFB_GID:-10001}"
     image: ${CFB_IMAGE:-cfb-forecast:local}
     build:
       context: .
       dockerfile: Dockerfile
+    user: "${CFB_UID:-10001}:${CFB_GID:-10001}"
     environment:
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
       OPENBLAS_NUM_THREADS: "1"
       OMP_NUM_THREADS: "1"
       MKL_NUM_THREADS: "1"
+      CFB_DATA_DIR: /app/data
+      CFB_ARTIFACTS_DIR: /app/artifacts
+      CFB_DATABASE: /app/artifacts/cfb_forecast.sqlite
+      DD_SITE: ${DD_SITE:-datadoghq.com}
+      DD_API_KEY: ${DD_API_KEY:-}
     volumes:
       - ${CFB_DATA_DIR:-./data}:/app/data
       - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts
+
+  cfb-api:
+    image: ${CFB_IMAGE:-cfb-forecast:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: ["python", "-m", "cfb_forecast.api"]
+    environment:
+      CFB_DATA_DIR: /app/data
+      CFB_ARTIFACTS_DIR: /app/artifacts
+      CFB_DATABASE: /app/artifacts/cfb_forecast.sqlite
+      DD_SITE: ${DD_SITE:-datadoghq.com}
+      DD_API_KEY: ${DD_API_KEY:-}
+      CFB_REQUIRE_R: "1"
+    ports:
+      - "${CFB_API_PORT:-8000}:8000"
+    volumes:
+      - ${CFB_DATA_DIR:-./data}:/app/data:ro
+      - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts
+    restart: unless-stopped
+
+  cfb-data-watchdog:
+    image: ${CFB_IMAGE:-cfb-forecast:local}
+    user: "${CFB_UID:-10001}:${CFB_GID:-10001}"
+    entrypoint: ["cfb-data-watchdog"]
+    command: ["--data", "/app/data", "--database", "/app/artifacts/cfb_forecast.sqlite", "--watch"]
+    environment:
+      DD_SITE: ${DD_SITE:-datadoghq.com}
+      DD_API_KEY: ${DD_API_KEY:-}
+    restart: unless-stopped
+    volumes:
+      - ${CFB_DATA_DIR:-./data}:/app/data:ro
+      - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts
+
   cfb-dashboard:
+    image: ${CFB_DASHBOARD_IMAGE:-cfb-forecast-dashboard:local}
     build:
       context: .
       dockerfile: dashboard/Dockerfile
-    image: ${CFB_DASHBOARD_IMAGE:-cfb-forecast-dashboard:local}
+    user: "${CFB_DASHBOARD_UID:-10002}:${CFB_DASHBOARD_GID:-10002}"
     ports:
       - "${CFB_DASHBOARD_PORT:-8501}:8501"
     volumes:

@@ -1,6 +1,12 @@
 {
   "name": "CFB forecasting",
   "image": "mcr.microsoft.com/devcontainers/python:3.12",
-  "postCreateCommand": "python -m pip install -e '.[test]'",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "22" }
+  },
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y --no-install-recommends r-base-core && python -m pip install -c requirements-tested.txt -e '.[test]' ruff && npm ci --prefix web",
+  "containerEnv": {
+    "CFB_REQUIRE_R": "1"
+  },
   "remoteUser": "vscode"
 }
