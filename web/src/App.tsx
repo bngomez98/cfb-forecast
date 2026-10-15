@@ -221,7 +221,7 @@ export function App() {
   <section className="content-section">
   {dataError && <div className="notice" role="alert"><AlertCircle aria-hidden="true" /><div><strong>Live football data unavailable</strong><p>{dataError}. No substitute forecasts, scores, or inputs are displayed. Use Refresh data to try again.</p></div></div>}
   <div className="live-score-strip" role="status"><span><i aria-hidden="true" /> 2026 scores refresh every 60 seconds</span><small>{scoresUpdatedAt ? `Last checked ${scoresUpdatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Connecting to score feed'} · Published forecasts cover {chronological.length} scheduled games</small></div>
-          <SeasonPulse totalGames={chronological.length} liveGames={seasonLive} finalGames={seasonFinal} nextGame={nextGame} />
+          <SeasonStatus totalGames={chronological.length} liveGames={seasonLive} finalGames={seasonFinal} nextGame={nextGame} />
           <div className="metric-grid" aria-label="Weekly forecast summary">
             <Metric icon={CalendarDays} label="Games in window" value={weekGames.length ? String(weekGames.length) : '—'} detail={`${weekName} slate`} />
             <Metric icon={Gauge} label="Average win chance" value={weekGames.length ? pct(avgConfidence, 1) : '—'} detail="Average chance for the favored team" />
@@ -284,7 +284,7 @@ function Metric({ icon: Icon, label, value, detail }: { icon: typeof Activity; l
   </article>
 }
 
-function SeasonPulse({ totalGames, liveGames, finalGames, nextGame }: { totalGames: number; liveGames: number; finalGames: number; nextGame?: Forecast }) {
+function SeasonStatus({ totalGames, liveGames, finalGames, nextGame }: { totalGames: number; liveGames: number; finalGames: number; nextGame?: Forecast }) {
   return <section className="season-pulse" aria-label="Season status">
     <div className="pulse-intro"><span className="section-eyebrow">SEASON STATUS</span><strong>2026 FBS schedule</strong><small>{totalGames ? `${totalGames} forecasted games currently published` : 'Waiting for the published schedule'}</small></div>
     <div className="pulse-stat"><span className="pulse-dot live" aria-hidden="true" /><strong>{liveGames}</strong><small>Live now</small></div>
