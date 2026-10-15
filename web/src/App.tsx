@@ -6,6 +6,7 @@ import {
   BookOpen,
   CalendarDays,
   ChevronDown,
+  ChevronUp,
   CircleDot,
   Database,
   Gauge,
@@ -51,10 +52,10 @@ type Range = 'week' | 'all'
 type Sort = 'kickoff' | 'confidence' | 'margin'
 
 const PAGES: { id: Page; label: string }[] = [
-  { id: 'forecast', label: 'Forecast board' },
-  { id: 'moneylines', label: 'Moneylines' },
-  { id: 'methodology', label: 'Methodology' },
-  { id: 'data', label: 'Data & validation' },
+  { id: 'forecast', label: 'Game picks' },
+  { id: 'moneylines', label: 'Odds & value' },
+  { id: 'methodology', label: 'How it works' },
+  { id: 'data', label: 'Track record' },
 ]
 const DAY = 24 * 60 * 60 * 1000
 
@@ -143,6 +144,7 @@ export function App() {
   }
 
   useEffect(() => { void refresh() }, [])
+  useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }) }, [page])
 
   const updated = boardMeta.as_of ? new Date(boardMeta.as_of) : null
   const chronological = useMemo(() => [...forecasts].sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()), [forecasts])
@@ -185,7 +187,7 @@ export function App() {
       <nav aria-label="Primary navigation">
         {PAGES.map(item => <button key={item.id} className={page === item.id ? 'active' : ''} aria-current={page === item.id ? 'page' : undefined} onClick={() => setPage(item.id)}>{item.label}</button>)}
       </nav>
-      <div className="model-status"><i aria-hidden="true" /> Model live</div>
+      <div className="model-status"><i aria-hidden="true" /> Picks updated</div>
     </header>
 
     <main id="top">
@@ -194,8 +196,8 @@ export function App() {
         <section className="content-section">
           <div className="metric-grid" aria-label="Weekly forecast summary">
             <Metric icon={CalendarDays} label="Games in window" value={weekGames.length ? String(weekGames.length) : '—'} detail={`${weekName} slate`} />
-            <Metric icon={Gauge} label="Mean confidence" value={weekGames.length ? pct(avgConfidence, 1) : '—'} detail="Winning side average" />
-            <Metric icon={Target} label="70%+ forecasts" value={weekGames.length ? String(strongPicks) : '—'} detail="Higher-conviction games" />
+            <Metric icon={Gauge} label="Average pick strength" value={weekGames.length ? pct(avgConfidence, 1) : '—'} detail="Average chance for the picked team" />
+            <Metric icon={Target} label="Strong picks" value={weekGames.length ? String(strongPicks) : '—'} detail="Games at 70% or higher" />
             <Metric icon={CircleDot} label="Tightest matchup" value={closest ? `${Math.abs(margin(closest)).toFixed(1)} pts` : '—'} detail={closest ? `${closest.away_team} at ${closest.home_team}` : 'Awaiting slate'} />
           </div>
           <BoardControls query={query} setQuery={setQuery} range={range} setRange={setRange} sort={sort} setSort={setSort} weekName={weekName} />
@@ -231,8 +233,8 @@ function Hero({ weekName, updated, games, onRefresh, loading }: { weekName: stri
   return <section className="hero">
     <div className="hero-inner">
       <div className="eyebrow"><span>2026 FBS</span><span>{weekName}</span><span>{games} games</span></div>
-      <h1>Every game, quantified.</h1>
-      <p>Independent score projections, win probabilities, and fair market prices generated from a dynamic team-strength model.</p>
+      <h1>Smarter picks for every game.</h1>
+      <p>See who is more likely to win, the predicted score, and what a fair price looks like—all in one place.</p>
       <div className="hero-actions">
         <button className="primary-action" onClick={() => document.querySelector('.forecast-board')?.scrollIntoView({ behavior: 'smooth' })}>View the board <ArrowRight aria-hidden="true" /></button>
         <button className="secondary-action" onClick={onRefresh} disabled={loading}><RefreshCw className={loading ? 'spin' : ''} aria-hidden="true" />{loading ? 'Refreshing' : 'Refresh data'}</button>
@@ -279,11 +281,14 @@ function Board({ days, mode, hasGames, query }: { days: { day: string; games: Fo
 }
 
 function ForecastCard({ game }: { game: Forecast }) {
+  const [expanded, setExpanded] = useState(false)
   const home = homeChance(game)
   const away = 1 - home
   const pickHome = home >= 0.5
   const confidence = Math.max(home, away)
   const projectedTotal = game.expected_home_score + game.expected_away_score
+  const pickedTeam = pickHome ? game.home_team : game.away_team
+  const detailsId = `game-details-${game.game_id}`
   return <article className="game-card">
     <header>
       <div><span className="live-dot" aria-hidden="true" /><span>{timeLabel(game.kickoff)}</span></div>
@@ -295,10 +300,21 @@ function ForecastCard({ game }: { game: Forecast }) {
     </div>
     <div className="probability-track" aria-label={`${game.away_team} ${pct(away)}, ${game.home_team} ${pct(home)}`}><i style={{ width: `${away * 100}%` }} /><i style={{ width: `${home * 100}%` }} /></div>
     <dl className="game-details">
-      <div><dt>Model line</dt><dd>{pickHome ? game.home_team : game.away_team} {spreadFor(game, pickHome ? 'home' : 'away')}</dd></div>
-      <div><dt>Projected total</dt><dd>{projectedTotal.toFixed(1)}</dd></div>
-      <div><dt>Fair ML</dt><dd>{oddsLabel(fairMoneyline(confidence))}</dd></div>
+      <div><dt>Predicted spread</dt><dd>{pickedTeam} {spreadFor(game, pickHome ? 'home' : 'away')}</dd></div>
+      <div><dt>Predicted points</dt><dd>{projectedTotal.toFixed(1)}</dd></div>
+      <div><dt>Fair odds</dt><dd>{oddsLabel(fairMoneyline(confidence))}</dd></div>
     </dl>
+    <button className="details-toggle" onClick={() => setExpanded(value => !value)} aria-expanded={expanded} aria-controls={detailsId}>
+      {expanded ? 'Hide details' : 'Explain this pick'}
+      {expanded ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+    </button>
+    {expanded && <div className="pick-explainer" id={detailsId}>
+      <p><strong>Why {pickedTeam}?</strong> We give them a {pct(confidence)} chance to win and predict a final score of {game.expected_away_score.toFixed(0)}–{game.expected_home_score.toFixed(0)}.</p>
+      <dl>
+        <div><dt>Predicted spread</dt><dd>Our expected winning margin, shown in the same format as a sportsbook spread.</dd></div>
+        <div><dt>Fair odds</dt><dd>The price that matches our win estimate before a sportsbook adds its margin.</dd></div>
+      </dl>
+    </div>}
   </article>
 }
 
@@ -316,9 +332,9 @@ function MoneylinePage(props: {
 }) {
   const days = [{ day: 'Model prices', games: props.games }]
   return <>
-    <PageHeader eyebrow="MARKET VIEW" title="Fair moneylines" description="Probability translated into an American-odds break-even price—without sportsbook margin." updated={props.updated} />
+    <PageHeader eyebrow="ODDS VIEW" title="Odds & value" description="Compare our estimated fair odds with the posted sportsbook price." updated={props.updated} />
     <section className="content-section">
-      <div className="notice"><Info aria-hidden="true" /><div><strong>Read this as a price ceiling, not a recommendation.</strong><p>A fair line of −150 means the model estimates a 60% win probability. A sportsbook price shorter than −150 requires a higher break-even rate and offers no model edge before uncertainty.</p></div></div>
+      <div className="notice"><Info aria-hidden="true" /><div><strong>Use fair odds as your comparison point.</strong><p>If our fair price is −150, we estimate a 60% chance to win. A more expensive sportsbook price gives you less value; a cheaper price may give you more.</p></div></div>
       <BoardControls {...props} />
       <div className="moneyline-header" aria-hidden="true"><span>Matchup</span><span>Win probability</span><span>Fair moneyline</span><span>Published price</span></div>
       <Board days={days} mode="moneyline" hasGames={props.allGames.length > 0} query={props.query} />
@@ -376,15 +392,17 @@ function MethodologyPage({ model }: { model?: string }) {
 }
 
 function DataPage({ sources, validation, board }: { sources: Source[]; validation: Validation; board: Board }) {
+  const gradedGames = validation.games ?? 0
   return <>
-    <PageHeader eyebrow="AUDIT DESK" title="Data & validation" description="The evidence entering the model, the checks applied before publication, and the metrics used after games finish." />
+    <PageHeader eyebrow="TRACK RECORD" title="Published accuracy" description="Results are shown only after a published pick can be matched to a final score. No estimate or made-up accuracy percentage is displayed." />
     <section className="content-section data-page">
       <div className="validation-grid">
-        <Metric icon={Database} label="Published records" value={board.games ? String(board.games) : '—'} detail="Forecasts in current file" />
-        <Metric icon={Target} label="Margin MAE" value={validation.margin_mae != null ? validation.margin_mae.toFixed(2) : 'Pending'} detail="Points per graded game" />
-        <Metric icon={Gauge} label="Brier score" value={validation.brier != null ? validation.brier.toFixed(3) : 'Pending'} detail="Probability accuracy" />
-        <Metric icon={TrendingUp} label="Log loss" value={validation.log_loss != null ? validation.log_loss.toFixed(3) : 'Pending'} detail="Penalizes overconfidence" />
+        <Metric icon={Database} label="Published picks" value={board.games ? String(board.games) : '—'} detail="Picks saved before kickoff" />
+        <Metric icon={ShieldCheck} label="Graded games" value={String(gradedGames)} detail="Finished games matched to picks" />
+        <Metric icon={Target} label="Average score error" value={validation.margin_mae != null ? `${validation.margin_mae.toFixed(2)} pts` : 'Not available'} detail="Average miss on winning margin" />
+        <Metric icon={Gauge} label="Probability error" value={validation.brier != null ? validation.brier.toFixed(3) : 'Not available'} detail="0 is perfect; lower is better" />
       </div>
+      <div className="accuracy-note"><Info aria-hidden="true" /><div><strong>{gradedGames > 0 ? `${gradedGames} games are included in these results.` : 'No completed games have been graded yet.'}</strong><p>{gradedGames > 0 ? `Log loss is ${validation.log_loss?.toFixed(3) ?? 'not available'}. It assigns a larger penalty when a high-confidence pick loses.` : 'The current file contains future picks, so an accuracy percentage would be misleading. Results will appear after those games finish and are matched to these saved picks.'}</p></div></div>
       <div className="data-columns">
         <section><span className="section-eyebrow">INPUT FAMILIES</span><h2>What enters the forecast</h2><ul className="check-list"><li><b>Game results</b><span>Final scores and game-level team statistics</span></li><li><b>Efficiency</b><span>Points, yards per play, pass, rush, and first-down rates</span></li><li><b>Situation</b><span>Venue, neutral-site status, and days of rest</span></li><li><b>Market context</b><span>Spread and total only when captured before forecast time</span></li><li><b>Conditional context</b><span>Weather and injuries recorded, but gated by validation</span></li></ul></section>
         <section><span className="section-eyebrow">PUBLIC SOURCES</span><h2>Traceable inputs</h2><div className="source-list">{(sources.length ? sources : [{ name: 'sportsdataverse', url: 'https://github.com/sportsdataverse/sportsdataverse-data' }]).map(source => <a key={source.name} href={source.url} target="_blank" rel="noreferrer"><span>{source.name.replace(/_/g, ' ')}</span><ArrowRight aria-hidden="true" /></a>)}</div></section>
