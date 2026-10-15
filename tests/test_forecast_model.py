@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -217,3 +219,94 @@ def test_database_team_facts_enter_the_pregame_rates(tmp_path):
     assert matrix is not None
     assert matrix[1, 0] == pytest.approx(41.0)
     assert matrix[1, 4] == pytest.approx(7.2)
+
+
+def test_pregame_history_replays_bowl_games_after_the_regular_season(tmp_path):
+    from cfb_forecast.features import pregame_history
+
+    # Postseason games restart week numbering at 1; the December bowl must not
+    # feed the same team's September week-3 rates.
+    completed = pd.DataFrame(
+        {
+            "game_id": [1, 2, 3],
+            "season": [2025, 2025, 2025],
+            "week": [1, 1, 3],
+            "season_type": ["regular", "postseason", "regular"],
+            "home_id": [10, 10, 10],
+            "away_id": [20, 40, 30],
+            "home_points": [35.0, 70.0, 21.0],
+            "away_points": [10.0, 0.0, 28.0],
+            "start_date": pd.to_datetime(
+                ["2025-09-01T18:00:00Z", "2025-12-20T18:00:00Z", "2025-09-15T18:00:00Z"]
+            ),
+        }
+    )
+    matrix = pregame_history(completed, tmp_path, completed)
+    assert matrix[2, 0] == pytest.approx(35.0)
+    assert matrix[1, 0] == pytest.approx(0.92 * 35.0 + 0.08 * 21.0)
+
+
+def test_postseason_week_one_is_not_early_season():
+    from types import SimpleNamespace
+    from cfb_forecast.ratings import early_season
+
+    assert early_season(SimpleNamespace(week=2, season_type="regular"))
+    assert not early_season(SimpleNamespace(week=1, season_type="postseason"))
+    assert not early_season(SimpleNamespace(week=7, season_type="regular"))
+    assert early_season(SimpleNamespace(week=3))
+
+
+def test_rest_days_count_games_against_non_fbs_opponents():
+    schedule = pd.DataFrame(
+        {
+            "game_id": [1, 2, 3],
+            "home_id": [1, 1, 1],
+            "away_id": [2, 99, 3],
+            "start_date": pd.to_datetime(
+                ["2025-09-01T18:00:00Z", "2025-09-08T18:00:00Z", "2025-09-15T18:00:00Z"]
+            ),
+            "fbs_game": [True, False, True],
+        }
+    )
+    rested = rest_days(schedule[schedule.game_id == 3], schedule)
+    assert rested.home_rest_days.iloc[0] == pytest.approx(7)
+
+
+def test_season_backtest_forecasts_bowls_separately_from_week_one(monkeypatch, tmp_path):
+    import cfb_forecast.season_backtest as season_backtest
+
+    schedule = pd.DataFrame(
+        {
+            "game_id": [1, 2],
+            "season": [2025, 2025],
+            "week": [1, 1],
+            "season_type": ["regular", "postseason"],
+            "start_date": pd.to_datetime(["2025-08-30T18:00:00Z", "2025-12-20T18:00:00Z"]),
+            "fbs_game": [True, True],
+            "completed": [True, True],
+            "home_points": [30.0, 24.0],
+            "away_points": [20.0, 27.0],
+        }
+    )
+    calls = []
+
+    def fake_forecast(**kwargs):
+        calls.append((kwargs["as_of"], kwargs["target_game_ids"]))
+        Path(kwargs["out_root"]).mkdir(parents=True, exist_ok=True)
+        return pd.DataFrame(
+            {
+                "game_id": kwargs["target_game_ids"],
+                "home_win_probability": 0.6,
+                "expected_home_score": 28.0,
+                "expected_away_score": 21.0,
+                "projected_home_margin": 7.0,
+                "projected_total": 49.0,
+            }
+        )
+
+    monkeypatch.setattr(season_backtest, "load_data", lambda root: (schedule, None, None))
+    monkeypatch.setattr(season_backtest, "forecast", fake_forecast)
+    reports, summary = season_backtest.run_season_backtest(tmp_path, tmp_path, tmp_path, 2025, lead_hours=48)
+    assert [ids for _, ids in calls] == [[1], [2]]
+    assert pd.Timestamp(calls[1][0]) == pd.Timestamp("2025-12-18T18:00:00Z")
+    assert summary["games"] == 2

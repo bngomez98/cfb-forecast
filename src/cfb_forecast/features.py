@@ -246,6 +246,21 @@ def _scoring_facts(completed):
     return pd.DataFrame(rows)
 
 
+def _schedule_kickoffs(data_root):
+    """Kickoff times for every scheduled game on disk, including non-FBS opponents."""
+    frames = []
+    for path in sorted(Path(data_root).glob("schedule_*.csv")):
+        try:
+            frames.append(pd.read_csv(path, usecols=["game_id", "start_date"]))
+        except ValueError:
+            continue
+    if not frames:
+        return pd.DataFrame(columns=["game_id", "start_date"])
+    kickoffs = pd.concat(frames, ignore_index=True)
+    kickoffs["start_date"] = pd.to_datetime(kickoffs.start_date, utc=True, format="ISO8601", errors="coerce")
+    return kickoffs.dropna(subset=["start_date"])
+
+
 def pregame_history(query, data_root, completed, database=None):
     """Rates each team had recorded before the game, from parquet facts and final scores.
 
@@ -275,11 +290,18 @@ def pregame_history(query, data_root, completed, database=None):
         facts = facts.loc[facts.game_id.isin(past_ids)].copy()
     if facts.empty:
         return None
-    order = completed[["game_id", "start_date"]].drop_duplicates("game_id")
-    facts = facts.merge(order, on="game_id", how="left")
-    facts["_season"] = pd.to_numeric(facts.season, errors="coerce") if "season" in facts else season
-    facts["_week"] = pd.to_numeric(facts.week, errors="coerce") if "week" in facts else 0
-    facts = facts.sort_values(["_season", "_week", "start_date", "game_id"], kind="mergesort")
+    # Kickoff time is the only safe order: postseason games restart week numbering
+    # at 1, so a season/week sort would replay bowl games before October games.
+    order = pd.concat(
+        [completed[["game_id", "start_date"]], _schedule_kickoffs(data_root)],
+        ignore_index=True,
+    ).drop_duplicates("game_id")
+    order["game_id"] = pd.to_numeric(order.game_id, errors="coerce")
+    order["start_date"] = pd.to_datetime(order.start_date, utc=True)
+    facts = facts.drop(columns=["start_date"], errors="ignore").merge(order.dropna(subset=["game_id"]).astype({"game_id": "int64"}), on="game_id", how="left")
+    # A fact without a known kickoff cannot be placed before or after a game.
+    facts = facts.loc[facts.start_date.notna()]
+    facts = facts.sort_values(["start_date", "game_id"], kind="mergesort")
     metrics = [
         "points_for", "points_against", "yards_per_play", "success_rate", "explosive_rate",
         "turnover_rate", "pass_yards", "rush_yards", "receiving_yards", "epa",

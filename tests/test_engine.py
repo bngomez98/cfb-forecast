@@ -203,3 +203,21 @@ def test_prospective_collection_records_market_failure_and_still_runs(monkeypatc
     assert receipt["market_capture"]["status"]=="failed"
     assert receipt["chronology"]["status"]=="no_due_games"
     assert Path(receipt["receipt_path"]).exists()
+
+def test_state_update_matches_textbook_kalman_filter():
+    rng=np.random.default_rng(1); cfg=StateConfig()
+    center=np.array([28,5.5,7,4.5,.3]); scale=np.array([14,1.2,2,1.5,.08])
+    s=DynamicRatings([1,2,3,4],center,scale,cfg)
+    for j in range(5):
+        A=rng.normal(size=(8,8)); s.cov[j]=A@A.T/8+np.eye(8)*.3; s.mean[j]=rng.normal(size=8)*.5
+    s.clock=timestamp("2025-09-01T00:00Z"); before_mean,before_cov=s.mean.copy(),s.cov.copy()
+    values=np.array([[35,6.1,8.0,5.0,.35],[17,4.9,6.0,3.9,.27]])
+    s.update(1,2,False,values,"2025-09-01T00:00Z")
+    H=np.zeros((2,8)); H[0,0]=1; H[0,5]=-1; H[1,1]=1; H[1,4]=-1
+    R=np.array([[1,cfg.observation_correlation],[cfg.observation_correlation,1]])
+    for j in range(5):
+        home=np.array([1,-1])*cfg.home_margin/2/scale[0] if j==0 else np.zeros(2)
+        P=before_cov[j]; K=P@H.T@np.linalg.inv(H@P@H.T+R)
+        z=(values[:,j]-center[j])/scale[j]-home
+        np.testing.assert_allclose(s.mean[j],before_mean[j]+K@(z-H@before_mean[j]),atol=1e-12)
+        np.testing.assert_allclose(s.cov[j],(np.eye(8)-K@H)@P,atol=1e-12)
