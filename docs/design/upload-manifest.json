@@ -1,0 +1,832 @@
+{
+  "base_commit": "b9976e17936d47b0d0dbbeccbef3b6fbbb22e079",
+  "attachments": [
+    {
+      "filename": "README.md",
+      "sha256": "9c24eeaed1a8b431aee3571b4cdecec828595d832c47e339fff2e2da15eec74d",
+      "bytes": 79151
+    },
+    {
+      "filename": "cfb 10-12-26 model designnn.txt",
+      "sha256": "2a1e7801a1e1b801d6417ddecb9ed8a0ea4bd2eb002bf474c6486567d4c1cc93",
+      "bytes": 18213
+    },
+    {
+      "filename": "cfb-forecast-version-2.zip",
+      "sha256": "b2a69d666b4adc7a0c4de65750345658d9e56b246a48405e9734b1a5ac9b32cd",
+      "bytes": 252978
+    },
+    {
+      "filename": "code-security.datadog.yaml",
+      "sha256": "431ecd793e1594f25503a6bd0b41f0916057f88696c82b550b145c985ccae1b5",
+      "bytes": 199
+    }
+  ],
+  "archive_policy": "Reference snapshot. Current main contains newer reorganized source; do not overwrite it with the archive.",
+  "archive_entries": [
+    {
+      "path": ".devcontainer/devcontainer.json",
+      "sha256": "89b6af40225cdd87aba68951864138ede7b2c5c0d0f7d10a7727fd1878902470",
+      "current_path": ".devcontainer/devcontainer.json",
+      "status": "current_differs"
+    },
+    {
+      "path": ".dockerignore",
+      "sha256": "83c3c76dde13786557779141543f4336b89a39604a600bec245bb87115a0021f",
+      "current_path": ".dockerignore",
+      "status": "identical"
+    },
+    {
+      "path": ".github/workflows/docker.yml",
+      "sha256": "58454d191a4d6bc69ea259c21c90f0842fb2e7eea8031b95f79c5c68b6091e3d",
+      "current_path": ".github/workflows/docker.yml",
+      "status": "current_differs"
+    },
+    {
+      "path": ".github/workflows/external-sources.yml",
+      "sha256": "c9b667fd8889572a493fd718a18bf34db2efb4843bab0d3b654e730a5fcce227",
+      "current_path": ".github/workflows/external-sources.yml",
+      "status": "current_differs"
+    },
+    {
+      "path": ".github/workflows/sunday.yml",
+      "sha256": "b435a285981ecca9efb040396d950d650a80875ee02b36186092fe6983a25767",
+      "current_path": ".github/workflows/sunday.yml",
+      "status": "current_differs"
+    },
+    {
+      "path": ".github/workflows/tests.yml",
+      "sha256": "a20b5233a1566e796a0803a0cce532278f5c91ed6bcb9e4a7a894cae3fb6d243",
+      "current_path": ".github/workflows/tests.yml",
+      "status": "current_differs"
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "fd0eb710677d8afa105761f0e7128ff987aaa4ab6bb57087bac0355e045eae27",
+      "current_path": ".gitignore",
+      "status": "current_differs"
+    },
+    {
+      "path": ".streamlit/config.toml",
+      "sha256": "c7d9ff08ab976edac802bee5e83c8a4d77daeee3087ce6170ec1793f118c76b0",
+      "current_path": ".streamlit/config.toml",
+      "status": "current_differs"
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "sha256": "1cd9a26774fc3526dad2e1da11632c0adac204cbff6ac0a683c74460b267cf64",
+      "current_path": "docs/ARCHITECTURE.md",
+      "status": "identical"
+    },
+    {
+      "path": "Caddyfile",
+      "sha256": "f45365cceaa0fd4d3571f347969e0eb2a19d2d0285fb95b616c2ab0dc4ca328e",
+      "current_path": "deploy/caddy/Caddyfile",
+      "status": "identical"
+    },
+    {
+      "path": "Dockerfile",
+      "sha256": "ecf39c1a9905d4071ecea8f4891ce9a86a47305c515ae47433e61601b775d927",
+      "current_path": "Dockerfile",
+      "status": "identical"
+    },
+    {
+      "path": "README.md",
+      "sha256": "81b8f7b698f809c609f379ce3d7cc8ba63ef865aa2361b73cef8a52e6a583c52",
+      "current_path": "README.md",
+      "status": "current_differs"
+    },
+    {
+      "path": "RESULTS.md",
+      "sha256": "8ebb74bb44f7e7608456dcd04bb5832afe8dd1b591d64ab0c9f083db7cfe32a0",
+      "current_path": "docs/RESULTS.md",
+      "status": "identical"
+    },
+    {
+      "path": "bridge/base/0-cfb-forecast-namespace.yaml",
+      "sha256": "3683566825b2b9b44bbd7162100088cc6ccdb9de2ef1d5a41cce11f90cca33d0",
+      "current_path": "deploy/bridge/base/0-cfb-forecast-namespace.yaml",
+      "status": "identical"
+    },
+    {
+      "path": "bridge/base/cfb-forecast.yaml",
+      "sha256": "48e21ee7678343cdc46fcbe46f90f829895b8f69cbbd0461532051edb0886fd3",
+      "current_path": "deploy/bridge/base/cfb-forecast.yaml",
+      "status": "identical"
+    },
+    {
+      "path": "bridge/base/default-network-policy.yaml",
+      "sha256": "d4903ce9e4707fcbf9a77226f63e01bc0be9f5b2777732fea311ff77e9947f52",
+      "current_path": "deploy/bridge/base/default-network-policy.yaml",
+      "status": "identical"
+    },
+    {
+      "path": "bridge/base/kustomization.yaml",
+      "sha256": "1583a1bd49db10502dd6cd72feb6ce5a8697bb7616edf7fc44360248646db89d",
+      "current_path": "deploy/bridge/base/kustomization.yaml",
+      "status": "identical"
+    },
+    {
+      "path": "bridge/overlays/desktop/kustomization.yaml",
+      "sha256": "713282c5144be412352aef9b4ab5be91c70e5aa8c6996675f214e8225ce9a98a",
+      "current_path": "deploy/bridge/overlays/desktop/kustomization.yaml",
+      "status": "identical"
+    },
+    {
+      "path": "dashboard/Dockerfile",
+      "sha256": "64f9472856850b100fa62bab0dd6e737f713fd2a7ad35f1da906494fc30929d5",
+      "current_path": "dashboard/Dockerfile",
+      "status": "identical"
+    },
+    {
+      "path": "dashboard/app.py",
+      "sha256": "60e75555defe1c32aa0081203ac92514a15ee59d2c5e0dda607c04a1a1603b01",
+      "current_path": "dashboard/app.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "dashboard/desk.py",
+      "sha256": "7d1746bb87becb984244c2debf32a94f25ce62a11229666dacce6b8d5e6df569",
+      "current_path": "dashboard/desk.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "dashboard/requirements.txt",
+      "sha256": "56ae19caf18dd5bfb2eaa4e8707eb4d30c71d9b5f38f6b70a6f515d779d34056",
+      "current_path": "dashboard/requirements.txt",
+      "status": "current_differs"
+    },
+    {
+      "path": "dashboard/theme.css",
+      "sha256": "39930134cc84018d94336081266fd9f803b06846d80b8c309f8cb4f0129fe7d5",
+      "current_path": "dashboard/theme.css",
+      "status": "current_differs"
+    },
+    {
+      "path": "datadog/conf.yaml",
+      "sha256": "ac6de781c16a37b53d2442fd19d1d0b6aea06c9f3c3a36a76e6c78426de47f29",
+      "current_path": "deploy/datadog/conf.yaml",
+      "status": "identical"
+    },
+    {
+      "path": "docker-bake.hcl",
+      "sha256": "479d7a58cf43bb6cf7387d1cc54ee578e2423fc81ec7431bbd28f09317fd2d72",
+      "current_path": "docker-bake.hcl",
+      "status": "current_differs"
+    },
+    {
+      "path": "docker-compose.public.yml",
+      "sha256": "327933d05afdd20a52c058f591173e8a37939fec16c0c3ded87fdc8c86f59599",
+      "current_path": "docker-compose.public.yml",
+      "status": "current_differs"
+    },
+    {
+      "path": "docker-compose.yml",
+      "sha256": "a56019e8e47ad8ac5dfa07a356250885a00ee075135211eaee07f1701d8e684e",
+      "current_path": "docker-compose.yml",
+      "status": "identical"
+    },
+    {
+      "path": "examples/market_template.csv",
+      "sha256": "3ccb614fcab22dee23efb61157adb908b6d642c4c74bbb0a8ab66e553c1759ca",
+      "current_path": "examples/market_template.csv",
+      "status": "identical"
+    },
+    {
+      "path": "git_setup.sh",
+      "sha256": "1c69bd92a1e37dd556e92565d5432553a9316b1e87b31515d4ba7e04f596dea2",
+      "current_path": "scripts/setup/git_setup.sh",
+      "status": "current_differs"
+    },
+    {
+      "path": "install.sh",
+      "sha256": "c374f5a3cdc3e0b41bfa97d36b632cf1687542a1168639708bc1c18777198acb",
+      "current_path": "scripts/setup/install.sh",
+      "status": "current_differs"
+    },
+    {
+      "path": "inventory_workspace.py",
+      "sha256": "529c300332855533b9329a1a71c5631c11862184357dd28b3599f2c6181bc2a3",
+      "current_path": "scripts/workspace/inventory_workspace.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "merge_workspace.py",
+      "sha256": "004f489872c37f99733113cf59b1f341b075f8cead70c4a29f83d51234d0468a",
+      "current_path": "scripts/workspace/merge_workspace.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "pyproject.toml",
+      "sha256": "d5bf14248854664a15bf83bb4e710cdb370af28e3581dfc9752448b500934d16",
+      "current_path": "pyproject.toml",
+      "status": "current_differs"
+    },
+    {
+      "path": "r/DESCRIPTION",
+      "sha256": "d7fd9e1f2d0e015f86f8ec214eefc1de881bc9fe8132510c8999aabf4ebea4c9",
+      "current_path": "r/DESCRIPTION",
+      "status": "identical"
+    },
+    {
+      "path": "r/NAMESPACE",
+      "sha256": "c35696a130c940cc3ca33f21fa784773d8cc112d08ee935edf2847890c69649e",
+      "current_path": "r/NAMESPACE",
+      "status": "identical"
+    },
+    {
+      "path": "r/data.R",
+      "sha256": "235cbcaef2fd4b4f8efb653f1e1fbc916998312208ed049b07918fd59c1edb08",
+      "current_path": "r/data.R",
+      "status": "identical"
+    },
+    {
+      "path": "r/weekly_report.R",
+      "sha256": "b524d5daeee2b57bc2279d5db01d710483214bdd12f6417bdef8dc1f9e5040ba",
+      "current_path": "r/weekly_report.R",
+      "status": "identical"
+    },
+    {
+      "path": "requirements-tested.txt",
+      "sha256": "6c38b23f72c42e28a5e83ac937a4a67f7979b5af5645df91894a65cf99b4ae06",
+      "current_path": "requirements-tested.txt",
+      "status": "identical"
+    },
+    {
+      "path": "scripts/__init__.py",
+      "sha256": "918cd6c5271625ee826183b705b74fe5437e6e0a5cffa33d6bcbc35d1660e521",
+      "current_path": "scripts/__init__.py",
+      "status": "identical"
+    },
+    {
+      "path": "scripts/cfb.py",
+      "sha256": "c44ca5c4853c1376716350cacc670254ba59d76a618762984cf2ad3810e6765d",
+      "current_path": "scripts/cfb.py",
+      "status": "identical"
+    },
+    {
+      "path": "scripts/weekly-pipeline.sh",
+      "sha256": "721feac9153dc20d0307b01d0986e20065b2400ef17b276759c9bd93e01808bf",
+      "current_path": "scripts/run/weekly-pipeline.sh",
+      "status": "identical"
+    },
+    {
+      "path": "scripts/weekly_pipeline.py",
+      "sha256": "8afe0d35cc5e7e9a10e152f4c836035acce51114ea4e8ee76499b322f2b92c1d",
+      "current_path": "scripts/weekly_pipeline.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "scripts_auto_refresh_forecast.sh",
+      "sha256": "3e02c64fa4c467497aa6bdb4c2647529b2decb707a7e906ba4c532bd98e6f82a",
+      "current_path": "scripts/run/auto_refresh_forecast.sh",
+      "status": "identical"
+    },
+    {
+      "path": "scripts_build_forecasting.sh",
+      "sha256": "8dfac97f9233deb583a6655156dce26672ced65b3034ee863e3fd9e777c3a478",
+      "current_path": "scripts/checks/build_forecasting.sh",
+      "status": "identical"
+    },
+    {
+      "path": "scripts_git_status.sh",
+      "sha256": "913b7510fb925bea3fd7c3847f509c45e0300c8ae9ea167f4f07098a1b1a9a6b",
+      "current_path": "scripts/checks/git_status.sh",
+      "status": "identical"
+    },
+    {
+      "path": "scripts_run_dashboard.sh",
+      "sha256": "c44748c44f7f6a37c9ce4355d895782d0df30bab55a3caaab3a2c9ccf66dc4a2",
+      "current_path": "scripts/run/run_dashboard.sh",
+      "status": "identical"
+    },
+    {
+      "path": "scripts_setup_pythonlib1.sh",
+      "sha256": "f9964bc14dde34367d1643647814e7045402929005b31b28ebfacf11d2048107",
+      "current_path": "scripts/setup/pythonlib1_env.sh",
+      "status": "identical"
+    },
+    {
+      "path": "scripts_verify_datasets.sh",
+      "sha256": "3ef8a082eb99aabc5abc5ddcc42e5bf76531065d596e59664f430ee4abdf3b63",
+      "current_path": "scripts/checks/verify_datasets.sh",
+      "status": "current_differs"
+    },
+    {
+      "path": "scripts_verify_pythonlib1.sh",
+      "sha256": "9ad2479045bfe09b5f80edc65db764446dd731a71c7180cd4b20228c631e226e",
+      "current_path": "scripts/checks/verify_pythonlib1.sh",
+      "status": "identical"
+    },
+    {
+      "path": "scripts_verify_sources.sh",
+      "sha256": "ba6b1258b710ac50a2787fcf11537e661d34f007af0656479f80435547be37dd",
+      "current_path": "scripts/checks/verify_sources.sh",
+      "status": "identical"
+    },
+    {
+      "path": "setup_project.py",
+      "sha256": "25307e2b34b140726e50c1b46a7d530e2660bb04b97da101544beea43e9f0730",
+      "current_path": "scripts/setup/setup_project.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "setup_pythonlib1.sh",
+      "sha256": "25db887ec60f0209526b39dff876d00fad74a5e532f2370a8dc84df3f1f31378",
+      "current_path": "scripts/setup/pythonlib1.sh",
+      "status": "identical"
+    },
+    {
+      "path": "setup_wsl.sh",
+      "sha256": "5262962baaa3be45e4d3292fca0f7798f715c539f3e0e036d8c62265c0688343",
+      "current_path": "scripts/setup/setup_wsl.sh",
+      "status": "current_differs"
+    },
+    {
+      "path": "sql/schema.sql",
+      "sha256": "e8352e8b45e88424c3b50032fa7664285ccd051b5adec240d1c188a0a8f7ea07",
+      "current_path": "sql/schema.sql",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/__init__.py",
+      "sha256": "f2f926177deea0817a07a1fc1d77fab15d16c003222cb44ea2a2c06734edc640",
+      "current_path": "src/cfb_forecast/__init__.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/__main__.py",
+      "sha256": "cf7390a2508a0fcad4777a4a629fc5212ab655cb45845975995f835676a834e3",
+      "current_path": "src/cfb_forecast/__main__.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/analytic.py",
+      "sha256": "4464a2cf286c9ef046e8fcfbf30496a96c1460b8398c0d1c29b2f899a6b15ef5",
+      "current_path": "src/cfb_forecast/modeling/analytic.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/api.py",
+      "sha256": "893098fdbc833a3b7ea3ed78477a8d22c6b9e277ebf3caa8a4294beff3546a8b",
+      "current_path": "src/cfb_forecast/api.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/availability.py",
+      "sha256": "005c86ed80d85b013a8ce32c2d1b1424aafe43259bf0ccd3f262b60e57696f06",
+      "current_path": "src/cfb_forecast/ingest/availability.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/awareness.py",
+      "sha256": "cfe09f6a3cdc96954060f70037b62ba99b491d4324ceda1167c56e070faace6b",
+      "current_path": "src/cfb_forecast/monitoring/awareness.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/backtest.py",
+      "sha256": "1a8087f0c6e0b7358068a5e031d68806eba9a39724eb01f7ef503f4470b5103c",
+      "current_path": "src/cfb_forecast/evaluation/backtest.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/baseline.py",
+      "sha256": "9e8b252807d936219d9e1de5de10d606de7cb1f14669ae3b338f3a120fb21b1a",
+      "current_path": "src/cfb_forecast/modeling/baseline.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/betting.py",
+      "sha256": "5f9ea27c6eae0a4757b378effa989d545654fbbd960e88beaf1751a181b94052",
+      "current_path": "src/cfb_forecast/odds/betting.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/chronology.py",
+      "sha256": "58f03e2c73d58e88682a32cd44e767e344c8c42f63a567943aa5507b7a91ee26",
+      "current_path": "src/cfb_forecast/evaluation/chronology.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/cli.py",
+      "sha256": "7066e2c8a5a785d66f14ab0489ba2a7fedeeb4ccf15951245998eeefd4ece652",
+      "current_path": "src/cfb_forecast/cli.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/collector.py",
+      "sha256": "67d9ed045e852590de8a0d2b36a77bd86312d75ccf00e7fee9012e7520dc0cd9",
+      "current_path": "src/cfb_forecast/ingest/collector.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/config.py",
+      "sha256": "a87502ff0e410c25f227c54e1b66dbaa0e988d2e3940dbe99aca6091dd46202d",
+      "current_path": "src/cfb_forecast/config.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/context_model.py",
+      "sha256": "d6abc1422df4122ffb26991633b4dca6f8bdf659be5464eb8537cfe29481f9eb",
+      "current_path": "src/cfb_forecast/modeling/context_model.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/data.py",
+      "sha256": "52523b690acd56e5c9ac4eb8a1ded64b1e3312a2953fccaa0810f40ccd8cd7fc",
+      "current_path": "src/cfb_forecast/ingest/data.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/data_watchdog.py",
+      "sha256": "7343668aa19c98aa28d0e84ebfbe619ff2b8c7762ff2853448094d41f0139d85",
+      "current_path": "src/cfb_forecast/monitoring/data_watchdog.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/database.py",
+      "sha256": "c2579b2f9f53f0c2da8c30a4cd0180e1615edae3e940523c95e731fb8b2140c1",
+      "current_path": "src/cfb_forecast/storage/database.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/decision.py",
+      "sha256": "b00621572d0203b8835c27dd570fce6d89fdb7184adf4b574f5f3593810acbea",
+      "current_path": "src/cfb_forecast/odds/decision.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/distribution.py",
+      "sha256": "0630059d27298b362ff3b759df85a828af9f3284ee01077bbee80a5eb49d55e6",
+      "current_path": "src/cfb_forecast/modeling/distribution.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/evaluate.py",
+      "sha256": "da89a1bea2dbc919defbf9dba10fac8a17f49442defe9ad94db013ef610ec33d",
+      "current_path": "src/cfb_forecast/evaluation/evaluate.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/external_cli.py",
+      "sha256": "411f0b2863df32fa75cfad687d24ac88e2c99f110e0a71b0c9541e0a549e6ad3",
+      "current_path": "src/cfb_forecast/external_cli.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/external_sources.py",
+      "sha256": "866378ebd58be83badc879566b7defc4abb82db6500986f39f665617e89df050",
+      "current_path": "src/cfb_forecast/ingest/external_sources.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/features.py",
+      "sha256": "76cb6607ba43e8defb1e6b5d6cbdeef5168f3bbcf70a6bd59848815e4c7192f0",
+      "current_path": "src/cfb_forecast/ingest/features.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/football_database.py",
+      "sha256": "03ed106b8b946c75d21e3ea50ee1575b5c085af6673af5a1fa0e52ca11df6041",
+      "current_path": "src/cfb_forecast/storage/football_database.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/forecast.py",
+      "sha256": "f983c16bf2a2b1844bfb3b07f6f268d455dab50da57780b0f03a0cfe21919907",
+      "current_path": "src/cfb_forecast/modeling/forecast.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/forecast_model.py",
+      "sha256": "224571b549b381db1b2181479cd11d14e1e51681c1bf221ca5f14b2a1b01690c",
+      "current_path": "src/cfb_forecast/modeling/forecast_model.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/historical.py",
+      "sha256": "dd14713d8b9f6886f939e28e0ccbad807941165d4c2154e127bc7a6ee42df7df",
+      "current_path": "src/cfb_forecast/pipeline/historical.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/holdout.py",
+      "sha256": "79295bcf0656b577938b973e21629f65473caedf9aa6f341c2452eb52f8c5501",
+      "current_path": "src/cfb_forecast/evaluation/holdout.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/joint_forecast.py",
+      "sha256": "45edc6d0526f623d3480ba9f19cb1f343153e43cdbb871ba10945a2d5987e56b",
+      "current_path": "src/cfb_forecast/modeling/joint_forecast.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/layered_model.py",
+      "sha256": "4c2cf4d1e2c031119a1f0747959d1caa287000dd9e6d45b6b4ed12155583ae37",
+      "current_path": "src/cfb_forecast/modeling/layered_model.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/learning.py",
+      "sha256": "acc0e0d710fa38cb2854161d0b5fa9c6848f67843ff16c10eb265701d54f701a",
+      "current_path": "src/cfb_forecast/modeling/learning.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/live_forecast.py",
+      "sha256": "2ddf866995fff26bbe9686c63ac32ac09f17ca8d1c5f12360a9c261bd0b2ec5e",
+      "current_path": "src/cfb_forecast/modeling/live_forecast.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/market.py",
+      "sha256": "9d8502c6249bad564b17f6cc9c55303eddf9c8bc0ea0994e78ec2ab93e00f317",
+      "current_path": "src/cfb_forecast/odds/market.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/model.py",
+      "sha256": "9917cf63c9b084e644e40e9dc3e3f17c7224d3348aef72ba3e772c1220411856",
+      "current_path": "src/cfb_forecast/modeling/model.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/paths.py",
+      "sha256": "c24a280ab31038167252ec938ed0de4e69aa82b817df623dbc03843a49d9bdcd",
+      "current_path": "src/cfb_forecast/paths.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/pipeline_cli.py",
+      "sha256": "64780dcdec754384bf45dc75ed3961820e35153a526598caad08a8f40c7f6d20",
+      "current_path": "src/cfb_forecast/pipeline_cli.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/pipeline_status.py",
+      "sha256": "d921cdb518d5e310ccaf2608a4155ef14bd7fb536531c9ea4e8a51ab7d37cd7a",
+      "current_path": "src/cfb_forecast/pipeline/pipeline_status.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/preflight.py",
+      "sha256": "1e2480e3832012ecfc02cfe97b12e0d0087c5416266d2435a95b07812245361f",
+      "current_path": "src/cfb_forecast/pipeline/preflight.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/probability.py",
+      "sha256": "99188521124761bd8b04d02021eccb57ee44bf3b39f9ce38989d2c9a8f2bdeb0",
+      "current_path": "src/cfb_forecast/modeling/probability.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/publisher.py",
+      "sha256": "044d6599b4aae6576d21378d74e5b7b8f89e336069e5ec47178a84dd7cc8f085",
+      "current_path": "src/cfb_forecast/pipeline/publisher.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/ratings.py",
+      "sha256": "ce3bfbaf4b0825a01487ab185d61ed5099149a4f44b6dbe9b444b290b1bd7430",
+      "current_path": "src/cfb_forecast/modeling/ratings.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/results.py",
+      "sha256": "17e11a8c73860c65c45d40add232cd38928865f60ebff3c3c385c8ce911e803b",
+      "current_path": "src/cfb_forecast/ingest/results.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/season_backtest.py",
+      "sha256": "b1a644c29ce61afd12c535685450e2b952b0359dc73ddaf5c86dc01187293fef",
+      "current_path": "src/cfb_forecast/evaluation/season_backtest.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/simulate.py",
+      "sha256": "cc99f66467a0241006a848c5d9645e1c5b66e5e1aea8d73d8be0c411436c5d27",
+      "current_path": "src/cfb_forecast/modeling/simulate.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/sources.py",
+      "sha256": "cbfa96a4631c297966a7c45081b15112a1126c875901342022f275106719cc55",
+      "current_path": "src/cfb_forecast/ingest/sources.py",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/strength.py",
+      "sha256": "f27b29446ca1ebed821e014cdddcca8487b9828c7b97e344d42369b648f00e24",
+      "current_path": "src/cfb_forecast/modeling/strength.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/sunday.py",
+      "sha256": "73b2e739bcec3bff1850a95844377673e0fcc0dfc3c8972f7728af139288ea7c",
+      "current_path": "src/cfb_forecast/pipeline/sunday.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/training_audit.py",
+      "sha256": "5e56d828e77650892bfa19e3a43b15eacab9e42b565800e5ea791626ba5c1cfd",
+      "current_path": "src/cfb_forecast/evaluation/training_audit.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/validate_learning.R",
+      "sha256": "cc9d070dcd1bc1aa380ada776185d131e7397b101768bb57897cb4ac51b4bd2d",
+      "current_path": "src/cfb_forecast/modeling/validate_learning.R",
+      "status": "identical"
+    },
+    {
+      "path": "src/cfb_forecast/validation.py",
+      "sha256": "b149175d13fc9deff51c0eaf86e00ea9b576dac43d267769437cdc51401a7ea2",
+      "current_path": "src/cfb_forecast/evaluation/validation.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/watchdog.py",
+      "sha256": "df3edefaa60bc80926825ee2edab69982e0967b6fbb07cb6f533976f9b1ecd4a",
+      "current_path": "src/cfb_forecast/monitoring/watchdog.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "src/cfb_forecast/weekly.py",
+      "sha256": "524faf643abd5b1083839cf71171947c64d59ea520c6d32b3b6f074eaad0b7af",
+      "current_path": "src/cfb_forecast/pipeline/weekly.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "tests/test_data_watchdog.py",
+      "sha256": "42ba6c3c4dc4237104e3c119f3f648c28ca5f105e10d1c1a44e1d07541113158",
+      "current_path": "tests/test_data_watchdog.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "tests/test_engine.py",
+      "sha256": "813821a739cb548a927668e92733a9abd6c16cfe8ed1b0037e34d24d3f471938",
+      "current_path": "tests/test_engine.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "tests/test_external_sources.py",
+      "sha256": "fe13ace0a723afbf79052282569119934bf2be3112a4ac1fc68299b1511d9ac9",
+      "current_path": "tests/test_external_sources.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "tests/test_football_database.py",
+      "sha256": "fb441e848d6af5cebf31b6bdfef4358c5c3cbfac8534492252e9eaca0bc62a24",
+      "current_path": "tests/test_football_database.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "tests/test_forecast_model.py",
+      "sha256": "6ad0a7404ac9f6e4c953f9656e41efd5572f1844f2ca665a6d1cee1993f58d4a",
+      "current_path": "tests/test_forecast_model.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "tests/test_joint_forecast.py",
+      "sha256": "e5ae54bca438af7f3909ccc882c585413dc70ad37dc118fbff726600469f5b19",
+      "current_path": "tests/test_joint_forecast.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "tests/test_layered_model.py",
+      "sha256": "5decb38f43e59188c7c803baceb477ff834317c81f290127825aabc70a73de20",
+      "current_path": "tests/test_layered_model.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "tests/test_learning.py",
+      "sha256": "8349c54a26c4eed688803bf67849adcab4e8fdec262faa5b99aa3967b29f00b6",
+      "current_path": "tests/test_learning.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "tests/test_live_forecast.py",
+      "sha256": "8d8fa5b810d72be379f7ae5ef316ab550b6082c126129d0f117d04455b58a18f",
+      "current_path": "tests/test_live_forecast.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "tests/test_live_service.py",
+      "sha256": "c51277c5367067304985ead3b29d3d41be6bfc7dd398ac678449bbf5487af8df",
+      "current_path": "tests/test_live_service.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "tests/test_paths.py",
+      "sha256": "bc594727139a6faa4b910f00dfa21b56b41a32a48942d497a0e6b22bc32c16ca",
+      "current_path": "tests/test_paths.py",
+      "status": "identical"
+    },
+    {
+      "path": "tests/test_pipeline_wiring.py",
+      "sha256": "9de7e4531f2f434dcafea7eb48d44932c43448c487ed18db8bed3c804faaedd5",
+      "current_path": "tests/test_pipeline_wiring.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "tests/test_publisher.py",
+      "sha256": "285f8fc16ea8b3321a0bdf020fb94a58793907620cfde1ac6e4522325a9af878",
+      "current_path": "tests/test_publisher.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "tests/test_watchdog.py",
+      "sha256": "61c122667a388e0dc7955c9c6798ba8ae60a2308bb941ba9f1a0c0c5ecbdcf85",
+      "current_path": "tests/test_watchdog.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "update_forecast.py",
+      "sha256": "cd67ef386a5ec4804c770d86f51f4843108cd90dd3bc4a3ebe6883f64df9c749",
+      "current_path": "scripts/run/update_forecast.py",
+      "status": "current_differs"
+    },
+    {
+      "path": "vercel.json",
+      "sha256": "50857ed8e00024319fa780d5ae6e0df2bf8143a4b4632ea07df391ce88b5961a",
+      "current_path": "vercel.json",
+      "status": "current_differs"
+    },
+    {
+      "path": "web/index.html",
+      "sha256": "57580070cdcd0ef6dee6981ac837dc5fc2080fbd578a0de7153c08b97fe54311",
+      "current_path": null,
+      "status": "archive_only"
+    },
+    {
+      "path": "web/package-lock.json",
+      "sha256": "4c57305c2cf86929e2bf1bfe10eb4437eac7c7db05970d84406c2ac2befb10dd",
+      "current_path": "web/package-lock.json",
+      "status": "current_differs"
+    },
+    {
+      "path": "web/package.json",
+      "sha256": "30d1f8f8e9029223ef0fb06701c39a456fd2e8835da6405e4a6890b1a07cb2bb",
+      "current_path": "web/package.json",
+      "status": "current_differs"
+    },
+    {
+      "path": "web/project.json",
+      "sha256": "8d0c06674c6bca78a4557232002eb563bda96eceafccf0bf79de440bfe6b20d3",
+      "current_path": "web/project.json",
+      "status": "current_differs"
+    },
+    {
+      "path": "web/public/forecasts.json",
+      "sha256": "605b2f1f2b6aa827c1a62e7aab822d1d43a3bd2c371b1d6062912eeaa5fb7a8c",
+      "current_path": "web/public/forecasts.json",
+      "status": "identical"
+    },
+    {
+      "path": "web/src/App.tsx",
+      "sha256": "096ab4f91042e281b35a0675eb06ae89f32736419ab412f18fe940cd610799ee",
+      "current_path": "web/src/App.tsx",
+      "status": "current_differs"
+    },
+    {
+      "path": "web/src/main.tsx",
+      "sha256": "9abbafa120f0cd4ed04b6d76ea696f353578e118b7bc975767ef41528dd5d5a0",
+      "current_path": null,
+      "status": "archive_only"
+    },
+    {
+      "path": "web/src/styles.css",
+      "sha256": "238eeb1b23cffc5587d3f48253f2e61a057fe878fb7a8761c5f2dd51c85150a4",
+      "current_path": "web/src/styles.css",
+      "status": "current_differs"
+    },
+    {
+      "path": "web/src/styles.d.ts",
+      "sha256": "ccfc86914e457fcf4348a14cb5d58aaf76bbd50ba136a3246df2e6de493037bb",
+      "current_path": "web/src/styles.d.ts",
+      "status": "identical"
+    },
+    {
+      "path": "web/tsconfig.json",
+      "sha256": "b6d5d5044392331b0f29e15fe09e72c5df3f8f5346cc01505529533e126b2671",
+      "current_path": "web/tsconfig.json",
+      "status": "identical"
+    },
+    {
+      "path": "web/vite.config.ts",
+      "sha256": "b211eb145170a6ffce27a3166e664b143ad5499818cab93c2517a5645d2209d4",
+      "current_path": null,
+      "status": "archive_only"
+    },
+    {
+      "path": "wsl_forecast.sh",
+      "sha256": "524a4a80365bcb6d1d2174f775d4b2f88cc2cd3f756405a4036419b6315d616f",
+      "current_path": "scripts/run/wsl_forecast.sh",
+      "status": "current_differs"
+    }
+  ]
+}

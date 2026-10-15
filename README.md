@@ -33,6 +33,12 @@ The editable install is the git checkout. On Linux that environment is `/home/br
 
 ## Architecture, pipelines, workflows, and sources
 
+The [supplied football-system design and implementation status](docs/design/README.md)
+record the October 15 design, the uploaded version-2 archive comparison, and the
+remaining mathematical components. The [production model contract](docs/MODEL_CONTRACT.md)
+documents the calculation currently used. Datadog's supplied Python rulesets are
+configured in [`code-security.datadog.yaml`](code-security.datadog.yaml).
+
 Forecasts come from one model. A hierarchical team state sets the score location. Pregame team and player rates from the parquet seasons on disk (2000 through 2025, plus completed games after that) and known-future information (market line, total, rest, weather, and reported injuries) shift that location together. The same location is the Gaussian mean and the Poisson rate. The win probability is the Gaussian probability that the home score exceeds the away score. Spread and total probabilities are analytic Gaussian probabilities. A missing rate stays missing. Every recorded game in the previous season sets that season's mean; every completed game in the current season updates it. Those rates are stored in `team_game_facts` and `player_game_facts`, and the next weekly forecast reads them back into the same hierarchical state, Poisson rates, Gaussian scores, and Gaussian win probability. The prediction board shows kickoff, teams, expected score, winner, and confidence. Spreads and moneylines, team and player statistics, and method notes are separate pages. Weather comes from the ESPN game summary, and from Open-Meteo for the venue when that summary has none. CollegeFootballData lines enter the forecast from the key in `pyproject.toml`. Weather, team stats, and player stats are collected from the same API. FootballDB college offense, defense, scoring, and player pages are collected with the other sources. cfbtrack.com supplies current team and player season stats. A saved model keeps the warmup season it was fit with. Missing history is left missing; it is not replaced with a made-up season.
 
 ```mermaid
