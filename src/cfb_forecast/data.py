@@ -76,8 +76,15 @@ def normalize_schedule(df):
 def read_frame(path):
     return pd.read_parquet(path) if Path(path).suffix == ".parquet" else pd.read_csv(path)
 
+DATABASE_SUFFIXES = {".sqlite", ".sqlite3", ".db"}
+
 def load_data(root):
+    """Load schedules and team-game rates from a data folder or a SQLite database."""
     root = Path(root)
+    if root.suffix in DATABASE_SUFFIXES:
+        from .warehouse import load_data_from_database
+        schedules, adv = load_data_from_database(root)
+        return normalize_schedule(schedules.assign(completed=schedules.completed.astype(str))), adv, [root]
     paths = sorted(root.glob("schedule_*.csv")) + sorted(root.glob("schedule_*.parquet"))
     if not paths:
         raise FileNotFoundError(f"No schedule files in {root}; run the fetch command")

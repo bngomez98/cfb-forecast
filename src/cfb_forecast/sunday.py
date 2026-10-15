@@ -340,6 +340,11 @@ def sunday_run(
             raise ValueError("Model training must end before the forecast season")
         from .learning import learn
         database = resolve_path(os.environ.get("CFB_DATABASE", root / "cfb_forecast.sqlite3"))
+        try:
+            from .warehouse import update_database
+            warehouse_summary = update_database(data, root, season, database, collect=False)
+        except Exception as error:  # forecasting reads the files; the database is retried next run
+            warehouse_summary = {"error": f"{type(error).__name__}: {error}"}
         learning = learn(data, model_path, root / "learning", database, at)
         model_path = Path(learning["model_path"])
         (work / "learning_report.json").write_text(json.dumps(learning, indent=2))
@@ -437,6 +442,7 @@ def sunday_run(
                 for p in (work / "inputs").rglob("*")
                 if p.is_file()
             },
+            "warehouse": warehouse_summary,
             "calculation_method": "Gaussian score head; direct probability integration; no generated score samples",
         }
         if timestamp(utc_now()) >= games.start_date.min():

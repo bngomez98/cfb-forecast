@@ -119,3 +119,73 @@ CREATE TABLE IF NOT EXISTS forecast_log (
   UNIQUE(run_id, game_id)
 );
 CREATE INDEX IF NOT EXISTS idx_forecast_log_run ON forecast_log(run_id);
+
+CREATE TABLE IF NOT EXISTS games (
+  game_id INTEGER PRIMARY KEY,
+  season INTEGER NOT NULL,
+  week INTEGER,
+  start_date TEXT NOT NULL,
+  completed INTEGER NOT NULL,
+  neutral_site INTEGER NOT NULL,
+  fbs_game INTEGER NOT NULL,
+  result_usable INTEGER NOT NULL,
+  result_available_at TEXT,
+  home_id INTEGER NOT NULL,
+  away_id INTEGER NOT NULL,
+  home_team TEXT,
+  away_team TEXT,
+  home_points REAL,
+  away_points REAL
+);
+
+CREATE TABLE IF NOT EXISTS game_teams (
+  game_id INTEGER NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+  team_id INTEGER NOT NULL,
+  team_name TEXT,
+  is_home INTEGER NOT NULL,
+  points REAL,
+  PRIMARY KEY(game_id, team_id)
+);
+
+CREATE TABLE IF NOT EXISTS team_game_facts (
+  game_id INTEGER NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+  team_id INTEGER NOT NULL,
+  season INTEGER NOT NULL,
+  yards_per_play REAL,
+  yards_per_pass REAL,
+  yards_per_rush REAL,
+  first_downs_created_rate REAL,
+  PRIMARY KEY(game_id, team_id)
+);
+
+CREATE TABLE IF NOT EXISTS source_registry (
+  name TEXT PRIMARY KEY,
+  url TEXT NOT NULL,
+  role TEXT
+);
+
+CREATE TABLE IF NOT EXISTS source_retrievals (
+  id INTEGER PRIMARY KEY,
+  season INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  url TEXT,
+  status TEXT,
+  retrieved_at TEXT,
+  sha256 TEXT,
+  bytes INTEGER,
+  receipt_json TEXT NOT NULL,
+  UNIQUE(season, name, retrieved_at)
+);
+
+CREATE TABLE IF NOT EXISTS source_rows (
+  id INTEGER PRIMARY KEY,
+  season INTEGER NOT NULL,
+  source TEXT NOT NULL,
+  game_id INTEGER,
+  row_json TEXT NOT NULL,
+  collected_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_games_season_start ON games(season, start_date);
+CREATE INDEX IF NOT EXISTS idx_team_game_facts_team ON team_game_facts(team_id, season);
+CREATE INDEX IF NOT EXISTS idx_source_rows_source ON source_rows(season, source);

@@ -86,6 +86,10 @@ def main():
     pu.add_argument("--run",required=True); pu.add_argument("--run-id",required=True)
     pu.add_argument("--artifacts",default="artifacts"); pu.add_argument("--database",default=None)
     pu.add_argument("--no-email",action="store_true")
+    ud=sub.add_parser("update-database",help="Write schedules, team game rates and source rows into SQLite")
+    ud.add_argument("--data",default="data"); ud.add_argument("--artifacts",default="artifacts")
+    ud.add_argument("--season",type=int,required=True); ud.add_argument("--database",default=None)
+    ud.add_argument("--no-collect",action="store_true")
     pf=sub.add_parser("preflight",help="Validate mounted data and artifact paths")
     pf.add_argument("--data",default="data"); pf.add_argument("--artifacts",default="artifacts"); pf.add_argument("--season",type=int,default=None)
     args=parser.parse_args()
@@ -181,6 +185,9 @@ def main():
         from .sunday import sunday_run
         report = sunday_run(args.data, args.artifacts, args.season, args.model, args.timezone, args.scheduled, not args.no_refresh)
         print(pd.Series(report).to_string())
+    elif args.command == "update-database":
+        from .warehouse import update_database
+        print(json.dumps(update_database(args.data,args.artifacts,args.season,args.database,not args.no_collect),indent=2))
     elif args.command == "publish-update":
         from .publish import publish_forecast_update
         print(json.dumps(publish_forecast_update(args.run,args.run_id,args.artifacts,args.database,send_email=not args.no_email),indent=2))
