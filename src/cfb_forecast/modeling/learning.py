@@ -96,7 +96,7 @@ def learn(data_root, base_root, output_root, database, as_of):
                 "new_games": new_results,
             }
     sources = {p.name: file_hash(p) for p in paths}
-    identity = {"algorithm": 2, "base": file_hash(Path(base_root) / "model.json"), "sources": sources, "games": sorted(games.game_id.astype(int).tolist())}
+    identity = {"algorithm": 3, "base": file_hash(Path(base_root) / "model.json"), "sources": sources, "games": sorted(games.game_id.astype(int).tolist())}
     version = sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
     folder = output / version
     with closing(connect(database)) as conn:
@@ -163,12 +163,9 @@ def learn(data_root, base_root, output_root, database, as_of):
             if len(predictions) >= 30 and predictions.home_win.nunique() == 2
             else {"status": "not_applicable", "reason": "insufficient outcome variation for independent score calculation"}
         )
-        # The refit replaces the incumbent only when, fitted without the gate
-        # games, it forecasts them at least as well. When there are too few later
-        # games to hold out, the gate overlaps the refit's own training games and
-        # cannot judge it, so the refit is adopted and the report says so.
+        # Retain the incumbent unless there is independent evidence to promote.
         gate_independent = not bool((gate & train).any())
-        adopted = not gate_independent or evaluated["log_loss"] <= incumbent["log_loss"]
+        adopted = gate_independent and int(gate.sum()) >= 30 and evaluated["log_loss"] <= incumbent["log_loss"]
         if adopted:
             # The deployed head is continuously reinforced from every result available
             # at this cutoff; the decay keeps recent team form influential without
@@ -183,7 +180,7 @@ def learn(data_root, base_root, output_root, database, as_of):
             model_dir = folder / "model"
         else:
             model_dir = Path(base_root)
-        report = {"version": version, "base_model_sha256": original_hash, "status": "promoted" if adopted else "retained", "gate_independent": gate_independent, "as_of": at.isoformat(), "model_path": str(model_dir), "model_sha256": file_hash(model_dir / "model.json"), "training_games": int(train.sum()), "refit_games": int(eligible.sum()), "reinforcement_decay": decay, "reinforcement_mode": "exponentially_weighted_continual_refit", "gate_games": int(gate.sum()), "gate_start": timestamp(boundary).isoformat(), "latest_result": games.result_available_at.max().isoformat(), "incumbent": incumbent, "candidate": evaluated, "r_validation": r_validation, "watchdog": watchdog, "source_hashes": sources, "probability_layer": "score_head_margin_through_fitted_logistic_curve", "limitations": ["Historical Parquet statistics may be retrospectively revised", "Continual reinforcement reflects information available at each cutoff", "Retraining updates the statistical estimate but cannot eliminate future uncertainty"]}
+        report = {"version": version, "base_model_sha256": original_hash, "status": "promoted" if adopted else "retained", "gate_independent": gate_independent, "as_of": at.isoformat(), "model_path": str(model_dir), "model_sha256": file_hash(model_dir / "model.json"), "training_games": int(train.sum()), "refit_games": int(eligible.sum()), "reinforcement_decay": decay, "reinforcement_mode": "exponentially_weighted_continual_refit", "gate_games": int(gate.sum()), "gate_start": timestamp(boundary).isoformat(), "latest_result": games.result_available_at.max().isoformat(), "incumbent": incumbent, "candidate": evaluated, "r_validation": r_validation, "watchdog": watchdog, "source_hashes": sources, "probability_layer": "joint_gaussian_score_distribution", "limitations": ["Historical Parquet statistics may be retrospectively revised", "Continual reinforcement reflects information available at each cutoff", "Retraining updates the statistical estimate but cannot eliminate future uncertainty"]}
         if base.get("win_strength_model"):
             report["strength_model_note"] = "A strength model is saved with the base model for comparison only; it does not set win chances."
         conn.execute("UPDATE learning_versions SET status=?,model_path=?,report_json=? WHERE version=?", (report["status"], report["model_path"], json.dumps(report), version))

@@ -11,7 +11,7 @@ from cfb_forecast.modeling.forecast_model import METHOD, ForecastModel, known_fu
 from cfb_forecast.pipeline.publisher import board_row
 
 
-def test_koopman_shift_follows_known_future_and_logistic_picks_the_higher_score():
+def test_score_adjustment_follows_known_future_with_one_gaussian_win_probability():
     rng = np.random.default_rng(7)
     known = rng.normal(size=(80, 9))
     location = np.full((80, 2), 24.0)
@@ -26,13 +26,13 @@ def test_koopman_shift_follows_known_future_and_logistic_picks_the_higher_score(
     wins[1] = 1
     model = ForecastModel.fit(location, actual, known, wins)
     assert model.ready
-    assert model.logistic_ready
+    assert not model.logistic_ready
     favored = location[:1] + 0
     known_row = np.zeros((1, 9))
     known_row[0, 0] = known[:, 0].mean() + 2 * known[:, 0].std()
     out = model.apply(favored, known_row, [[36, 4], [4, 36]], [{}], [11])
     assert out[0]["distribution_method"] == "forecast_model"
-    assert out[0]["win_link"] == "logistic"
+    assert out[0]["win_link"] == "gaussian"
     assert 0 < out[0]["home_win_probability"] < 1
     assert out[0]["expected_home_score"] >= 0
     assert "posterior" not in METHOD
