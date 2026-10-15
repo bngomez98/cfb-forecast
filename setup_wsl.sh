@@ -52,7 +52,7 @@ print(f"model trained through: {model['training_through_season']}")
 PY
 
 log "Running continuous-awareness check"
-CFB_DATA_DIR="$DATA_DIR" CFB_MODEL_DIR="$MODEL_DIR" CFB_DATABASE="${ARTIFACTS_DIR}/cfb_forecast.sqlite3" \
+CFB_DATA_DIR="$DATA_DIR" CFB_MODEL_DIR="$MODEL_DIR" CFB_DATABASE="${ARTIFACTS_DIR}/cfb_forecast.sqlite" \
 python - <<'PY'
 import os
 from cfb_forecast.awareness import awareness_report

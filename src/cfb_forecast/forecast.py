@@ -8,20 +8,88 @@ import numpy as np
 import pandas as pd
 from .config import StateConfig
 from .data import load_data, timestamp, sha256
-from .features import observations
-from .ratings import DynamicRatings, build_features
+from .features import observations, pregame_history, load_history_facts
+from .ratings import DynamicRatings, build_features, early_season
 from .model import load_model, ScoreHead
-from .simulate import simulate_scores
-from .distribution import probability_tables
-from .market import market_at_cutoff, market_history_summary, read_market_history
+from .market import closing_lines, market_at_cutoff, market_history_summary, read_market_history
 from .availability import availability_snapshot
-from .analytic import score_summary
 from .decision import moneyline_diagnostics
-from .strength import strength_probability
+from .forecast_model import METHOD, ForecastModel, known_future_matrix, rest_days
+from .paths import database_path
+
+
+LOCATION_HEAD = "location_head.json"
 
 
 class SnapshotReplayRequired(ValueError):
     """The cached state cannot be reused; replay the current source snapshot."""
+
+
+def _known_frame(games, schedules, market_rows, extra):
+    frame = games.reset_index(drop=True).copy()
+    rested = rest_days(frame, schedules)
+    frame = frame.merge(rested, on="game_id", how="left")
+    for column in ("home_spread", "total_line", "home_ml_decimal", "away_ml_decimal"):
+        frame[column] = [row.get(column) for row in market_rows]
+    if extra is not None and len(extra) and "game_id" in extra.columns:
+        keep = [column for column in extra.columns if column == "game_id" or column in frame.columns or column.startswith(("weather_", "home_", "away_"))]
+        extra_keep = extra[keep].drop_duplicates("game_id")
+        overlap = [column for column in extra_keep.columns if column != "game_id" and column in frame.columns]
+        frame = frame.drop(columns=overlap).merge(extra_keep, on="game_id", how="left")
+    return frame
+
+
+def _project_rows(targets, means, fitted, covariance, schedules, market_rows, history_rows, extra, metadata, history=None):
+    known = known_future_matrix(_known_frame(targets, schedules, market_rows, extra))
+    projected = fitted.apply(
+        means,
+        known,
+        covariance,
+        market_rows,
+        targets.game_id.astype(int).tolist(),
+        history=history,
+    )
+    rows = []
+    for game, sim, market, history in zip(targets.itertuples(index=False), projected, market_rows, history_rows):
+        sim["score_head_home_win_probability"] = float(sim["gaussian_home_win_probability"])
+        sim["raw_home_win_probability"] = float(sim["home_win_probability"])
+        sim["probability_source"] = "forecast_model"
+        sim.update(
+            moneyline_diagnostics(
+                sim["home_win_probability"],
+                market.get("home_ml_decimal"),
+                market.get("away_ml_decimal"),
+            )
+        )
+        rows.append(
+            {
+                "game_id": int(game.game_id),
+                "season": int(game.season),
+                "week": int(game.week),
+                "home_team": game.home_team,
+                "away_team": game.away_team,
+                "kickoff": game.start_date.isoformat(),
+                "prediction_method": METHOD,
+                **metadata,
+                **sim,
+                **market,
+                **history,
+            }
+        )
+    return rows
+
+
+def _store_history_facts(data_root, out):
+    try:
+        teams, players = load_history_facts(data_root, database=database_path())
+        if teams is None or len(teams) == 0:
+            return
+        from contextlib import closing
+        from .database import connect, record_history_facts
+        with closing(connect(database_path())) as conn:
+            record_history_facts(conn, teams, players)
+    except Exception as exc:
+        (Path(out) / "history_database_error.txt").write_text(str(exc))
 
 
 def archive_market(path, out):
@@ -43,14 +111,11 @@ def forecast(
     through,
     season,
     market_path=None,
-    draws=50000,
     market_provider=None,
-    save_distribution=True,
     target_game_ids=None,
-    analytic=False,
+    known_future=None,
+    closing_path=None,
 ):
-    if analytic:
-        save_distribution = False
     at = timestamp(as_of)
     end = timestamp(through)
     if end <= at:
@@ -117,7 +182,7 @@ def forecast(
     state.advance(at)
     F = np.stack(
         [
-            state.features(r.home_id, r.away_id, r.neutral_site, int(r.week) <= 4)
+            state.features(r.home_id, r.away_id, r.neutral_site, early_season(r))
             for r in targets.itertuples(index=False)
         ]
     )
@@ -135,107 +200,71 @@ def forecast(
     )
     mu = live_head.predict(F)
     market = read_market_history(market_path) if market_path else None
-    strength_p = None
-    rows = []
-    joint = []
-    margins = []
-    totals = []
-    for position, (r, means) in enumerate(zip(targets.itertuples(index=False), mu)):
-        m = (
-            market_at_cutoff(
-                market, r.game_id, at, r.start_date, provider=market_provider
-            )
+    past_location = live_head.predict(historical_F[fit_mask])
+    past_games = past.loc[fit_mask].reset_index(drop=True)
+    # Completed games learn from the last line before their kickoff. Captured
+    # quotes come first; the backfilled closing table fills games never captured.
+    closing = closing_lines(closing_path if closing_path is not None else Path(data_root) / "market_closing_history.csv")
+    past_market = [
+        (
+            market_at_cutoff(market, game.game_id, game.start_date, game.start_date, provider=market_provider)
             if market is not None and not market.empty
             else {}
         )
-        hist = (
-            market_history_summary(
-                market, r.game_id, at, r.start_date, provider=market_provider
-            )
+        or closing.get(int(game.game_id), {})
+        for game in past_games.itertuples(index=False)
+    ]
+    history_past = pregame_history(past_games, data_root, past, database=database_path())
+    fitted = ForecastModel.fit(
+        past_location,
+        Y[fit_mask][:, :, 0],
+        # Rest days count every earlier kickoff, including games against non-FBS teams.
+        known_future_matrix(_known_frame(past_games, schedules, past_market, None)),
+        (past_games.home_points.to_numpy() > past_games.away_points.to_numpy()).astype(int),
+        weeks=past_games.season.astype(str) + "-" + past_games.week.astype(str),
+        history=history_past,
+    )
+    market_rows = []
+    history_rows = []
+    for game in targets.itertuples(index=False):
+        market_rows.append(
+            market_at_cutoff(market, game.game_id, at, game.start_date, provider=market_provider)
+            if market is not None and not market.empty
+            else {}
+        )
+        history_rows.append(
+            market_history_summary(market, game.game_id, at, game.start_date, provider=market_provider)
             if market is not None and not market.empty
             else {"market_snapshot_count": 0}
         )
-        if analytic:
-            sim = score_summary(means, model["score_covariance"], **m)
-            samples = None
-        else:
-            sim, samples = simulate_scores(
-                means,
-                model["score_covariance"],
-                r.game_id,
-                draws=draws,
-                return_samples=True,
-                **{
-                    k: v
-                    for k, v in m.items()
-                    if k
-                    in ["home_spread", "total_line", "home_decimal", "away_decimal"]
-                },
-            )
-        sim["score_head_home_win_probability"] = sim["home_win_probability"]
-        sim["raw_home_win_probability"] = (
-            float(strength_p[position])
-            if strength_p is not None
-            else sim["home_win_probability"]
-        )
-        sim["probability_source"] = (
-            "dynamic_strength"
-            if strength_p is not None
-            else model["variant"] + "_score_head"
-        )
-        sim["home_win_probability"] = float(sim["raw_home_win_probability"])
-        sim.update(
-            moneyline_diagnostics(
-                sim["home_win_probability"],
-                m.get("home_ml_decimal"),
-                m.get("away_ml_decimal"),
-            )
-        )
-        if save_distribution:
-            tabs = probability_tables(samples, r.game_id)
-            joint.append(tabs["joint"])
-            margins.append(tabs["margin"])
-            totals.append(tabs["total"])
-        rows.append(
-            {
-                "game_id": int(r.game_id),
-                "season": int(r.season),
-                "home_team": r.home_team,
-                "away_team": r.away_team,
-                "kickoff": r.start_date.isoformat(),
-                "as_of": at.isoformat(),
-                "latest_result_available_at": state.latest_update.isoformat()
-                if state.latest_update is not None
-                else None,
-                "prior_fbs_games": len(past),
-                "model_variant": model["variant"],
-                "head_training_through_season": model["training_through_season"],
-                "prediction_method": "live dynamic Bayesian hierarchical ratings + recency-weighted score head + posterior score covariance",
-                **sim,
-                **m,
-                **hist,
-            }
-        )
+    history_future = pregame_history(targets, data_root, past, database=database_path())
+    rows = _project_rows(
+        targets,
+        mu,
+        fitted,
+        model["score_covariance"],
+        schedules,
+        market_rows,
+        history_rows,
+        known_future,
+        {
+            "as_of": at.isoformat(),
+            "latest_result_available_at": state.latest_update.isoformat() if state.latest_update is not None else None,
+            "prior_fbs_games": len(past),
+            "model_variant": model["variant"],
+            "head_training_through_season": model["training_through_season"],
+        },
+        history=history_future,
+    )
     out = Path(out_root)
     out.mkdir(parents=True, exist_ok=True)
+    _store_history_facts(data_root, out)
     market_archive = archive_market(market_path, out)
     market_file = market_archive["market_file"]
     (out / "forecasts.json").write_text(json.dumps(rows, indent=2))
+    (out / "forecast_model.json").write_text(json.dumps(fitted.to_dict(), indent=2))
+    (out / LOCATION_HEAD).write_text(json.dumps(live_head.to_dict(), indent=2))
     pd.DataFrame(rows).to_csv(out / "forecasts.csv", index=False)
-    distribution_files = []
-    if save_distribution:
-        for stem, frames in [
-            ("score_distribution", joint),
-            ("margin_distribution", margins),
-            ("total_distribution", totals),
-        ]:
-            table = pd.concat(frames, ignore_index=True)
-            try:
-                table.to_parquet(out / f"{stem}.parquet", index=False)
-                distribution_files.append(f"{stem}.parquet")
-            except (ImportError, ModuleNotFoundError):
-                table.to_csv(out / f"{stem}.csv", index=False)
-                distribution_files.append(f"{stem}.csv")
     np.savez_compressed(
         out / "state_snapshot.npz",
         team_ids=state.teams,
@@ -256,7 +285,6 @@ def forecast(
         "used_game_ids": past.game_id.astype(int).tolist(),
         "latest_result_available_at": state.latest_update.isoformat(),
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "distribution_files": distribution_files,
         "target_game_ids": targets.game_id.astype(int).tolist(),
         "data_availability_check": avail["prospective_current_season_source_check"],
         "information_limit": "Downloaded record versions may postdate individual historical stat publication times. Prospective current-season source capture is checked separately in data_availability.json.",
@@ -274,11 +302,8 @@ def advance_forecast_snapshot(
     through,
     season,
     market_path=None,
-    draws=50000,
     market_provider=None,
-    save_distribution=True,
     target_game_ids=None,
-    analytic=False,
 ):
     """Advance an exact saved forecast state when no new result became eligible.
 
@@ -286,8 +311,6 @@ def advance_forecast_snapshot(
     cross any newly available final result because doing so would require the
     game-level advanced summaries to perform the corresponding state update.
     """
-    if analytic:
-        save_distribution = False
     from .data import normalize_schedule
 
     prev = Path(previous_forecast_dir)
@@ -355,116 +378,63 @@ def advance_forecast_snapshot(
     state.advance(at)
     F = np.stack(
         [
-            state.features(r.home_id, r.away_id, r.neutral_site, int(r.week) <= 4)
+            state.features(r.home_id, r.away_id, r.neutral_site, early_season(r))
             for r in targets.itertuples(index=False)
         ]
     )
-    mu = ScoreHead.from_dict(model["head"]).predict(F)
+    # The forecast that saved this state refit its score head on every result
+    # before its cutoff; reuse that head so no-new-result advances match a replay.
+    saved_head = prev / LOCATION_HEAD
+    head = ScoreHead.from_dict(json.loads(saved_head.read_text())) if saved_head.exists() else ScoreHead.from_dict(model["head"])
+    mu = head.predict(F)
     market = read_market_history(market_path) if market_path else None
     prior_count = int(pd.read_csv(prev / "forecasts.csv").prior_fbs_games.iloc[0])
-    strength_p = (
-        strength_probability(schedules, targets, at, model["win_strength_model"])
-        if model.get("win_strength_model")
-        else None
-    )
-    rows = []
-    joint = []
-    margins = []
-    totals = []
-    for position, (r, means) in enumerate(zip(targets.itertuples(index=False), mu)):
-        m = (
-            market_at_cutoff(
-                market, r.game_id, at, r.start_date, provider=market_provider
-            )
+    saved_model = prev / "forecast_model.json"
+    fitted = ForecastModel.from_dict(json.loads(saved_model.read_text())) if saved_model.exists() else ForecastModel.identity()
+    market_rows = []
+    history_rows = []
+    for game in targets.itertuples(index=False):
+        market_rows.append(
+            market_at_cutoff(market, game.game_id, at, game.start_date, provider=market_provider)
             if market is not None and not market.empty
             else {}
         )
-        hist = (
-            market_history_summary(
-                market, r.game_id, at, r.start_date, provider=market_provider
-            )
+        history_rows.append(
+            market_history_summary(market, game.game_id, at, game.start_date, provider=market_provider)
             if market is not None and not market.empty
             else {"market_snapshot_count": 0}
         )
-        if analytic:
-            sim = score_summary(means, model["score_covariance"], **m)
-            samples = None
-        else:
-            sim, samples = simulate_scores(
-                means,
-                model["score_covariance"],
-                r.game_id,
-                draws=draws,
-                return_samples=True,
-                **{
-                    k: v
-                    for k, v in m.items()
-                    if k
-                    in ["home_spread", "total_line", "home_decimal", "away_decimal"]
-                },
-            )
-        sim["score_head_home_win_probability"] = sim["home_win_probability"]
-        sim["raw_home_win_probability"] = (
-            float(strength_p[position])
-            if strength_p is not None
-            else sim["home_win_probability"]
-        )
-        sim["probability_source"] = (
-            "dynamic_strength"
-            if strength_p is not None
-            else model["variant"] + "_score_head"
-        )
-        sim["home_win_probability"] = float(sim["raw_home_win_probability"])
-        sim.update(
-            moneyline_diagnostics(
-                sim["home_win_probability"],
-                m.get("home_ml_decimal"),
-                m.get("away_ml_decimal"),
-            )
-        )
-        if save_distribution:
-            tabs = probability_tables(samples, r.game_id)
-            joint.append(tabs["joint"])
-            margins.append(tabs["margin"])
-            totals.append(tabs["total"])
-        rows.append(
-            {
-                "game_id": int(r.game_id),
-                "season": int(r.season),
-                "home_team": r.home_team,
-                "away_team": r.away_team,
-                "kickoff": r.start_date.isoformat(),
-                "as_of": at.isoformat(),
-                "latest_result_available_at": state.latest_update.isoformat()
-                if state.latest_update is not None
-                else None,
-                "prior_fbs_games": prior_count,
-                "model_variant": model["variant"],
-                "head_training_through_season": model["training_through_season"],
-                "prediction_method": "advanced exact saved state + dynamic Gaussian decay + regularized score head + prior-season residual covariance",
-                **sim,
-                **m,
-                **hist,
-            }
-        )
+    completed = schedules[
+        schedules.fbs_game
+        & schedules.season.between(model["warmup_season"], season)
+        & schedules.result_usable
+        & (schedules.result_available_at < at)
+    ]
+    history_future = pregame_history(targets, data_root, completed, database=database_path())
+    rows = _project_rows(
+        targets,
+        mu,
+        fitted,
+        model["score_covariance"],
+        schedules,
+        market_rows,
+        history_rows,
+        None,
+        {
+            "as_of": at.isoformat(),
+            "latest_result_available_at": state.latest_update.isoformat() if state.latest_update is not None else None,
+            "prior_fbs_games": prior_count,
+            "model_variant": model["variant"],
+            "head_training_through_season": model["training_through_season"],
+        },
+        history=history_future,
+    )
     out.mkdir(parents=True, exist_ok=True)
     market_archive = archive_market(market_path, out)
     (out / "forecasts.json").write_text(json.dumps(rows, indent=2))
+    (out / "forecast_model.json").write_text(json.dumps(fitted.to_dict(), indent=2))
+    (out / LOCATION_HEAD).write_text(json.dumps(head.to_dict(), indent=2))
     pd.DataFrame(rows).to_csv(out / "forecasts.csv", index=False)
-    distribution_files = []
-    if save_distribution:
-        for stem, frames in [
-            ("score_distribution", joint),
-            ("margin_distribution", margins),
-            ("total_distribution", totals),
-        ]:
-            table = pd.concat(frames, ignore_index=True)
-            try:
-                table.to_parquet(out / f"{stem}.parquet", index=False)
-                distribution_files.append(f"{stem}.parquet")
-            except (ImportError, ModuleNotFoundError):
-                table.to_csv(out / f"{stem}.csv", index=False)
-                distribution_files.append(f"{stem}.csv")
     np.savez_compressed(
         out / "state_snapshot.npz",
         team_ids=state.teams,
@@ -491,7 +461,6 @@ def advance_forecast_snapshot(
         if state.latest_update is not None
         else None,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "distribution_files": distribution_files,
         "target_game_ids": targets.game_id.astype(int).tolist(),
         "data_availability_check": avail["prospective_current_season_source_check"],
         "state_transition": {

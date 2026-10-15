@@ -19,7 +19,7 @@ from .evaluate import metrics
 from .features import observations
 from .model import ScoreHead, load_model, write_model
 from .ratings import build_features
-from .simulate import win_probability
+from .gaussian import win_probability
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS learning_versions (
@@ -54,10 +54,6 @@ def validate_in_r(frame, folder):
     return {"status": "verified", **independent}
 
 
-# Results past the base model's training seasons needed before its first reinforcement.
-MIN_NEW_RESULTS = 50
-
-
 def learn(data_root, base_root, output_root, database, as_of):
     at = timestamp(as_of)
     output = Path(output_root).resolve()
@@ -66,29 +62,39 @@ def learn(data_root, base_root, output_root, database, as_of):
     if watchdog["status"] == "error":
         raise ValueError(f"Data watchdog blocked training: {watchdog}")
     base_root = Path(base_root).resolve()
+    original_root = base_root
     original_hash = file_hash(base_root / "model.json")
     base = load_model(base_root)
-    champion_latest = None
+    previous_report = None
     with closing(connect(database)) as conn:
         conn.executescript(SCHEMA)
         for row in conn.execute("SELECT report_json FROM learning_versions WHERE status='promoted' ORDER BY created_at DESC"):
             previous = json.loads(row[0])
             if previous.get("base_model_sha256") == original_hash and timestamp(previous["as_of"]) <= at:
-                base_root = Path(previous["model_path"])
-                if file_hash(base_root / "model.json") != previous["model_sha256"]:
+                champion = Path(previous["model_path"])
+                if file_hash(champion / "model.json") != previous["model_sha256"]:
                     raise ValueError("Promoted champion checksum mismatch")
-                base = load_model(base_root)
-                champion_latest = previous.get("latest_result")
+                previous_report = previous
                 break
     schedules, summaries, paths = load_data(data_root)
     games = schedules[schedules.fbs_game & schedules.result_usable & (schedules.result_available_at < at) & (schedules.season >= base["warmup_season"])].copy().reset_index(drop=True)
     if games.empty:
         raise ValueError("No completed prior games available for training")
-    new_games = int((games.season > base["training_through_season"]).sum())
-    if champion_latest is None and new_games < MIN_NEW_RESULTS:
-        return {"status": "insufficient_new_results", "new_games": new_games, "required_games": MIN_NEW_RESULTS, "model_path": str(base_root), "watchdog": watchdog}
-    if champion_latest is not None and not (games.result_available_at > timestamp(champion_latest)).any():
-        return {"status": "no_new_results", "latest_result": champion_latest, "model_path": str(base_root), "watchdog": watchdog}
+    if previous_report is not None:
+        new_results = int((games.result_available_at >= timestamp(previous_report["as_of"])).sum())
+        if new_results < 30:
+            return previous_report
+        base_root = Path(previous_report["model_path"])
+        base = load_model(base_root)
+    else:
+        new_results = int((games.season > base["training_through_season"]).sum())
+        if new_results < 30:
+            return {
+                "status": "insufficient_new_results",
+                "model_path": str(original_root),
+                "as_of": at.isoformat(),
+                "new_games": new_results,
+            }
     sources = {p.name: file_hash(p) for p in paths}
     identity = {"algorithm": 2, "base": file_hash(Path(base_root) / "model.json"), "sources": sources, "games": sorted(games.game_id.astype(int).tolist())}
     version = sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()

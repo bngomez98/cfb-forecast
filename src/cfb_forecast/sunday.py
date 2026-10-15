@@ -246,9 +246,19 @@ def sunday_run(
         journal.stage("sources")
         if refresh:
             # Cached historical seasons are retained; the current season always refreshes.
-            fetch(data, list(range(2021, season)))
+            from .config import HISTORY_START_SEASON
+            fetch(data, list(range(HISTORY_START_SEASON, season)))
             fetch(data, [season], refresh=True)
+            fetch(data, [season], raw_pbp=True)
             sync_results(data, season, work / "inputs" / "raw", timestamp(utc_now()))
+            # Closing lines teach the forecast how lines relate to final scores.
+            # Only completed games read them; upcoming games use captured quotes.
+            from .market import backfill_sportsdataverse_closing
+            backfill_sportsdataverse_closing(
+                range(HISTORY_START_SEASON, season + 1),
+                data / "market_closing_history.csv",
+                skip_missing=True,
+            )
         schedules, _, paths = load_data(data)
         now = timestamp(utc_now())
         if (schedules.completed & (schedules.start_date >= now)).any():
@@ -271,6 +281,20 @@ def sunday_run(
         (work / "previous_week_validation.json").write_text(
             json.dumps(validation_summary, indent=2)
         )
+        from contextlib import closing
+        from .database import connect, record_weekly_validation
+        from .paths import resolve_path
+        validation_database = resolve_path(os.environ.get("CFB_DATABASE", root / "cfb_forecast.sqlite"))
+        with closing(connect(validation_database)) as validation_db:
+            for report in validation_summary.get("runs", []):
+                if report.get("settled_games"):
+                    record_weekly_validation(validation_db, {
+                        **report,
+                        "season": season,
+                        "week": report.get("week", 0),
+                        "games": report.get("settled_games", 0),
+                        "status": "settled",
+                    })
         history = []
         if len(validated):
             for old_id, batch in validated.groupby("run_id"):
@@ -306,11 +330,20 @@ def sunday_run(
         if model_root is not None and not (model_path / "model.json").exists():
             raise FileNotFoundError(f"Requested model does not exist: {model_path}")
         if not (model_path / "model.json").exists():
+            from .config import HISTORY_START_SEASON
+            on_disk = [
+                year for year in range(HISTORY_START_SEASON, int(season))
+                if (data / f"schedule_{year}.csv").exists() and (data / f"adv_team_{year}.parquet").exists()
+            ]
+            warmup = on_disk[0] if on_disk else 2021
+            train_start = max(warmup + 1, 2022)
+            if not warmup < train_start < 2024:
+                warmup, train_start = 2021, 2022
             run_backtest(
                 data,
                 model_path.parent,
-                warmup=2021,
-                train_start=2022,
+                warmup=warmup,
+                train_start=train_start,
                 validation=2024,
                 test=2025,
             )
@@ -339,12 +372,7 @@ def sunday_run(
         if model_meta["training_through_season"] >= season:
             raise ValueError("Model training must end before the forecast season")
         from .learning import learn
-        database = resolve_path(os.environ.get("CFB_DATABASE", root / "cfb_forecast.sqlite3"))
-        try:
-            from .warehouse import update_database
-            warehouse_summary = update_database(data, root, season, database, collect=False)
-        except Exception as error:  # forecasting reads the files; the database is retried next run
-            warehouse_summary = {"error": f"{type(error).__name__}: {error}"}
+        database = resolve_path(os.environ.get("CFB_DATABASE", root / "cfb_forecast.sqlite"))
         learning = learn(data, model_path, root / "learning", database, at)
         model_path = Path(learning["model_path"])
         (work / "learning_report.json").write_text(json.dumps(learning, indent=2))
@@ -367,7 +395,7 @@ def sunday_run(
             season,
             market_path=store if store.exists() else None,
             target_game_ids=games.game_id.astype(int).tolist(),
-            analytic=True,
+            known_future=context_features,
         )
         ordered = (
             context_features.set_index("game_id")
@@ -442,8 +470,7 @@ def sunday_run(
                 for p in (work / "inputs").rglob("*")
                 if p.is_file()
             },
-            "warehouse": warehouse_summary,
-            "calculation_method": "Gaussian score head; direct probability integration; no generated score samples",
+            "calculation_method": "One forecasting model: hierarchical state, historical team and player rates, known-future Koopman map, Gaussian scores, Poisson rates, logistic win probability, direct Gaussian spread and total",
         }
         if timestamp(utc_now()) >= games.start_date.min():
             raise ValueError(
@@ -456,11 +483,15 @@ def sunday_run(
         (work / "run_manifest.json").write_text(json.dumps(receipt, indent=2))
         shutil.move(str(work), final)
         publish_latest(root, final)
-        from .publish import publish_forecast_update
         try:
-            receipt["publish"] = publish_forecast_update(final, run_id, root, database)
-        except Exception as error:  # the run is already saved; retry with publish-update
-            receipt["publish"] = {"error": f"{type(error).__name__}: {error}"}
+            from .publisher import publish_forecast_update
+            receipt["distribution"] = publish_forecast_update(final, root, run_id=run_id, season=season)
+        except Exception as exc:
+            receipt["distribution"] = {"status": "failed", "error": type(exc).__name__}
+        (final / "run_manifest.json").write_text(json.dumps(receipt, indent=2))
+        latest_manifest = root / "latest" / "run_manifest.json"
+        if latest_manifest.parent.exists():
+            latest_manifest.write_text(json.dumps(receipt, indent=2))
         return receipt
     except Exception as error:
         if work.exists():

@@ -5,7 +5,7 @@ This script checks public providers, refreshes integrated datasets, optionally
 fetches raw PBP, validates every local data layer, refreshes ESPN results,
 runs tests, generates a weekly forecast, and builds distributions.
 
-Run inside pythonlib1:
+Run inside the project virtual environment:
     python update_forecast.py --season 2026
 """
 from __future__ import annotations
@@ -155,7 +155,6 @@ def run(label: str, *args: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("season", nargs="?", type=int, default=2026, help="Season; default: 2026")
-    parser.add_argument("draws", nargs="?", type=int, default=50000, help="Simulation draws; default: 50000")
     parser.add_argument("--seasons", nargs="+", type=int, default=None, help="Additional seasons to download")
     parser.add_argument("--data", type=Path, default=DEFAULT_DATA)
     parser.add_argument("--artifacts", type=Path, default=DEFAULT_ARTIFACTS)
@@ -194,7 +193,7 @@ def main() -> int:
     if not args.skip_results:
         run("Refresh ESPN results", "-m", "cfb_forecast", "results-refresh", "--data", str(data_dir), "--out", str(artifacts_dir / "results"), "--season", str(args.season))
     if not args.skip_forecast:
-        run("Generate weekly forecast", "-m", "cfb_forecast", "weekly-forecast", "--data", str(data_dir), "--model", str(artifacts_dir / "training" / "model"), "--out", str(artifacts_dir), "--season", str(args.season), "--draws", str(args.draws))
+        run("Generate weekly forecast", "-m", "cfb_forecast", "weekly-forecast", "--data", str(data_dir), "--model", str(artifacts_dir / "training" / "model"), "--out", str(artifacts_dir), "--season", str(args.season))
     if not args.skip_tests:
         run("Run tests", "-m", "pytest", "-q")
     if not args.skip_build:

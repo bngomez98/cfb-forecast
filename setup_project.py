@@ -68,7 +68,7 @@ def bootstrap_environment(skip_tests: bool, start_stack: bool) -> None:
         "CFB_DATA_DIR": str(DATA_DIR),
         "CFB_ARTIFACTS_DIR": str(ARTIFACTS_DIR),
         "CFB_MODEL_DIR": str(MODEL_DIR),
-        "CFB_DATABASE": str(ARTIFACTS_DIR / "cfb_forecast.sqlite3"),
+        "CFB_DATABASE": str(ARTIFACTS_DIR / "cfb_forecast.sqlite"),
     })
 
     print("Checking source data and established model")

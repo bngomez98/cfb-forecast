@@ -137,9 +137,9 @@ def watch(data_root: str | Path, database: str | Path, interval: float) -> None:
 
 def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Monitor CFB forecast datasets for missing or changed files")
-    from .paths import data_root, artifacts_root
+    from .paths import data_root, database_path
     parser.add_argument("--data", default=str(data_root()))
-    parser.add_argument("--database", default=str(artifacts_root() / "cfb_forecast.sqlite3"))
+    parser.add_argument("--database", default=str(database_path()))
     parser.add_argument("--watch", action="store_true")
     parser.add_argument("--interval", type=float, default=300.0)
     args = parser.parse_args(argv)

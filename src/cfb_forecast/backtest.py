@@ -13,7 +13,7 @@ from .data import load_data,audit,sha256,timestamp
 from .features import observations,normalization
 from .ratings import build_features
 from .model import ScoreHead,residual_covariance,write_model
-from .simulate import win_probability
+from .gaussian import win_probability
 from .evaluate import metrics,calibration,paired_bootstrap
 from .baseline import evaluate_elo
 

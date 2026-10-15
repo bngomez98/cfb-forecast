@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PROJECT_DIR="${PROJECT_DIR:-/mnt/c/Users/brian/Downloads/cfb_forecast/cfb_forecast}"
-VENV_DIR="${VENV_DIR:-$HOME/pythonlib1}"
-KERNEL_NAME="pythonlib1"
+PROJECT_DIR="${PROJECT_DIR:-/mnt/c/Users/brian/cfb-forecast}"
+VENV_DIR="${VENV_DIR:-/home/brian/.venvs/cfb-forecast}"
+KERNEL_NAME="cfb-forecast"
 
 if [[ ! -d "$PROJECT_DIR" ]]; then
   printf 'Project directory not found: %s\n' "$PROJECT_DIR" >&2

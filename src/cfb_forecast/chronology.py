@@ -115,7 +115,7 @@ def _market_status(row):
 
 def run_chronological_update(data_root, model_root, ledger_root, season: int,
                              now=None, lead_hours: float = 24.0, market_path=None,
-                             draws: int = 50000, market_provider=None,
+                             market_provider=None,
                              primary_lateness_minutes: float = 60.0):
     """Append all currently due games to a chronological prospective ledger.
 
@@ -174,9 +174,7 @@ def run_chronological_update(data_root, model_root, ledger_root, season: int,
                     through=through,
                     season=season,
                     market_path=market_path,
-                    draws=draws,
                     market_provider=market_provider,
-                    save_distribution=True,
                     target_game_ids=due.game_id.astype(int).tolist(),
                 )
             except SnapshotReplayRequired:
@@ -191,9 +189,7 @@ def run_chronological_update(data_root, model_root, ledger_root, season: int,
             through=through,
             season=season,
             market_path=market_path,
-            draws=draws,
             market_provider=market_provider,
-            save_distribution=True,
             target_game_ids=due.game_id.astype(int).tolist(),
         )
     frozen, receipt = freeze_holdout(
@@ -408,19 +404,6 @@ def bootstrap_from_frozen_batch(frozen_batch, ledger_root, lead_hours: float = 2
 
     due.drop(columns=["kickoff_ts", "scheduled_cutoff_ts"]).to_csv(work / "forecasts.csv", index=False)
     (work / "forecasts.json").write_text(json.dumps(due.drop(columns=["kickoff_ts", "scheduled_cutoff_ts"]).to_dict("records"), indent=2))
-
-    for stem in ["score_distribution", "margin_distribution", "total_distribution"]:
-        csv = src / "forecast" / f"{stem}.csv"
-        pq = src / "forecast" / f"{stem}.parquet"
-        if csv.exists():
-            f = pd.read_csv(csv)
-            f[f.game_id.astype(int).isin(keep)].to_csv(work / csv.name, index=False)
-        elif pq.exists():
-            # Parquet filtering needs the normal runtime dependency. A CSV source
-            # is bundled in the delivered bootstrap, so this branch is mainly for
-            # future environments with pyarrow available.
-            f = pd.read_parquet(pq)
-            f[f.game_id.astype(int).isin(keep)].to_parquet(work / pq.name, index=False)
 
     fm = _read_json(src / "forecast" / "forecast_manifest.json")
     fm["target_game_ids"] = sorted(keep)

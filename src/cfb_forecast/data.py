@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import time
+import urllib.error
 import urllib.request
 import numpy as np
 import pandas as pd
@@ -76,15 +77,8 @@ def normalize_schedule(df):
 def read_frame(path):
     return pd.read_parquet(path) if Path(path).suffix == ".parquet" else pd.read_csv(path)
 
-DATABASE_SUFFIXES = {".sqlite", ".sqlite3", ".db"}
-
 def load_data(root):
-    """Load schedules and team-game rates from a data folder or a SQLite database."""
     root = Path(root)
-    if root.suffix in DATABASE_SUFFIXES:
-        from .warehouse import load_data_from_database
-        schedules, adv = load_data_from_database(root)
-        return normalize_schedule(schedules.assign(completed=schedules.completed.astype(str))), adv, [root]
     paths = sorted(root.glob("schedule_*.csv")) + sorted(root.glob("schedule_*.parquet"))
     if not paths:
         raise FileNotFoundError(f"No schedule files in {root}; run the fetch command")
@@ -119,6 +113,7 @@ def fetch(root, seasons, refresh=False, raw_pbp=False):
             if target.exists() and not refresh:
                 print(f"cached {name}", flush=True); continue
             tmp = target.with_suffix(".download")
+            saved = False
             for attempt in range(3):
                 try:
                     request = urllib.request.Request(url, headers={"User-Agent": "cfb-forecast/0.1"})
@@ -131,12 +126,25 @@ def fetch(root, seasons, refresh=False, raw_pbp=False):
                     else:
                         import pyarrow.parquet as pq
                         pq.ParquetFile(tmp)  # fail on HTML / incomplete downloads
+                    saved = True
                     break
+                except urllib.error.HTTPError as exc:
+                    tmp.unlink(missing_ok=True)
+                    if exc.code == 404:
+                        manifest["files"][name] = {"url": url, "status": "unavailable", "http_status": 404}
+                        manifest_path.write_text(json.dumps(manifest, indent=2))
+                        print(f"unavailable {name}", flush=True)
+                        break
+                    if attempt == 2:
+                        raise
+                    time.sleep(2 ** attempt)
                 except Exception:
                     tmp.unlink(missing_ok=True)
                     if attempt == 2:
                         raise
                     time.sleep(2 ** attempt)
+            if not saved:
+                continue
             tmp.replace(target)
             manifest["files"][name] = {"url": url, "sha256": sha256(target), "downloaded_at": datetime.now(timezone.utc).isoformat(), "bytes": target.stat().st_size}
             manifest_path.write_text(json.dumps(manifest, indent=2))

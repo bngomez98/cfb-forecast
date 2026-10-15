@@ -25,7 +25,6 @@ def run_prospective_collection(
     lead_hours: float = 24.0,
     market_store="data/market_history.csv",
     market_provider=None,
-    draws: int = 50000,
     primary_lateness_minutes: float = 60.0,
     capture_market: bool = True,
 ):
@@ -74,7 +73,6 @@ def run_prospective_collection(
         now=at,
         lead_hours=lead_hours,
         market_path=market_store,
-        draws=draws,
         market_provider=market_provider,
         primary_lateness_minutes=primary_lateness_minutes,
     )

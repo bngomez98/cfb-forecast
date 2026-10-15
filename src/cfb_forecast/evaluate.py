@@ -15,6 +15,18 @@ def metrics(y,p,margin=None,actual_margin=None,total=None,actual_total=None,mu=N
         r["team_score_mae"]=float(np.abs(np.asarray(mu)-np.asarray(actual_scores)).mean())
     return r
 
+def spread_regression(actual_margin, point_spread):
+    """Home margin on the market's implied home margin. An unbiased line has intercept 0 and slope 1."""
+    spread = np.asarray(point_spread, dtype=float)
+    margin = np.asarray(actual_margin, dtype=float)
+    if len(spread) < 8 or spread.shape != margin.shape or not np.isfinite(spread).all() or not np.isfinite(margin).all():
+        raise ValueError("Spread regression needs at least eight finite margins and lines")
+    implied = -spread
+    design = np.column_stack([np.ones(len(implied)), implied])
+    intercept, slope = np.linalg.lstsq(design, margin, rcond=None)[0]
+    return {"games": int(len(margin)), "intercept": float(intercept), "slope": float(slope)}
+
+
 def calibration(y,p):
     f=pd.DataFrame({"y":y,"p":p}); f["bin"]=pd.cut(f.p,np.linspace(0,1,11),include_lowest=True)
     return f.groupby("bin",observed=True).agg(games=("y","size"),mean_probability=("p","mean"),observed_win_rate=("y","mean")).reset_index()

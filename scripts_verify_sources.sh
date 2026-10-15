@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PROJECT_DIR="${PROJECT_DIR:-/mnt/c/Users/brian/Downloads/cfb_forecast/cfb_forecast}"
-VENV_DIR="${VENV_DIR:-$HOME/pythonlib1}"
+PROJECT_DIR="${PROJECT_DIR:-/mnt/c/Users/brian/cfb-forecast}"
+VENV_DIR="${VENV_DIR:-/home/brian/.venvs/cfb-forecast}"
 
 [[ -x "$VENV_DIR/bin/python" ]] || { echo "Python venv not found: $VENV_DIR" >&2; exit 1; }
 source "$VENV_DIR/bin/activate"

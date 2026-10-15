@@ -1,88 +1,8 @@
-"""Discrete forecast distributions derived from reproducible joint score simulations."""
+"""Closed-form scoring of the Gaussian predictive distribution of scores, margins and totals."""
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-
-
-def probability_tables(scores: np.ndarray, game_id: int) -> dict[str, pd.DataFrame]:
-    """Return normalized joint-score, margin, and total PMFs for one game."""
-    scores = np.asarray(scores, dtype=int)
-    if scores.ndim != 2 or scores.shape[1] != 2 or len(scores) == 0 or (scores < 0).any():
-        raise ValueError("scores must be a non-empty n x 2 matrix of nonnegative integers")
-    n = len(scores)
-    joint = (
-        pd.DataFrame({"home_score": scores[:, 0], "away_score": scores[:, 1]})
-        .value_counts(sort=False)
-        .rename("count")
-        .reset_index()
-    )
-    joint.insert(0, "game_id", int(game_id))
-    joint["probability"] = joint["count"] / n
-
-    margin = (
-        pd.Series(scores[:, 0] - scores[:, 1], name="margin")
-        .value_counts(sort=False)
-        .rename("count")
-        .reset_index()
-        .sort_values("margin")
-        .reset_index(drop=True)
-    )
-    margin.insert(0, "game_id", int(game_id))
-    margin["probability"] = margin["count"] / n
-
-    total = (
-        pd.Series(scores[:, 0] + scores[:, 1], name="total")
-        .value_counts(sort=False)
-        .rename("count")
-        .reset_index()
-        .sort_values("total")
-        .reset_index(drop=True)
-    )
-    total.insert(0, "game_id", int(game_id))
-    total["probability"] = total["count"] / n
-    return {"joint": joint, "margin": margin, "total": total}
-
-
-def discrete_crps(values, probabilities, observed: int) -> float:
-    """CRPS for an integer-valued distribution using its exact discrete CDF."""
-    values = np.asarray(values, dtype=int)
-    probabilities = np.asarray(probabilities, dtype=float)
-    if len(values) == 0 or len(values) != len(probabilities) or (probabilities < 0).any():
-        raise ValueError("invalid discrete distribution")
-    total = probabilities.sum()
-    if not np.isfinite(total) or total <= 0:
-        raise ValueError("distribution probabilities must sum to a positive finite value")
-    probabilities = probabilities / total
-    lo = int(min(values.min(), observed))
-    hi = int(max(values.max(), observed))
-    grid = np.arange(lo, hi + 1)
-    order = np.argsort(values)
-    v = values[order]
-    p = probabilities[order]
-    cdf_at = np.cumsum(p)
-    idx = np.searchsorted(v, grid, side="right") - 1
-    f = np.where(idx >= 0, cdf_at[np.maximum(idx, 0)], 0.0)
-    h = (grid >= int(observed)).astype(float)
-    return float(np.sum((f - h) ** 2))
-
-
-def distribution_summary(scores: np.ndarray) -> dict[str, float]:
-    scores = np.asarray(scores, dtype=float)
-    margin = scores[:, 0] - scores[:, 1]
-    total = scores.sum(axis=1)
-    corr = np.corrcoef(scores[:, 0], scores[:, 1])[0, 1] if len(scores) > 1 else np.nan
-    return {
-        "simulated_margin_mean": float(margin.mean()),
-        "simulated_margin_sd": float(margin.std(ddof=1)),
-        "simulated_total_mean": float(total.mean()),
-        "simulated_total_sd": float(total.std(ddof=1)),
-        "simulated_score_correlation": float(corr),
-        "home_score_median": float(np.median(scores[:, 0])),
-        "away_score_median": float(np.median(scores[:, 1])),
-        "margin_median": float(np.median(margin)),
-        "total_median": float(np.median(total)),
-    }
 
 
 def normal_crps(mean, sd, observed):

@@ -3,15 +3,14 @@ set -Eeuo pipefail
 
 # One-command WSL build for the CFB forecasting project.
 # Run from any WSL directory:
-#   bash /mnt/c/Users/brian/Downloads/cfb_forecast/cfb_forecast/wsl_forecast.sh
+#   bash /mnt/c/Users/brian/cfb-forecast/wsl_forecast.sh
 
 PROJECT_DIR="${PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
-VENV_DIR="${VENV_DIR:-$HOME/pythonlib1}"
+VENV_DIR="${VENV_DIR:-/home/brian/.venvs/cfb-forecast}"
 DATA_DIR="${CFB_DATA_DIR:-$PROJECT_DIR/data}"
 ARTIFACT_DIR="${CFB_ARTIFACTS_DIR:-$PROJECT_DIR/artifacts}"
 SEASON="${CFB_SEASON:-2026}"
 SEASONS="${CFB_SEASONS:-2021 2022 2023 2024 2025 2026}"
-DRAWS="${CFB_DRAWS:-50000}"
 LOG_DIR="$ARTIFACT_DIR/logs"
 LOG_FILE="$LOG_DIR/full_build_$(date -u +%Y%m%dT%H%M%SZ).log"
 STATUS_FILE="$ARTIFACT_DIR/full_build_status.json"
@@ -92,7 +91,7 @@ python -m pip install --upgrade pip setuptools wheel build
 python -m pip install --upgrade jupyterlab ipykernel
 python -m pip install -e "$PROJECT_DIR[test]"
 python -m pip install -r "$PROJECT_DIR/dashboard/requirements.txt"
-python -m ipykernel install --user --name pythonlib1 --display-name "Python (pythonlib1)"
+python -m ipykernel install --user --name cfb-forecast --display-name "Python (cfb-forecast)"
 python -m pip check
 python - <<'PY'
 import enum, subprocess, sys
@@ -102,7 +101,7 @@ PY
 
 STAGE="source connectivity"
 say "Checking ESPN and public repository connectivity"
-python "$PROJECT_DIR/update_forecast.py" "$SEASON" "$DRAWS" \
+python "$PROJECT_DIR/update_forecast.py" "$SEASON" \
   --no-fetch --no-results --no-forecast --no-tests --no-build
 
 STAGE="dataset refresh"
@@ -129,8 +128,7 @@ python -m cfb_forecast weekly-forecast \
   --data "$DATA_DIR" \
   --model "$ARTIFACT_DIR/training/model" \
   --out "$ARTIFACT_DIR" \
-  --season "$SEASON" \
-  --draws "$DRAWS"
+  --season "$SEASON"
 
 STAGE="tests"
 say "Running test suite"
@@ -148,11 +146,11 @@ python -m cfb_forecast --help >/dev/null
 
 STAGE="final report"
 say "Writing final build report"
-python - "$STATUS_FILE" "$PROJECT_DIR" "$VENV_DIR" "$DATA_DIR" "$ARTIFACT_DIR" "$LOG_FILE" "$WHEEL" "$STARTED_AT" "$SEASON" "$DRAWS" <<'PY'
+python - "$STATUS_FILE" "$PROJECT_DIR" "$VENV_DIR" "$DATA_DIR" "$ARTIFACT_DIR" "$LOG_FILE" "$WHEEL" "$STARTED_AT" "$SEASON" <<'PY'
 import json, sys
 from datetime import datetime, timezone
 from pathlib import Path
-status, project, venv, data, artifacts, log, wheel, started, season, draws = sys.argv[1:]
+status, project, venv, data, artifacts, log, wheel, started, season = sys.argv[1:]
 files = sorted(str(p) for p in Path(artifacts).rglob("*") if p.is_file())
 Path(status).write_text(json.dumps({
     "status": "success",
@@ -163,7 +161,6 @@ Path(status).write_text(json.dumps({
     "data": data,
     "artifacts": artifacts,
     "season": int(season),
-    "draws": int(draws),
     "wheel": wheel,
     "log": log,
     "artifact_count": len(files),

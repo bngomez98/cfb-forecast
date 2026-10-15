@@ -11,15 +11,15 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from .database import connect, insert_forecasts, list_forecasts, register_model
+from .database import connect, insert_forecasts, list_published_board, register_model
 from .forecast import forecast
 
-from .paths import data_root, artifacts_root, model_root, resolve_path
+from .paths import data_root, artifacts_root, model_root, database_path
 
 DATA_ROOT = data_root()
 ARTIFACT_ROOT = artifacts_root()
 MODEL_ROOT = model_root()
-DATABASE_PATH = resolve_path(os.getenv("CFB_DATABASE", str(ARTIFACT_ROOT / "cfb_forecast.sqlite3")))
+DATABASE_PATH = database_path()
 
 app = FastAPI(title="CFB Win Probability Forecasting API", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -31,7 +31,6 @@ class ForecastRequest(BaseModel):
     through: str
     model_path: str | None = None
     market_path: str | None = None
-    draws: int = Field(50000, ge=1000, le=500000)
 
 
 def _model_manifest(model_path: Path) -> dict[str, Any]:
@@ -113,7 +112,6 @@ def create_forecasts(request: ForecastRequest):
             request.through,
             request.season,
             request.market_path,
-            request.draws,
         )
     except (FileNotFoundError, ValueError, KeyError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -130,7 +128,7 @@ def create_forecasts(request: ForecastRequest):
 def get_forecasts(season: int | None = Query(default=None)):
     from contextlib import closing
     with closing(connect(DATABASE_PATH)) as conn:
-        return {"forecasts": [dict(row) for row in list_forecasts(conn, season)]}
+        return {"forecasts": [dict(row) for row in list_published_board(conn, season)]}
 
 
 @app.get("/api/learning")

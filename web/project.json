@@ -3,7 +3,7 @@
   "framework": "vite",
   "frontend": "react",
   "engine": "../src/cfb_forecast",
-  "database": "../data/cfb_forecast.sqlite3",
+  "database": "../data/cfb_forecast.sqlite",
   "api": "http://localhost:8000",
   "season": 2026,
   "purpose": "Live weekly college football forecasting console"

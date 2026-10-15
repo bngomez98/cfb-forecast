@@ -6,7 +6,8 @@ from cfb_forecast.data import normalize_schedule,timestamp
 from cfb_forecast.features import clean_plays
 from cfb_forecast.ratings import DynamicRatings,build_features
 from cfb_forecast.model import ScoreHead,residual_covariance
-from cfb_forecast.simulate import simulate_scores,win_probability
+from cfb_forecast.gaussian import checked_covariance,win_probability
+from cfb_forecast.analytic import score_summary
 from cfb_forecast.market import market_at_cutoff
 from cfb_forecast.evaluate import metrics
 
@@ -61,13 +62,12 @@ def test_head_json_roundtrip():
     h=ScoreHead().fit(F,Y,np.ones(100,dtype=bool))
     np.testing.assert_allclose(h.predict(F),ScoreHead.from_dict(h.to_dict()).predict(F))
 
-def test_simulation_is_deterministic_and_has_no_negative_or_tied_final_scores():
+def test_analytic_summary_is_deterministic_and_probabilities_are_complete():
     cov=np.array([[100,15],[15,100]])
-    a=simulate_scores([25,25],cov,42,draws=20000,home_spread=-3,total_line=50,home_decimal=1.91,away_decimal=1.91)
-    b=simulate_scores([25,25],cov,42,draws=20000,home_spread=-3,total_line=50,home_decimal=1.91,away_decimal=1.91)
+    a=score_summary([25,25],cov,home_spread=-3,total_line=50,home_decimal=1.91,away_decimal=1.91)
+    b=score_summary([25,25],cov,home_spread=-3,total_line=50,home_decimal=1.91,away_decimal=1.91)
     assert a==b
-    assert .48<a["simulated_home_win_probability"]<.52
-    assert a["home_score_interval_80"][0]>=0
+    assert a["home_win_probability"]==pytest.approx(.5)
     assert abs(a["home_cover_probability"]+a["away_cover_probability"]+a["spread_push_probability"]-1)<1e-10
     assert abs(a["over_probability"]+a["under_probability"]+a["total_push_probability"]-1)<1e-10
     assert a["home_spread_expected_net_per_unit"]==pytest.approx(a["home_cover_probability"]*.91-a["away_cover_probability"])
@@ -78,7 +78,7 @@ def test_win_probabilities_respect_team_swap():
 
 @pytest.mark.parametrize("cov", [[[1,2],[2,1]],[[1,2],[0,1]],[[1,0],[0,0]]])
 def test_invalid_score_covariance_rejected(cov):
-    with pytest.raises(ValueError): simulate_scores([20,20],cov,1)
+    with pytest.raises(ValueError): checked_covariance(cov)
 
 def test_market_cannot_use_future_snapshot_and_home_spread_sign_is_preserved():
     f=pd.DataFrame({"game_id":[1,1],"observed_at":["2024-09-01T12:00Z","2024-09-01T14:00Z"],"home_spread":[-3,-7],"home_ml_decimal":[2.,1.5],"away_ml_decimal":[2.,2.5]})
@@ -111,10 +111,17 @@ def test_timezone_required():
 
 def test_play_filters_and_success_thresholds():
     row=dict(game_id=1,pos_team_id=1,def_pos_team_id=2,down=1,distance=10,statYardage=5,rush=True,**{"pass":False},sack=False,kneel_down=False,penalty_no_play=False,period=1,**{"start.pos_score_diff":0})
-    p=pd.DataFrame([dict(row,game_play_number=1),dict(row,game_play_number=1),dict(row,game_play_number=2,down=2,statYardage=6),dict(row,game_play_number=3,kneel_down=True),dict(row,game_play_number=4,period=5)])
+    p=pd.DataFrame([
+        dict(row,game_play_number=1),
+        dict(row,game_play_number=1),
+        dict(row,game_play_number=2,down=2,statYardage=6),
+        dict(row,game_play_number=3,kneel_down=True),
+        dict(row,game_play_number=4,period=5),
+        dict(row,game_play_number=5,**{"start.pos_score_diff":30}),
+    ])
     clean=clean_plays(p)
-    assert len(clean)==2
-    np.testing.assert_array_equal(clean.success,[1,0])
+    assert len(clean)==4
+    np.testing.assert_array_equal(clean.success,[1,0,1,1])
 
 def test_single_class_evaluation_and_score_errors():
     r=metrics([1,1],[.8,.9],margin=[10,20],actual_margin=[7,21])
@@ -125,20 +132,14 @@ def test_single_class_evaluation_and_score_errors():
 def test_residual_covariance_calibration_rejects_tiny_sample():
     with pytest.raises(ValueError): residual_covariance(np.ones((2,2)),np.ones((2,2)))
 
-from cfb_forecast.distribution import probability_tables, discrete_crps
+from cfb_forecast.distribution import normal_crps
 from cfb_forecast.market import normalize_market_history, market_history_summary
 
 
-def test_distribution_tables_sum_to_one_and_crps_prefers_truth():
-    scores=np.array([[24,20],[24,20],[21,20],[17,20]])
-    tabs=probability_tables(scores,7)
-    assert tabs["joint"].probability.sum()==pytest.approx(1)
-    assert tabs["margin"].probability.sum()==pytest.approx(1)
-    assert tabs["total"].probability.sum()==pytest.approx(1)
-    perfect=discrete_crps([4],[1.0],4)
-    wrong=discrete_crps([14],[1.0],4)
-    assert perfect==pytest.approx(0)
-    assert wrong>perfect
+def test_normal_crps_prefers_truth_and_matches_the_closed_form():
+    assert float(normal_crps(4.0,2.0,4.0))==pytest.approx(2.0*(2*0.3989422804014327-1/np.sqrt(np.pi)))
+    assert float(normal_crps(14.0,2.0,4.0))>float(normal_crps(4.0,2.0,4.0))
+    with pytest.raises(ValueError): normal_crps(0.0,0.0,1.0)
 
 
 def test_market_history_supports_multiple_providers_and_consensus_cutoff():
@@ -196,3 +197,21 @@ def test_prospective_collection_records_market_failure_and_still_runs(monkeypatc
     assert receipt["market_capture"]["status"]=="failed"
     assert receipt["chronology"]["status"]=="no_due_games"
     assert Path(receipt["receipt_path"]).exists()
+
+def test_state_update_matches_textbook_kalman_filter():
+    rng=np.random.default_rng(1); cfg=StateConfig()
+    center=np.array([28,5.5,7,4.5,.3]); scale=np.array([14,1.2,2,1.5,.08])
+    s=DynamicRatings([1,2,3,4],center,scale,cfg)
+    for j in range(5):
+        A=rng.normal(size=(8,8)); s.cov[j]=A@A.T/8+np.eye(8)*.3; s.mean[j]=rng.normal(size=8)*.5
+    s.clock=timestamp("2025-09-01T00:00Z"); before_mean,before_cov=s.mean.copy(),s.cov.copy()
+    values=np.array([[35,6.1,8.0,5.0,.35],[17,4.9,6.0,3.9,.27]])
+    s.update(1,2,False,values,"2025-09-01T00:00Z")
+    H=np.zeros((2,8)); H[0,0]=1; H[0,5]=-1; H[1,1]=1; H[1,4]=-1
+    R=np.array([[1,cfg.observation_correlation],[cfg.observation_correlation,1]])
+    for j in range(5):
+        home=np.array([1,-1])*cfg.home_margin/2/scale[0] if j==0 else np.zeros(2)
+        P=before_cov[j]; K=P@H.T@np.linalg.inv(H@P@H.T+R)
+        z=(values[:,j]-center[j])/scale[j]-home
+        np.testing.assert_allclose(s.mean[j],before_mean[j]+K@(z-H@before_mean[j]),atol=1e-12)
+        np.testing.assert_allclose(s.cov[j],(np.eye(8)-K@H)@P,atol=1e-12)

@@ -1,4 +1,3 @@
-import json
 import argparse
 from pathlib import Path
 import pandas as pd
@@ -20,11 +19,11 @@ def main():
     fc.add_argument("--data",default="data"); fc.add_argument("--model",default=str(model_root()))
     fc.add_argument("--out",default="artifacts/forecast"); fc.add_argument("--as-of",required=True)
     fc.add_argument("--through",required=True); fc.add_argument("--season",type=int,required=True)
-    fc.add_argument("--market",default=None); fc.add_argument("--market-provider",default=None); fc.add_argument("--draws",type=int,default=50000)
+    fc.add_argument("--market",default=None); fc.add_argument("--market-provider",default=None)
     fa=sub.add_parser("forecast-advance",help="Advance a saved exact forecast state when no new result became eligible")
     fa.add_argument("--previous",required=True); fa.add_argument("--data",default="data"); fa.add_argument("--model",default=str(model_root()))
     fa.add_argument("--out",required=True); fa.add_argument("--as-of",required=True); fa.add_argument("--through",required=True); fa.add_argument("--season",type=int,required=True)
-    fa.add_argument("--market",default=None); fa.add_argument("--market-provider",default=None); fa.add_argument("--draws",type=int,default=50000)
+    fa.add_argument("--market",default=None); fa.add_argument("--market-provider",default=None)
     mi=sub.add_parser("market-import",help="Append timestamped market snapshots to the canonical market-history store")
     mi.add_argument("--input",required=True); mi.add_argument("--store",default="data/market_history.csv")
     mi.add_argument("--provider",default="unspecified"); mi.add_argument("--source",default=None)
@@ -47,7 +46,7 @@ def main():
     cu.add_argument("--data",default="data"); cu.add_argument("--model",default=str(model_root()))
     cu.add_argument("--ledger",default="artifacts/chronological_holdout"); cu.add_argument("--season",type=int,required=True)
     cu.add_argument("--now",default=None); cu.add_argument("--lead-hours",type=float,default=24.0)
-    cu.add_argument("--market",default=None); cu.add_argument("--market-provider",default=None); cu.add_argument("--draws",type=int,default=50000)
+    cu.add_argument("--market",default=None); cu.add_argument("--market-provider",default=None)
     cu.add_argument("--primary-lateness-minutes",type=float,default=60.0)
     cv=sub.add_parser("chronology-verify",help="Verify the chronological ledger and every immutable run")
     cv.add_argument("--ledger",default="artifacts/chronological_holdout")
@@ -60,13 +59,13 @@ def main():
     pr.add_argument("--data",default="data"); pr.add_argument("--model",default=str(model_root()))
     pr.add_argument("--ledger",default="artifacts/chronological_holdout"); pr.add_argument("--season",type=int,required=True)
     pr.add_argument("--now",default=None); pr.add_argument("--lead-hours",type=float,default=24.0)
-    pr.add_argument("--market",default="data/market_history.csv"); pr.add_argument("--market-provider",default=None); pr.add_argument("--draws",type=int,default=50000)
+    pr.add_argument("--market",default="data/market_history.csv"); pr.add_argument("--market-provider",default=None)
     pr.add_argument("--primary-lateness-minutes",type=float,default=60.0); pr.add_argument("--skip-market-capture",action="store_true")
     wf=sub.add_parser("weekly-forecast",help="Forecast the next upcoming FBS slate")
     wf.add_argument("--data",default="data"); wf.add_argument("--model",default=str(model_root()))
     wf.add_argument("--out",default="artifacts"); wf.add_argument("--season",type=int,required=True)
     wf.add_argument("--week",type=int,default=None); wf.add_argument("--as-of",default=None)
-    wf.add_argument("--market",default=None); wf.add_argument("--draws",type=int,default=50000); wf.add_argument("--publish",action="store_true")
+    wf.add_argument("--market",default=None)
     sr=sub.add_parser("sunday-run",help="Collect sources, train, validate and publish the Sunday slate")
     sr.add_argument("--data",default="data"); sr.add_argument("--model",default=None)
     sr.add_argument("--artifacts", "--out", dest="artifacts", default="artifacts")
@@ -81,20 +80,22 @@ def main():
     sb=sub.add_parser("season-backtest",help="Reconstruct and grade weekly forecasts across a season")
     sb.add_argument("--data",default="data"); sb.add_argument("--model",default=str(model_root()))
     sb.add_argument("--out",default="artifacts/backtest"); sb.add_argument("--season",type=int,required=True)
-    sb.add_argument("--draws",type=int,default=50000); sb.add_argument("--lead-hours",type=float,default=48.0)
-    pu=sub.add_parser("publish-update",help="Publish an existing calculated board to SQLite, the apps, Datadog and email")
-    pu.add_argument("--run",required=True); pu.add_argument("--run-id",required=True)
-    pu.add_argument("--artifacts",default="artifacts"); pu.add_argument("--database",default=None)
-    pu.add_argument("--no-email",action="store_true")
-    ud=sub.add_parser("update-database",help="Write schedules, team game rates and source rows into SQLite")
-    ud.add_argument("--data",default="data"); ud.add_argument("--artifacts",default="artifacts")
-    ud.add_argument("--season",type=int,required=True); ud.add_argument("--database",default=None)
-    ud.add_argument("--no-collect",action="store_true")
+    sb.add_argument("--lead-hours",type=float,default=48.0)
     pf=sub.add_parser("preflight",help="Validate mounted data and artifact paths")
     pf.add_argument("--data",default="data"); pf.add_argument("--artifacts",default="artifacts"); pf.add_argument("--season",type=int,default=None)
+    pa=sub.add_parser("probability-audit",help="Evaluate prior-season calibration, constrained fitting, and stress sensitivity on exported predictions")
+    pa.add_argument("--input",required=True); pa.add_argument("--out",required=True)
+    pa.add_argument("--probability-column",default="score_p"); pa.add_argument("--outcome-column",default="home_win")
+    pa.add_argument("--min-games",type=int,default=100); pa.add_argument("--regularization",type=float,default=0.01)
+    pa.add_argument("--max-change",type=float,default=None); pa.add_argument("--stress-radius",type=float,default=0.1)
+    pa.add_argument("--model",default=None,help="Optionally write a separate candidate model next to the audit")
+    pu=sub.add_parser("publish-update",help="Publish a completed forecast directory to SQLite, React, Streamlit, logs, and email")
+    pu.add_argument("--run",required=True); pu.add_argument("--artifacts",default="artifacts")
+    pu.add_argument("--database",default=None); pu.add_argument("--web",default=None); pu.add_argument("--run-id",default=None)
+    pu.add_argument("--fetch-sources",action="store_true")
     args=parser.parse_args()
     from .paths import cli_path
-    for name in ("data", "artifacts", "model", "models", "out", "store", "ledger", "predictions", "archive", "market", "input", "previous", "forecast", "run", "holdout", "frozen_batch"):
+    for name in ("data", "artifacts", "model", "models", "out", "store", "ledger", "predictions", "archive", "market", "input", "previous", "forecast", "holdout", "frozen_batch", "run", "web", "database"):
         value = getattr(args, name, None)
         if value is not None:
             setattr(args, name, str(cli_path(value)))
@@ -107,11 +108,11 @@ def main():
         print(result.to_string(index=False)); print("selected production variant:",spec["selected_variant"])
     elif args.command=="forecast":
         from .forecast import forecast
-        result=forecast(args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.draws,args.market_provider)
+        result=forecast(args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.market_provider)
         print(result[["away_team","home_team","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
     elif args.command=="forecast-advance":
         from .forecast import advance_forecast_snapshot
-        result=advance_forecast_snapshot(args.previous,args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.draws,args.market_provider)
+        result=advance_forecast_snapshot(args.previous,args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.market_provider)
         print(result[["away_team","home_team","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
     elif args.command=="market-import":
         from .market import import_market_file
@@ -146,7 +147,7 @@ def main():
         print(pd.Series(verify_holdout(args.holdout)).to_string())
     elif args.command=="chronology-update":
         from .chronology import run_chronological_update
-        ledger,added,receipt=run_chronological_update(args.data,args.model,args.ledger,args.season,args.now,args.lead_hours,args.market,args.draws,args.market_provider,args.primary_lateness_minutes)
+        ledger,added,receipt=run_chronological_update(args.data,args.model,args.ledger,args.season,args.now,args.lead_hours,args.market,args.market_provider,args.primary_lateness_minutes)
         if len(added):
             print(added[["away_team","home_team","kickoff","scheduled_cutoff","actual_forecast_at","actual_lead_hours","cutoff_delay_minutes","primary_cutoff_eligible","market_status"]].to_string(index=False))
         print(pd.Series(receipt).to_string())
@@ -164,7 +165,7 @@ def main():
         print(f"chronological games: {len(ledger)}")
     elif args.command=="prospective-run":
         from .collector import run_prospective_collection
-        ledger,added,receipt=run_prospective_collection(args.data,args.model,args.ledger,args.season,args.now,args.lead_hours,args.market,args.market_provider,args.draws,args.primary_lateness_minutes,not args.skip_market_capture)
+        ledger,added,receipt=run_prospective_collection(args.data,args.model,args.ledger,args.season,args.now,args.lead_hours,args.market,args.market_provider,args.primary_lateness_minutes,not args.skip_market_capture)
         if len(added):
             print(added[["away_team","home_team","kickoff","scheduled_cutoff","actual_forecast_at","actual_lead_hours","cutoff_delay_minutes","primary_cutoff_eligible","market_status"]].to_string(index=False))
         print(pd.Series(receipt).to_string())
@@ -175,24 +176,27 @@ def main():
         print(results[["game_id","status","is_final","away_team","away_points","home_team","home_points"]].tail(20).to_string(index=False))
     elif args.command=="season-backtest":
         from .season_backtest import run_season_backtest
-        metrics,summary=run_season_backtest(args.data,args.model,args.out,args.season,args.draws,args.lead_hours)
+        metrics,summary=run_season_backtest(args.data,args.model,args.out,args.season,args.lead_hours)
         print(pd.DataFrame([summary]).to_string(index=False))
         print(metrics.to_string(index=False))
     elif args.command=="preflight":
         from .preflight import run_preflight
         run_preflight(args.data,args.artifacts,args.season)
+    elif args.command=="probability-audit":
+        from .probability import audit_probabilities
+        import json
+        summary=audit_probabilities(args.input,args.out,args.probability_column,args.outcome_column,args.min_games,args.regularization,args.model,args.max_change,args.stress_radius)
+        print(json.dumps(summary,indent=2,default=str))
+    elif args.command=="publish-update":
+        from .publisher import publish_forecast_update
+        report = publish_forecast_update(args.run, args.artifacts, args.database, args.web, args.run_id, fetch_sources=args.fetch_sources)
+        print(pd.Series(report).to_string())
     elif args.command == "sunday-run":
         from .sunday import sunday_run
         report = sunday_run(args.data, args.artifacts, args.season, args.model, args.timezone, args.scheduled, not args.no_refresh)
         print(pd.Series(report).to_string())
-    elif args.command == "update-database":
-        from .warehouse import update_database
-        print(json.dumps(update_database(args.data,args.artifacts,args.season,args.database,not args.no_collect),indent=2))
-    elif args.command == "publish-update":
-        from .publish import publish_forecast_update
-        print(json.dumps(publish_forecast_update(args.run,args.run_id,args.artifacts,args.database,send_email=not args.no_email),indent=2))
     elif args.command == "weekly-forecast":
         from .weekly import run_weekly_forecast
-        result,manifest=run_weekly_forecast(args.data,args.model,args.out,args.season,args.week,args.as_of,args.market,args.draws,args.publish)
+        result,manifest=run_weekly_forecast(args.data,args.model,args.out,args.season,args.week,args.as_of,args.market)
         print(pd.DataFrame([manifest]).to_string(index=False))
         print(result[["away_team","home_team","kickoff","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))

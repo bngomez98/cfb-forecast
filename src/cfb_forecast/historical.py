@@ -18,7 +18,6 @@ def run_retrained_forecast(
     warmup=2018,
     train_start=2019,
     validation=None,
-    draws=50000,
     as_of=None,
     through=None,
 ):
@@ -71,7 +70,6 @@ def run_retrained_forecast(
         as_of=forecast_as_of.isoformat(),
         through=forecast_through.isoformat(),
         season=season,
-        draws=draws,
     )
     predictions["actual_home_win"] = pd.NA
     predictions["actual_home_margin"] = pd.NA

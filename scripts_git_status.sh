@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PROJECT_DIR="${PROJECT_DIR:-/mnt/c/Users/brian/Downloads/cfb_forecast/cfb_forecast}"
+PROJECT_DIR="${PROJECT_DIR:-/mnt/c/Users/brian/cfb-forecast}"
 cd "$PROJECT_DIR"
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo 'Not a Git repository' >&2; exit 1; }

@@ -3,6 +3,20 @@
 import math
 
 
+def probability_to_american(probability):
+    """Fair American moneyline for a win probability. Even money is +100."""
+    p = float(probability)
+    if not math.isfinite(p) or not 0 < p < 1:
+        raise ValueError("Win probability must be inside (0, 1)")
+    if abs(p - 0.5) < 1e-12:
+        return 100
+    if p > 0.5:
+        odds = int(round(-100.0 * p / (1.0 - p)))
+        return min(odds, -100)
+    odds = int(round(100.0 * (1.0 - p) / p))
+    return max(odds, 100)
+
+
 def american_to_decimal(odds):
     odds = float(odds)
     if not math.isfinite(odds) or abs(odds) < 100:

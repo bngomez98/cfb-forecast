@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PROJECT_DIR="${PROJECT_DIR:-/mnt/c/Users/brian/Downloads/cfb_forecast/cfb_forecast}"
-VENV_DIR="${VENV_DIR:-$HOME/pythonlib1}"
-KERNEL_NAME="pythonlib1"
+PROJECT_DIR="${PROJECT_DIR:-/mnt/c/Users/brian/cfb-forecast}"
+VENV_DIR="${VENV_DIR:-/home/brian/.venvs/cfb-forecast}"
+KERNEL_NAME="cfb-forecast"
 
 command -v python3 >/dev/null || { echo 'python3 is required' >&2; exit 1; }
 [[ -d "$PROJECT_DIR" ]] || { echo "Project directory not found: $PROJECT_DIR" >&2; exit 1; }

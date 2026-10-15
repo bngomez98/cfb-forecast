@@ -43,6 +43,21 @@ def main():
     if page == "Sources":
         sources(ROOT, latest)
         return
+    if page == "Forecast log":
+        board_path = latest / "forecast_board.json"
+        board = read_json(board_path, {})
+        rows = pd.DataFrame(board.get("forecasts", []))
+        st.subheader("Published forecast log")
+        if rows.empty:
+            st.info("No forecast log has been published yet.")
+            return
+        st.caption(f"Run {board.get('run_id', 'unknown')} · {board.get('games', len(rows))} games · {board.get('as_of', '')}")
+        st.dataframe(
+            rows[[column for column in ["kickoff", "away_team", "home_team", "expected_away_score", "expected_home_score", "winner", "confidence"] if column in rows.columns]],
+            hide_index=True,
+            width="stretch",
+        )
+        return
     forecasts = table(latest / "forecasts.csv") if (latest / "forecasts.csv").exists() else pd.DataFrame()
     if page in {"Forecast desk", "Game inputs"} and forecasts.empty:
         st.info("No upcoming forecasts in the latest completed run. Historical training, source receipts and pipeline evidence remain available in the sidebar.")
@@ -55,34 +70,31 @@ def main():
         view = forecasts.copy()
         if selected:
             view = view[view.home_team.isin(selected) | view.away_team.isin(selected)]
-        view["pick"] = view.apply(
+        view["winner"] = view.apply(
             lambda r: r.home_team if r.home_win_probability >= 0.5 else r.away_team,
             axis=1,
         )
-        view["pick_probability"] = view.home_win_probability.where(
+        view["confidence"] = view.home_win_probability.where(
             view.home_win_probability >= 0.5, 1 - view.home_win_probability
         )
         a, b, c = st.columns(3)
         a.metric("FBS games", len(view))
-        b.metric("Games with complete inputs", int(view.inputs_complete.sum()))
+        b.metric(
+            "Games with complete inputs",
+            int(view.inputs_complete.sum()) if "inputs_complete" in view else 0,
+        )
         c.metric(
             "Eligible moneyline candidates",
-            int((view.moneyline_candidate != "none").sum()),
+            int((view.moneyline_candidate != "none").sum()) if "moneyline_candidate" in view else 0,
         )
         columns = [
             "kickoff",
             "away_team",
             "home_team",
-            "pick",
-            "pick_probability",
+            "winner",
+            "confidence",
             "expected_away_score",
             "expected_home_score",
-            "projected_home_margin",
-            "projected_total",
-            "home_spread",
-            "total_line",
-            "moneyline_candidate",
-            "decision_reason",
         ]
         st.dataframe(
             view[[c for c in columns if c in view]],
@@ -90,13 +102,35 @@ def main():
             width="stretch",
         )
         st.caption(
-            "Score expectations and intervals come from the fitted distribution. They are predictions, never reported final results."
+            "Score expectations come from the fitted distribution. They are predictions, never reported final results."
         )
-        priced = view.dropna(
-            subset=[c for c in ["home_ml_decimal", "away_ml_decimal"] if c in view]
+        st.download_button(
+            "Download predictions",
+            view.to_csv(index=False),
+            "fbs-predictions.csv",
+            "text/csv",
         )
+    elif page == "Lines":
+        view = forecasts.copy()
+        columns = [
+            "kickoff",
+            "away_team",
+            "home_team",
+            "model_spread",
+            "market_spread",
+            "home_spread",
+            "home_moneyline",
+            "away_moneyline",
+            "home_ml_decimal",
+            "away_ml_decimal",
+            "projected_home_margin",
+        ]
+        st.subheader("Spread and moneyline")
+        st.dataframe(view[[c for c in columns if c in view]], hide_index=True, width="stretch")
+        st.caption("Model spread is the forecast margin in sportsbook sign. Fair American moneylines come from the same win probability.")
+        priced = view.dropna(subset=[c for c in ["home_ml_decimal", "away_ml_decimal"] if c in view])
         if "home_ml_decimal" in priced and "away_ml_decimal" in priced and len(priced):
-            st.subheader("Moneyline comparison")
+            st.subheader("Recorded book prices")
             columns = [
                 "away_team",
                 "home_team",
@@ -111,20 +145,29 @@ def main():
                 "market_observed_at",
                 "market_provider",
             ]
-            st.dataframe(
-                priced[[c for c in columns if c in priced]],
-                hide_index=True,
-                width="stretch",
-            )
-            st.caption(
-                "Hypothetical exposure uses quarter Kelly, a 1% game cap, and a 5% slate cap. Incomplete injury, lineup, weather or stats inputs suppress recommendations. No wagers are placed."
-            )
-        st.download_button(
-            "Download predictions",
-            view.to_csv(index=False),
-            "fbs-predictions.csv",
-            "text/csv",
-        )
+            st.dataframe(priced[[c for c in columns if c in priced]], hide_index=True, width="stretch")
+            st.caption("Hypothetical exposure uses quarter Kelly, a 1% game cap, and a 5% slate cap. No wagers are placed.")
+    elif page == "Statistics":
+        st.subheader("Recorded team and player rates")
+        st.caption("Same-season and prior-season facts stored after each forecast run. Missing files stay missing.")
+        try:
+            from contextlib import closing
+            from cfb_forecast.database import connect
+            from cfb_forecast.paths import database_path
+            with closing(connect(database_path())) as conn:
+                names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                if "team_game_facts" in names:
+                    st.dataframe(pd.read_sql_query("SELECT * FROM team_game_facts ORDER BY season DESC, week DESC LIMIT 200", conn), hide_index=True, width="stretch")
+                else:
+                    st.info("team_game_facts is created on the next forecast run that reads parquet history.")
+                if "player_game_facts" in names:
+                    st.dataframe(pd.read_sql_query("SELECT * FROM player_game_facts ORDER BY season DESC, yards DESC LIMIT 200", conn), hide_index=True, width="stretch")
+        except Exception as exc:
+            st.warning(str(exc))
+    elif page == "Methodology":
+        st.subheader("One forecasting model")
+        st.write("The hierarchical team state sets the score location from completed games. Same-season and prior-season points and play rates enter that forecast before kickoff. Weather, rest, injuries, and a recorded line enter as known-future information when they exist. Expected scores are the model means. The winner is the side with home win probability at least 50 percent. Each Sunday run is validated against finished games before the next week.")
+        st.write("This is a weekly point-in-time forecast for FBS games, not a live player-tracking engine and not a betting instruction.")
     elif page == "Weekly validation":
         report = read_json(latest / "previous_week_validation.json", {})
         batches = report.get("runs", [])

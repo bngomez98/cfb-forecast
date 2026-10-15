@@ -229,6 +229,26 @@ def test_constrained_fitting_and_stress_are_bounded():
     assert stress["stress_log_loss"] >= stress["baseline_log_loss"]
 
 
+def test_probability_audit_command_writes_reports(tmp_path, monkeypatch, capsys):
+    import sys
+    from cfb_forecast.cli import main
+
+    _, path = audit_fixture(tmp_path)
+    out = tmp_path / "audit"
+    monkeypatch.setattr(sys, "argv", [
+        "cfb-forecast", "probability-audit", "--input", str(path), "--out", str(out),
+        "--max-change", "0.05", "--stress-radius", "0.1",
+    ])
+    main()
+    summary = json.loads((out / "summary.json").read_text())
+    assert json.loads(capsys.readouterr().out)["games"] == summary["games"] == 240
+    assert summary["production_changed"] is False
+    assert summary["max_probability_change"] == 0.05
+    assert [row["season"] for row in summary["stress_tests"]] == [2025]
+    for name in ("predictions.csv", "metrics.csv", "calibration.csv", "candidate_calibrator.json"):
+        assert (out / name).exists()
+
+
 def test_context_features_exclude_outcomes_and_betting_prices():
     frame = pd.DataFrame(
         {
@@ -348,7 +368,6 @@ def test_sunday_collects_inputs_before_validation_and_inference_and_preserves_ru
 
     def infer(data, model, out, at, end, season, **kwargs):
         events.append("forecast")
-        assert kwargs["analytic"]
         assert (out / "inputs/features.csv").exists()
         return pd.DataFrame(
             [

@@ -11,7 +11,7 @@ import numpy as np
 
 from .data import sha256, normalize_schedule, timestamp
 from .evaluate import metrics
-from .distribution import discrete_crps
+from .distribution import normal_crps
 
 
 def _hash_tree(root: Path, exclude=("holdout_manifest.json", "settlements")):
@@ -58,7 +58,7 @@ def freeze_holdout(forecast_dir, data_root, model_root, holdout_root, batch_id=N
         raise FileExistsError(dst)
     dst.mkdir(parents=True)
     (dst/"forecast").mkdir(); (dst/"inputs"/"data").mkdir(parents=True); (dst/"inputs"/"model").mkdir(parents=True)
-    for name in ["forecasts.csv","forecasts.json","forecast_manifest.json","data_availability.json","state_snapshot.npz","score_distribution.parquet","margin_distribution.parquet","total_distribution.parquet","score_distribution.csv","margin_distribution.csv","total_distribution.csv"]:
+    for name in ["forecasts.csv","forecasts.json","forecast_manifest.json","data_availability.json","state_snapshot.npz"]:
         p=src/name
         if p.exists(): shutil.copy2(p,dst/"forecast"/name)
     shutil.copy2(model/"model.json",dst/"inputs"/"model"/"model.json")
@@ -108,12 +108,6 @@ def verify_holdout(holdout_dir):
     return receipt
 
 
-def _pmf_for(path, game_id, value_col):
-    f=pd.read_parquet(path) if path.suffix==".parquet" else pd.read_csv(path); g=f[f.game_id==int(game_id)]
-    if g.empty: return None
-    return g[value_col].to_numpy(),g.probability.to_numpy()
-
-
 def settle_holdout(holdout_dir, current_data_root, settled_at=None):
     root=Path(holdout_dir); receipt=verify_holdout(root)
     pred=pd.read_csv(root/"forecast"/"forecasts.csv")
@@ -126,15 +120,12 @@ def settle_holdout(holdout_dir, current_data_root, settled_at=None):
     merged=pred.merge(outcomes,on="game_id",how="left",validate="one_to_one")
     settled=merged[merged.result_usable.fillna(False)].copy()
     rows=[]
-    margin_path=(root/"forecast"/"margin_distribution.parquet") if (root/"forecast"/"margin_distribution.parquet").exists() else (root/"forecast"/"margin_distribution.csv")
-    total_path=(root/"forecast"/"total_distribution.parquet") if (root/"forecast"/"total_distribution.parquet").exists() else (root/"forecast"/"total_distribution.csv")
     for r in settled.itertuples(index=False):
         y=int(r.home_points>r.away_points); actual_margin=int(r.home_points-r.away_points); actual_total=int(r.home_points+r.away_points)
         rec={"game_id":int(r.game_id),"home_team":r.home_team,"away_team":r.away_team,"kickoff":r.kickoff,"home_points":int(r.home_points),"away_points":int(r.away_points),"home_win":y,"actual_margin":actual_margin,"actual_total":actual_total,"forecast_home_win_probability":float(r.home_win_probability),"projected_home_margin":float(r.projected_home_margin),"projected_total":float(r.projected_total)}
-        if margin_path.exists():
-            v,p=_pmf_for(margin_path,r.game_id,"margin"); rec["margin_crps"]=discrete_crps(v,p,actual_margin)
-        if total_path.exists():
-            v,p=_pmf_for(total_path,r.game_id,"total"); rec["total_crps"]=discrete_crps(v,p,actual_total)
+        if hasattr(r,"margin_standard_deviation") and hasattr(r,"total_standard_deviation"):
+            rec["margin_crps"]=float(normal_crps(r.projected_home_margin,r.margin_standard_deviation,actual_margin))
+            rec["total_crps"]=float(normal_crps(r.projected_total,r.total_standard_deviation,actual_total))
         rows.append(rec)
     result=pd.DataFrame(rows)
     summary={"batch_id":receipt["batch_id"],"settled_at":timestamp(settled_at or datetime.now(timezone.utc)).isoformat(),"forecast_games":int(len(pred)),"settled_games":int(len(result)),"unsettled_games":int(len(pred)-len(result))}

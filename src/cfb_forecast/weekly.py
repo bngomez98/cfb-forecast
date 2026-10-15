@@ -44,11 +44,20 @@ def validate_previous_week_forecast(forecast_dir, data_root, season, week):
     result.update({
         "season": int(season),
         "week": int(week),
+        "run_id": forecast_dir.name,
         "status": "settled",
         "games": int(len(settled)),
         "validation_source": SOURCE_REGISTRY["cfbtxt_validation"],
+        "validated_at": datetime.now(timezone.utc).isoformat(),
     })
+    if "projected_home_margin" in settled:
+        result["spread_mae"] = float((settled.actual_margin - settled.projected_home_margin).abs().mean())
     (forecast_dir / "weekly_validation.json").write_text(json.dumps(result, indent=2))
+    from contextlib import closing
+    from .database import connect, record_weekly_validation
+    from .paths import database_path
+    with closing(connect(database_path())) as conn:
+        record_weekly_validation(conn, result)
     return result
 
 
@@ -60,8 +69,6 @@ def run_weekly_forecast(
     week=None,
     as_of=None,
     market_path=None,
-    draws=50000,
-    publish=False,
 ):
     """Forecast the next upcoming week, or an explicitly selected week."""
     data_root = Path(data_root)
@@ -100,7 +107,6 @@ def run_weekly_forecast(
         through=last_kickoff.isoformat(),
         season=int(season),
         market_path=market_path,
-        draws=draws,
         target_game_ids=games.game_id.astype(int).tolist(),
     )
     manifest = {
@@ -122,7 +128,11 @@ def run_weekly_forecast(
     if latest.exists():
         shutil.rmtree(latest)
     shutil.copytree(destination, latest)
-    if publish:
-        from .publish import publish_forecast_update
-        manifest["publish"] = publish_forecast_update(destination, f"{int(season)}-week-{week}")
+    try:
+        from .publisher import publish_forecast_update
+        manifest["distribution"] = publish_forecast_update(
+            destination, out_root, run_id=f"{int(season)}-week-{week}", season=int(season)
+        )
+    except Exception as exc:
+        manifest["distribution"] = {"status": "failed", "error": type(exc).__name__}
     return result, manifest
