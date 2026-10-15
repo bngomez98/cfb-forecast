@@ -488,7 +488,7 @@ def sunday_run(
             from .publisher import publish_forecast_update
             receipt["distribution"] = publish_forecast_update(final, root, run_id=run_id, season=season)
         except Exception as exc:
-            receipt["distribution"] = {"status": "failed", "error": type(exc).__name__}
+            receipt["distribution"] = {"status": "failed", "error": type(exc).__name__, "message": str(exc)}
         (final / "run_manifest.json").write_text(json.dumps(receipt, indent=2))
         latest_manifest = root / "latest" / "run_manifest.json"
         if latest_manifest.parent.exists():

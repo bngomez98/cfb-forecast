@@ -2,32 +2,83 @@ name: Python checks
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# A newer push to the same branch or pull request replaces the older run.
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  tests:
+  lint:
+    name: Catch code and workflows that would fail to run
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'ruff>=0.6'
+      # The rules live in pyproject.toml, so a local `ruff check` matches this.
+      - run: ruff check --output-format github .
+      - name: Check the workflow files themselves
+        run: |
+          python -m pip install 'actionlint-py>=1.7'
+          actionlint
+
+  tests:
+    name: Tests (Python ${{ matrix.python }}${{ matrix.pinned && ', tested versions + R' || '' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
+      fail-fast: false
       matrix:
-        python: ['3.11', '3.12']
+        python: ['3.11', '3.12', '3.13']
+        pinned: [false]
+        include:
+          # The exact library versions the Sunday forecast installs, with R,
+          # so the R cross-check runs instead of being skipped.
+          - python: '3.12'
+            pinned: true
     env:
       OPENBLAS_NUM_THREADS: '1'
       OMP_NUM_THREADS: '1'
+      CFB_REQUIRE_R: ${{ matrix.pinned && '1' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
           cache: pip
-      - run: python -m pip install -e '.[test]'
+          cache-dependency-path: |
+            pyproject.toml
+            requirements-tested.txt
+      - name: Install R
+        if: matrix.pinned
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends r-base-core
+      - name: Install project
+        run: |
+          if [ "${{ matrix.pinned }}" = true ]; then
+            python -m pip install -c requirements-tested.txt -e '.[test]'
+          else
+            python -m pip install -e '.[test]'
+          fi
+          python -m pip check
       - run: python -m pytest -q
       - run: python -m cfb_forecast --help
 
   dashboard:
     runs-on: ubuntu-latest
+  package:
+    name: Build and install the package from scratch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -39,9 +90,31 @@ jobs:
       - name: Load every dashboard page module
         working-directory: dashboard
         run: python -c "import app, board, desk, results"
+      - name: Build the wheel and source archive
+        run: |
+          python -m pip install build
+          python -m build
+      - name: Install the wheel into a clean environment and run it
+        # Tests run against the source folder, so they can't notice a file
+        # missing from the installed package. This can.
+        working-directory: /tmp
+        run: |
+          python -m venv clean
+          clean/bin/pip install "$GITHUB_WORKSPACE"/dist/*.whl
+          clean/bin/pip check
+          clean/bin/cfb-forecast --help >/dev/null
+          clean/bin/cfb-pipeline --help >/dev/null
+          clean/bin/cfb-data-watchdog --help >/dev/null
+          clean/bin/python -c "import importlib.resources as r; assert r.files('cfb_forecast').joinpath('validate_learning.R').is_file(), 'R script missing from wheel'"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cfb-forecast-dist
+          path: dist/
+          retention-days: 14
 
   web:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

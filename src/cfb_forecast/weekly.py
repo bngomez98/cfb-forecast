@@ -136,5 +136,5 @@ def run_weekly_forecast(
             destination, out_root, run_id=f"{int(season)}-week-{week}", season=int(season)
         )
     except Exception as exc:
-        manifest["distribution"] = {"status": "failed", "error": type(exc).__name__}
+        manifest["distribution"] = {"status": "failed", "error": type(exc).__name__, "message": str(exc)}
     return result, manifest

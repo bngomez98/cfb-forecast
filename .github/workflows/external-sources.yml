@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   collect:
@@ -20,6 +21,7 @@ jobs:
     env:
       SEASON: ${{ inputs.season || '2026' }}
       CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -27,13 +29,20 @@ jobs:
           python-version: '3.12'
           cache: pip
       - name: Install project
-        run: python -m pip install -e '.[test]'
-      - name: Restore runtime data when available
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          name: cfb-runtime-${{ env.SEASON }}
-          path: runtime
+        run: python -m pip install -c requirements-tested.txt -e '.[test]'
+      # download-artifact only sees artifacts from this same run, so it could never
+      # find the Sunday forecast's saved data. Fetch the newest one through the API.
+      - name: Restore runtime data from the latest Sunday run
+        run: |
+          mkdir -p runtime
+          ARTIFACT_ID=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=cfb-runtime-$SEASON&per_page=20" --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | last | .id // empty')
+          if [ -n "$ARTIFACT_ID" ]; then
+            echo "Restoring artifact $ARTIFACT_ID"
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > "$RUNNER_TEMP/cfb-runtime.zip"
+            unzip -q "$RUNNER_TEMP/cfb-runtime.zip" -d runtime
+          else
+            echo "No saved cfb-runtime-$SEASON artifact found; downloading sources fresh."
+          fi
       - name: Ensure source data exists
         run: |
           DATA=runtime/data
