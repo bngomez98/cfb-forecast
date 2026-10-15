@@ -24,6 +24,7 @@ player stats parquet releases both provide compatible frames; the
 ``fetch_player_game_stats`` helper reads the latter and normalizes the
 columns the compute function needs.
 """
+
 from __future__ import annotations
 
 import logging
@@ -161,9 +162,7 @@ def compute_player_ppg(
         else ("start_date" if "start_date" in frame.columns else None)
     )
     if date_column is None:
-        raise ValueError(
-            "player_games needs a 'game_date' or 'start_date' column for the cutoff."
-        )
+        raise ValueError("player_games needs a 'game_date' or 'start_date' column for the cutoff.")
     frame[date_column] = pd.to_datetime(frame[date_column], utc=True, errors="coerce")
     frame = frame[frame[date_column].notna() & frame[date_column].lt(cutoff)]
     if frame.empty:
@@ -172,9 +171,7 @@ def compute_player_ppg(
     frame["_points"] = compute_player_points_column(frame)
     group_keys = ["player_id"]
     aggregations: dict[str, tuple[str, str]] = {
-        "games_played_to_date": ("game_id", "nunique")
-        if "game_id" in frame.columns
-        else ("_points", "size"),
+        "games_played_to_date": ("game_id", "nunique") if "game_id" in frame.columns else ("_points", "size"),
         "points_scored_total": ("_points", "sum"),
     }
     for column, _weight in _SCORING_COMPONENTS:
@@ -260,7 +257,14 @@ def fetch_player_game_stats(
         if not cached_path.exists():
             _download_file(url, cached_path, timeout=timeout)
         frame = pd.read_parquet(cached_path)
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError, ImportError) as exc:
+    except (
+        urllib.error.URLError,
+        urllib.error.HTTPError,
+        TimeoutError,
+        OSError,
+        ValueError,
+        ImportError,
+    ) as exc:
         log.warning("player stats fetch failed for season %s: %s", season, exc)
         return pd.DataFrame(), PlayerStatsCapture(
             season=season,

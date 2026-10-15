@@ -1,4 +1,5 @@
 """Chronological ledger manifest: on-disk record of policy and runs."""
+
 from __future__ import annotations
 
 import json
@@ -59,8 +60,7 @@ def load_or_init_manifest(
         raise ValueError("Chronological ledger lead-time policy cannot change")
     if m["model_sha256"] != model_sha:
         raise ValueError(
-            "Chronological prospective holdout model is frozen; "
-            "start a new ledger for a new model"
+            "Chronological prospective holdout model is frozen; start a new ledger for a new model"
         )
     if not np.isclose(
         float(m.get("primary_lateness_minutes", primary_lateness_minutes)),

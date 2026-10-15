@@ -1,4 +1,24 @@
 services:
+  # Single canonical database (docs/GLOSSARY.md Â§2 "Single database").
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cfb
+      POSTGRES_PASSWORD: ${CFB_POSTGRES_PASSWORD:-cfb}
+      POSTGRES_DB: cfb_forecast
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Declarative schema applied automatically on first init only.
+      - ./schema/schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
+    ports:
+      - "${CFB_POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cfb -d cfb_forecast"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
   cfb-forecast:
     image: ${CFB_IMAGE:-cfb-forecast:local}
     build:
@@ -10,20 +30,56 @@ services:
       OPENBLAS_NUM_THREADS: "1"
       OMP_NUM_THREADS: "1"
       MKL_NUM_THREADS: "1"
+      CFB_POSTGRES_DSN: postgresql://cfb:${CFB_POSTGRES_PASSWORD:-cfb}@postgres:5432/cfb_forecast
     volumes:
       - ${CFB_DATA_DIR:-./data}:/app/data
       - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["python", "-m", "cfb_forecast", "db-init"]
+
+  # Continuous daily cycle: settles finished games, learns blend weights,
+  # forecasts the upcoming slate, persists everything to Postgres.
+  cfb-daily:
+    image: ${CFB_IMAGE:-cfb-forecast:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+      CFB_POSTGRES_DSN: postgresql://cfb:${CFB_POSTGRES_PASSWORD:-cfb}@postgres:5432/cfb_forecast
+    volumes:
+      - ${CFB_DATA_DIR:-./data}:/app/data
+      - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      cfb-forecast:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    command: >
+      sh -c 'while true; do
+        python -m cfb_forecast daily-cycle || true;
+        sleep 86400;
+      done'
+
   cfb-dashboard:
     build:
       context: .
       dockerfile: dashboard/Dockerfile
     image: ${CFB_DASHBOARD_IMAGE:-cfb-forecast-dashboard:local}
+    environment:
+      CFB_POSTGRES_DSN: postgresql://cfb:${CFB_POSTGRES_PASSWORD:-cfb}@postgres:5432/cfb_forecast
     ports:
       - "${CFB_DASHBOARD_PORT:-8501}:8501"
     volumes:
       - ${CFB_ARTIFACTS_DIR:-./artifacts}:/app/artifacts:ro
       - ${CFB_DATA_DIR:-./data}:/app/data:ro
     depends_on:
+      postgres:
+        condition: service_healthy
       cfb-forecast:
         condition: service_completed_successfully
     healthcheck:
@@ -33,3 +89,6 @@ services:
       retries: 3
       start_period: 10s
     command: ["streamlit", "run", "dashboard/app.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.fileWatcherType=none", "--browser.gatherUsageStats=false"]
+
+volumes:
+  pgdata:

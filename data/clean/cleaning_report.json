@@ -1,0 +1,53 @@
+{
+  "generated_utc": "2026-10-10T23:33:22.884504+00:00",
+  "files": {
+    "schedule_2021.csv": {
+      "raw_rows": 2408,
+      "kept_rows": 2408,
+      "quarantined_rows": 0,
+      "ties_kept_for_audit": 0
+    },
+    "schedule_2022.csv": {
+      "raw_rows": 3657,
+      "kept_rows": 3651,
+      "quarantined_rows": 6,
+      "ties_kept_for_audit": 0
+    },
+    "schedule_2023.csv": {
+      "raw_rows": 3734,
+      "kept_rows": 3726,
+      "quarantined_rows": 8,
+      "ties_kept_for_audit": 0
+    },
+    "schedule_2024.csv": {
+      "raw_rows": 3801,
+      "kept_rows": 3789,
+      "quarantined_rows": 12,
+      "ties_kept_for_audit": 1
+    },
+    "schedule_2025.csv": {
+      "raw_rows": 3831,
+      "kept_rows": 3824,
+      "quarantined_rows": 7,
+      "ties_kept_for_audit": 1
+    },
+    "schedule_2026.csv": {
+      "raw_rows": 3679,
+      "kept_rows": 3674,
+      "quarantined_rows": 5,
+      "ties_kept_for_audit": 2
+    }
+  },
+  "games_rows": 21068,
+  "team_games_rows": 42136,
+  "ties_excluded_from_orientation": 4,
+  "divisions_inferred": 63,
+  "division_unknown_rows": 367,
+  "quarantine_reasons": {
+    "completed_zero_zero": 33,
+    "completed_missing_score": 5,
+    "tie_no_winner": 4
+  },
+  "market_quarantined": 0,
+  "adv_quarantined": 0
+}

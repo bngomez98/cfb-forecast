@@ -19,6 +19,7 @@ PPG when its final-score availability timestamp is strictly earlier than
 the given ``as_of``. This is the same rule the dynamic ratings use so a
 later game cannot leak into an earlier forecast.
 """
+
 from __future__ import annotations
 
 import logging
@@ -165,9 +166,9 @@ def attach_ppg_to_forecasts(
     ]
     enriched = forecasts.copy()
     for side, column in (("home", "home_id"), ("away", "away_id")):
-        merged = enriched.merge(
-            renamed, left_on=column, right_on="team_id", how="left"
-        ).drop(columns="team_id")
+        merged = enriched.merge(renamed, left_on=column, right_on="team_id", how="left").drop(
+            columns="team_id"
+        )
         enriched[f"{side}_ppg_scored"] = merged.ppg_scored_val.to_numpy()
         enriched[f"{side}_ppg_allowed"] = merged.ppg_allowed_val.to_numpy()
         enriched[f"{side}_ppg_margin"] = merged.ppg_margin_val.to_numpy()

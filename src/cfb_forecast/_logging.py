@@ -5,6 +5,7 @@ points call :func:`configure_cli_logging` once so that command-line output
 remains readable while the underlying modules stay silent when imported from a
 test or notebook.
 """
+
 from __future__ import annotations
 
 import logging

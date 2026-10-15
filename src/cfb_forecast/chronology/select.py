@@ -1,4 +1,5 @@
 """Picking which games are due to be forecast at a given wall-clock time."""
+
 from __future__ import annotations
 
 import pandas as pd

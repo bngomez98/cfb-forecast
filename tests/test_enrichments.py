@@ -4,6 +4,7 @@ Network access is never used in the test suite. The weather module's HTTP
 entry point is monkeypatched to return canned payloads so the behavior of
 the enrichment logic can be verified without a live Open-Meteo call.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -58,9 +59,7 @@ def test_capture_weather_returns_indoor_sentinel_without_calling_api(monkeypatch
 
 
 def test_capture_weather_marks_missing_coordinates(monkeypatch):
-    snapshot = capture_weather(
-        "2026-10-10T19:00:00Z", observed_at="2026-10-09T19:00:00Z"
-    )
+    snapshot = capture_weather("2026-10-10T19:00:00Z", observed_at="2026-10-09T19:00:00Z")
     assert snapshot.status == "venue_not_in_registry"
     assert snapshot.temperature_c is None
 
@@ -164,9 +163,7 @@ def test_enrich_forecasts_tolerates_missing_venues(monkeypatch):
     )
 
     def fake_fetch(url, timeout):
-        return _canned_hourly_payload(
-            datetime(2026, 10, 10, 19, 0, tzinfo=UTC)
-        )
+        return _canned_hourly_payload(datetime(2026, 10, 10, 19, 0, tzinfo=UTC))
 
     monkeypatch.setattr(weather, "_request_json", fake_fetch)
     now = datetime(2026, 10, 7, 12, 0, tzinfo=UTC)
@@ -210,7 +207,12 @@ def test_weather_snapshot_record_round_trip():
 def test_load_venues_returns_empty_frame_when_file_missing(tmp_path):
     frame = load_venues(tmp_path / "does-not-exist.csv")
     assert list(frame.columns) == [
-        "home_id", "team", "stadium", "latitude", "longitude", "indoor",
+        "home_id",
+        "team",
+        "stadium",
+        "latitude",
+        "longitude",
+        "indoor",
     ]
     assert len(frame) == 0
 
@@ -228,10 +230,7 @@ def test_load_venues_rejects_duplicate_home_id(tmp_path):
 
 def test_load_venues_rejects_invalid_coordinates(tmp_path):
     path = tmp_path / "stadiums.csv"
-    path.write_text(
-        "home_id,team,stadium,latitude,longitude,indoor\n"
-        "1,A,A Stadium,91.0,0.0,false\n"
-    )
+    path.write_text("home_id,team,stadium,latitude,longitude,indoor\n1,A,A Stadium,91.0,0.0,false\n")
     with pytest.raises(ValueError, match="latitude"):
         load_venues(path)
 
@@ -240,7 +239,12 @@ def test_bundled_stadiums_csv_loads():
     frame = load_venues("data/stadiums.csv")
     assert len(frame) > 20
     assert set(frame.columns) >= {
-        "home_id", "team", "stadium", "latitude", "longitude", "indoor",
+        "home_id",
+        "team",
+        "stadium",
+        "latitude",
+        "longitude",
+        "indoor",
     }
     assert not frame.home_id.duplicated().any()
     assert (frame.latitude.abs() <= 90).all()

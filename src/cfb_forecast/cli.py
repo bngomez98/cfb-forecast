@@ -1,4 +1,5 @@
 import argparse
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -8,75 +9,151 @@ from ._logging import configure_cli_logging
 
 def main():
     configure_cli_logging()
-    parser=argparse.ArgumentParser(description="College football forecasting with reproducible cutoffs")
-    sub=parser.add_subparsers(dest="command",required=True)
-    fetch=sub.add_parser("fetch",help="Download free schedules and PBP summaries")
-    fetch.add_argument("--data",default="data"); fetch.add_argument("--seasons",nargs="+",type=int,required=True)
-    fetch.add_argument("--refresh",action="store_true"); fetch.add_argument("--raw-pbp",action="store_true")
-    bt=sub.add_parser("backtest",help="Chronological model selection and held-out evaluation")
-    bt.add_argument("--data",default="data"); bt.add_argument("--out",default="artifacts/backtest")
-    bt.add_argument("--archive",default=None)
-    bt.add_argument("--warmup",type=int,default=2021); bt.add_argument("--train-start",type=int,default=2022)
-    bt.add_argument("--validation",type=int,default=2024); bt.add_argument("--test",type=int,default=2025)
-    fc=sub.add_parser("forecast",help="Produce forecasts from a saved production model")
-    fc.add_argument("--data",default="data"); fc.add_argument("--model",default="artifacts/backtest/model")
-    fc.add_argument("--out",default="artifacts/forecast"); fc.add_argument("--as-of",required=True)
-    fc.add_argument("--through",required=True); fc.add_argument("--season",type=int,required=True)
-    fc.add_argument("--market",default=None); fc.add_argument("--market-provider",default=None); fc.add_argument("--draws",type=int,default=50000)
-    fa=sub.add_parser("forecast-advance",help="Advance a saved exact forecast state when no new result became eligible")
-    fa.add_argument("--previous",required=True); fa.add_argument("--data",default="data"); fa.add_argument("--model",default="artifacts/backtest/model")
-    fa.add_argument("--out",required=True); fa.add_argument("--as-of",required=True); fa.add_argument("--through",required=True); fa.add_argument("--season",type=int,required=True)
-    fa.add_argument("--market",default=None); fa.add_argument("--market-provider",default=None); fa.add_argument("--draws",type=int,default=50000)
-    mi=sub.add_parser("market-import",help="Append timestamped market snapshots to the canonical market-history store")
-    mi.add_argument("--input",required=True); mi.add_argument("--store",default="data/market_history.csv")
-    mi.add_argument("--provider",default="unspecified"); mi.add_argument("--source",default=None)
-    me=sub.add_parser("market-init",help="Create an empty canonical market-history store")
-    me.add_argument("--store",default="data/market_history.csv")
-    ms=sub.add_parser("market-snapshot-sdv",help="Capture the current free SportsDataverse ESPN spread/total into point-in-time history")
-    ms.add_argument("--season",type=int,required=True); ms.add_argument("--store",default="data/market_history.csv"); ms.add_argument("--observed-at",default=None)
-    mb=sub.add_parser("market-backfill-sdv",help="Download benchmark-only historical resolved/closing SportsDataverse lines")
-    mb.add_argument("--seasons",nargs="+",type=int,required=True); mb.add_argument("--out",default="data/market_closing_history.csv")
-    dv=sub.add_parser("distribution-backtest",help="Evaluate Gaussian score distributions on frozen held-out predictions")
-    dv.add_argument("--predictions",default="artifacts/backtest/predictions.csv"); dv.add_argument("--models",default="artifacts/backtest/models"); dv.add_argument("--out",default="artifacts/backtest/distribution_validation.csv")
-    hf=sub.add_parser("holdout-freeze",help="Freeze a forecast batch and exact inputs before kickoff")
-    hf.add_argument("--forecast",required=True); hf.add_argument("--data",default="data"); hf.add_argument("--model",default="artifacts/backtest/model")
-    hf.add_argument("--out",default="artifacts/holdouts"); hf.add_argument("--batch-id",default=None); hf.add_argument("--freeze-at",default=None)
-    hs=sub.add_parser("holdout-settle",help="Evaluate a frozen prospective holdout against later final outcomes")
-    hs.add_argument("--holdout",required=True); hs.add_argument("--data",default="data")
-    hv=sub.add_parser("holdout-verify",help="Verify immutable prospective holdout hashes")
-    hv.add_argument("--holdout",required=True)
-    cu=sub.add_parser("chronology-update",help="Append only games whose fixed pregame forecast cutoff has arrived")
-    cu.add_argument("--data",default="data"); cu.add_argument("--model",default="artifacts/backtest/model")
-    cu.add_argument("--ledger",default="artifacts/chronological_holdout"); cu.add_argument("--season",type=int,required=True)
-    cu.add_argument("--now",default=None); cu.add_argument("--lead-hours",type=float,default=24.0)
-    cu.add_argument("--market",default=None); cu.add_argument("--market-provider",default=None); cu.add_argument("--draws",type=int,default=50000)
-    cu.add_argument("--primary-lateness-minutes",type=float,default=60.0)
-    cv=sub.add_parser("chronology-verify",help="Verify the chronological ledger and every immutable run")
-    cv.add_argument("--ledger",default="artifacts/chronological_holdout")
-    cs=sub.add_parser("chronology-settle",help="Settle every completed game in the chronological ledger")
-    cs.add_argument("--ledger",default="artifacts/chronological_holdout"); cs.add_argument("--data",default="data"); cs.add_argument("--settled-at",default=None)
-    cb=sub.add_parser("chronology-bootstrap",help="Start a chronological ledger from an existing frozen batch, discarding not-yet-due games")
-    cb.add_argument("--frozen-batch",required=True); cb.add_argument("--ledger",default="artifacts/chronological_holdout")
-    cb.add_argument("--lead-hours",type=float,default=24.0); cb.add_argument("--primary-lateness-minutes",type=float,default=60.0)
-    pr=sub.add_parser("prospective-run",help="Capture market then append newly due games to the chronological prospective holdout")
-    pr.add_argument("--data",default="data"); pr.add_argument("--model",default="artifacts/backtest/model")
-    pr.add_argument("--ledger",default="artifacts/chronological_holdout"); pr.add_argument("--season",type=int,required=True)
-    pr.add_argument("--now",default=None); pr.add_argument("--lead-hours",type=float,default=24.0)
-    pr.add_argument("--market",default="data/market_history.csv"); pr.add_argument("--market-provider",default=None); pr.add_argument("--draws",type=int,default=50000)
-    pr.add_argument("--primary-lateness-minutes",type=float,default=60.0); pr.add_argument("--skip-market-capture",action="store_true")
-    wf=sub.add_parser("weekly-forecast",help="Forecast the next upcoming FBS slate")
-    wf.add_argument("--data",default="data"); wf.add_argument("--model",default="artifacts/backtest/model")
-    wf.add_argument("--out",default="artifacts"); wf.add_argument("--season",type=int,required=True)
-    wf.add_argument("--week",type=int,default=None); wf.add_argument("--as-of",default=None)
-    wf.add_argument("--market",default=None); wf.add_argument("--draws",type=int,default=50000)
-    rr=sub.add_parser("results-refresh",help="Retrieve live scores from ESPN's public scoreboard API")
-    rr.add_argument("--data",default="data"); rr.add_argument("--out",default="artifacts/results")
-    rr.add_argument("--season",type=int,required=True); rr.add_argument("--week",type=int,default=None)
-    rr.add_argument("--start",default=None); rr.add_argument("--end",default=None)
-    sb=sub.add_parser("season-backtest",help="Reconstruct and grade weekly forecasts across a season")
-    sb.add_argument("--data",default="data"); sb.add_argument("--model",default="artifacts/backtest/model")
-    sb.add_argument("--out",default="artifacts/backtest"); sb.add_argument("--season",type=int,required=True)
-    sb.add_argument("--draws",type=int,default=50000); sb.add_argument("--lead-hours",type=float,default=48.0)
+    parser = argparse.ArgumentParser(description="College football forecasting with reproducible cutoffs")
+    sub = parser.add_subparsers(dest="command", required=True)
+    fetch = sub.add_parser("fetch", help="Download free schedules and PBP summaries")
+    fetch.add_argument("--data", default="data")
+    fetch.add_argument("--seasons", nargs="+", type=int, required=True)
+    fetch.add_argument("--refresh", action="store_true")
+    fetch.add_argument("--raw-pbp", action="store_true")
+    bt = sub.add_parser("backtest", help="Chronological model selection and held-out evaluation")
+    bt.add_argument("--data", default="data")
+    bt.add_argument("--out", default="artifacts/backtest")
+    bt.add_argument("--archive", default=None)
+    bt.add_argument("--warmup", type=int, default=2021)
+    bt.add_argument("--train-start", type=int, default=2022)
+    bt.add_argument("--validation", type=int, default=2024)
+    bt.add_argument("--test", type=int, default=2025)
+    fc = sub.add_parser("forecast", help="Produce forecasts from a saved production model")
+    fc.add_argument("--data", default="data")
+    fc.add_argument("--model", default="artifacts/backtest/model")
+    fc.add_argument("--out", default="artifacts/forecast")
+    fc.add_argument("--as-of", required=True)
+    fc.add_argument("--through", required=True)
+    fc.add_argument("--season", type=int, required=True)
+    fc.add_argument("--market", default=None)
+    fc.add_argument("--market-provider", default=None)
+    fc.add_argument("--draws", type=int, default=50000)
+    fa = sub.add_parser(
+        "forecast-advance", help="Advance a saved exact forecast state when no new result became eligible"
+    )
+    fa.add_argument("--previous", required=True)
+    fa.add_argument("--data", default="data")
+    fa.add_argument("--model", default="artifacts/backtest/model")
+    fa.add_argument("--out", required=True)
+    fa.add_argument("--as-of", required=True)
+    fa.add_argument("--through", required=True)
+    fa.add_argument("--season", type=int, required=True)
+    fa.add_argument("--market", default=None)
+    fa.add_argument("--market-provider", default=None)
+    fa.add_argument("--draws", type=int, default=50000)
+    mi = sub.add_parser(
+        "market-import", help="Append timestamped market snapshots to the canonical market-history store"
+    )
+    mi.add_argument("--input", required=True)
+    mi.add_argument("--store", default="data/market_history.csv")
+    mi.add_argument("--provider", default="unspecified")
+    mi.add_argument("--source", default=None)
+    me = sub.add_parser("market-init", help="Create an empty canonical market-history store")
+    me.add_argument("--store", default="data/market_history.csv")
+    ms = sub.add_parser(
+        "market-snapshot-sdv",
+        help="Capture the current free SportsDataverse ESPN spread/total into point-in-time history",
+    )
+    ms.add_argument("--season", type=int, required=True)
+    ms.add_argument("--store", default="data/market_history.csv")
+    ms.add_argument("--observed-at", default=None)
+    mb = sub.add_parser(
+        "market-backfill-sdv",
+        help="Download benchmark-only historical resolved/closing SportsDataverse lines",
+    )
+    mb.add_argument("--seasons", nargs="+", type=int, required=True)
+    mb.add_argument("--out", default="data/market_closing_history.csv")
+    dv = sub.add_parser(
+        "distribution-backtest", help="Evaluate Gaussian score distributions on frozen held-out predictions"
+    )
+    dv.add_argument("--predictions", default="artifacts/backtest/predictions.csv")
+    dv.add_argument("--models", default="artifacts/backtest/models")
+    dv.add_argument("--out", default="artifacts/backtest/distribution_validation.csv")
+    hf = sub.add_parser("holdout-freeze", help="Freeze a forecast batch and exact inputs before kickoff")
+    hf.add_argument("--forecast", required=True)
+    hf.add_argument("--data", default="data")
+    hf.add_argument("--model", default="artifacts/backtest/model")
+    hf.add_argument("--out", default="artifacts/holdouts")
+    hf.add_argument("--batch-id", default=None)
+    hf.add_argument("--freeze-at", default=None)
+    hs = sub.add_parser(
+        "holdout-settle", help="Evaluate a frozen prospective holdout against later final outcomes"
+    )
+    hs.add_argument("--holdout", required=True)
+    hs.add_argument("--data", default="data")
+    hv = sub.add_parser("holdout-verify", help="Verify immutable prospective holdout hashes")
+    hv.add_argument("--holdout", required=True)
+    cu = sub.add_parser(
+        "chronology-update", help="Append only games whose fixed pregame forecast cutoff has arrived"
+    )
+    cu.add_argument("--data", default="data")
+    cu.add_argument("--model", default="artifacts/backtest/model")
+    cu.add_argument("--ledger", default="artifacts/chronological_holdout")
+    cu.add_argument("--season", type=int, required=True)
+    cu.add_argument("--now", default=None)
+    cu.add_argument("--lead-hours", type=float, default=24.0)
+    cu.add_argument("--market", default=None)
+    cu.add_argument("--market-provider", default=None)
+    cu.add_argument("--draws", type=int, default=50000)
+    cu.add_argument("--primary-lateness-minutes", type=float, default=60.0)
+    cv = sub.add_parser("chronology-verify", help="Verify the chronological ledger and every immutable run")
+    cv.add_argument("--ledger", default="artifacts/chronological_holdout")
+    cs = sub.add_parser("chronology-settle", help="Settle every completed game in the chronological ledger")
+    cs.add_argument("--ledger", default="artifacts/chronological_holdout")
+    cs.add_argument("--data", default="data")
+    cs.add_argument("--settled-at", default=None)
+    cb = sub.add_parser(
+        "chronology-bootstrap",
+        help="Start a chronological ledger from an existing frozen batch, discarding not-yet-due games",
+    )
+    cb.add_argument("--frozen-batch", required=True)
+    cb.add_argument("--ledger", default="artifacts/chronological_holdout")
+    cb.add_argument("--lead-hours", type=float, default=24.0)
+    cb.add_argument("--primary-lateness-minutes", type=float, default=60.0)
+    pr = sub.add_parser(
+        "prospective-run",
+        help="Capture market then append newly due games to the chronological prospective holdout",
+    )
+    pr.add_argument("--data", default="data")
+    pr.add_argument("--model", default="artifacts/backtest/model")
+    pr.add_argument("--ledger", default="artifacts/chronological_holdout")
+    pr.add_argument("--season", type=int, required=True)
+    pr.add_argument("--now", default=None)
+    pr.add_argument("--lead-hours", type=float, default=24.0)
+    pr.add_argument("--market", default="data/market_history.csv")
+    pr.add_argument("--market-provider", default=None)
+    pr.add_argument("--draws", type=int, default=50000)
+    pr.add_argument("--primary-lateness-minutes", type=float, default=60.0)
+    pr.add_argument("--skip-market-capture", action="store_true")
+    wf = sub.add_parser("weekly-forecast", help="Forecast the next upcoming FBS slate")
+    wf.add_argument("--data", default="data")
+    wf.add_argument("--model", default="artifacts/backtest/model")
+    wf.add_argument("--out", default="artifacts")
+    wf.add_argument("--season", type=int, required=True)
+    wf.add_argument("--week", type=int, default=None)
+    wf.add_argument("--as-of", default=None)
+    wf.add_argument("--market", default=None)
+    wf.add_argument("--draws", type=int, default=50000)
+    rr = sub.add_parser("results-refresh", help="Retrieve live scores from ESPN's public scoreboard API")
+    rr.add_argument("--data", default="data")
+    rr.add_argument("--out", default="artifacts/results")
+    rr.add_argument("--season", type=int, required=True)
+    rr.add_argument("--week", type=int, default=None)
+    rr.add_argument("--start", default=None)
+    rr.add_argument("--end", default=None)
+    sb = sub.add_parser("season-backtest", help="Reconstruct and grade weekly forecasts across a season")
+    sb.add_argument("--data", default="data")
+    sb.add_argument("--model", default="artifacts/backtest/model")
+    sb.add_argument("--out", default="artifacts/backtest")
+    sb.add_argument("--season", type=int, required=True)
+    sb.add_argument("--draws", type=int, default=50000)
+    sb.add_argument("--lead-hours", type=float, default=48.0)
     cw = sub.add_parser(
         "capture-weather",
         help="Capture pregame weather for a slate of games through Open-Meteo",
@@ -144,8 +221,9 @@ def main():
         help="Optional list of team IDs; omit to capture the general feed",
     )
     cnw.add_argument("--out", required=True)
-    cnw.add_argument("--injury-out", default=None,
-                     help="Optional path for an injury-only CSV filtered from the capture")
+    cnw.add_argument(
+        "--injury-out", default=None, help="Optional path for an injury-only CSV filtered from the capture"
+    )
     cnw.add_argument("--observed-at", default=None)
     cnw.add_argument("--timeout", type=float, default=15.0)
     chrs = sub.add_parser(
@@ -161,101 +239,355 @@ def main():
         "player-ppg",
         help="Compute per-player season-to-date PPG from a player-game stats parquet or CSV",
     )
-    pp.add_argument("--player-games", required=True,
-                    help="Path to a player-game stats parquet or CSV with scoring columns")
+    pp.add_argument(
+        "--player-games",
+        required=True,
+        help="Path to a player-game stats parquet or CSV with scoring columns",
+    )
     pp.add_argument("--as-of", required=True)
     pp.add_argument("--season", type=int, default=None)
     pp.add_argument("--out", required=True)
     pp.add_argument("--min-games", type=int, default=1)
-    args=parser.parse_args()
-    if args.command=="fetch":
+
+    # Continuous prospective-learning loop: freeze, settle, blend, daily cycle.
+    lf = sub.add_parser(
+        "learning-freeze",
+        help="Freeze immutable pre-kickoff prediction records for a forecast batch",
+    )
+    lf.add_argument("--data", default="data")
+    lf.add_argument("--forecasts", required=True, help="forecasts.csv from a forecast/weekly run")
+    lf.add_argument("--as-of", required=True)
+    lf.add_argument("--market", default=None)
+    lf.add_argument("--weather", default=None)
+    lf.add_argument("--injuries", default=None)
+    lf.add_argument("--player-ppg", default=None)
+    lf.add_argument(
+        "--heads", default="artifacts/model-conditional", help="Directory of trained conditional heads"
+    )
+    lf.add_argument("--ledger", default="artifacts/learning")
+    lf.add_argument("--decay", type=float, default=1.0)
+
+    lt = sub.add_parser(
+        "learning-train",
+        help="Refit the rating-free conditional score heads (ridge/logit/gbm) on all settled games",
+    )
+    lt.add_argument("--data", default="data")
+    lt.add_argument("--heads", default="artifacts/model-conditional")
+    lt.add_argument("--as-of", default=None)
+    lt.add_argument("--venues", default=None)
+    lt.add_argument("--weather", default=None)
+    lt.add_argument("--injuries", default=None)
+    lt.add_argument("--player-ppg", default=None)
+
+    ls = sub.add_parser(
+        "learning-settle",
+        help="Grade frozen predictions against finals and update the adaptive expert blend",
+    )
+    ls.add_argument("--data", default="data")
+    ls.add_argument("--ledger", default="artifacts/learning")
+    ls.add_argument("--as-of", default=None)
+    ls.add_argument("--decay", type=float, default=1.0)
+
+    lb = sub.add_parser("learning-weights", help="Show the current learned expert blend weights")
+    lb.add_argument("--ledger", default="artifacts/learning")
+
+    la = sub.add_parser(
+        "learning-audit",
+        help="Statistical post-mortem of settled prospective predictions (scipy/sklearn)",
+    )
+    la.add_argument("--ledger", default="artifacts/learning")
+    la.add_argument("--out", default=None, help="Optional JSON path for the audit report")
+
+    cln = sub.add_parser(
+        "clean-data",
+        help="Clean raw sources and write organized artifacts to data/clean/ (raw files untouched)",
+    )
+    cln.add_argument("--data", default="data")
+    cln.add_argument("--out", default=None, help="Output directory (default: <data>/clean)")
+
+    dc = sub.add_parser(
+        "daily-cycle",
+        help="Run one full ingest -> settle -> forecast -> freeze learning pass",
+    )
+    dc.add_argument("--data", default="data")
+    dc.add_argument("--model", default="artifacts/backtest/model")
+    dc.add_argument("--out", default="artifacts")
+    dc.add_argument("--season", type=int, default=None)
+    dc.add_argument("--as-of", default=None)
+    dc.add_argument("--market", default=None)
+    dc.add_argument("--weather", default=None)
+    dc.add_argument("--injuries", default=None)
+    dc.add_argument("--player-ppg", default=None)
+    dc.add_argument("--draws", type=int, default=50000)
+    dc.add_argument("--decay", type=float, default=1.0)
+    dc.add_argument("--force", action="store_true", help="Rerun even if today's cycle completed")
+    dc.add_argument("--no-results-refresh", action="store_true")
+    dc.add_argument("--loop", action="store_true", help="Run forever on an interval (container mode)")
+    dc.add_argument("--interval-minutes", type=float, default=1440.0)
+
+    dbi = sub.add_parser("db-init", help="Apply the canonical PostgreSQL schema (single database)")
+    dbi.add_argument("--dsn", default=None, help="PostgreSQL DSN (default: $CFB_POSTGRES_DSN)")
+    dbs = sub.add_parser("db-status", help="Row counts for every table in the canonical database")
+    dbs.add_argument("--dsn", default=None)
+    dbp = sub.add_parser("db-params", help="Show the latest CRAFT fit parameters (paper-aligned defaults)")
+    dbp.add_argument("--dsn", default=None)
+
+    args = parser.parse_args()
+    if args.command == "fetch":
         from .data import fetch as run
-        run(args.data,args.seasons,args.refresh,args.raw_pbp)
-    elif args.command=="backtest":
+
+        run(args.data, args.seasons, args.refresh, args.raw_pbp)
+    elif args.command == "backtest":
         from .backtest import run_backtest
-        result,spec=run_backtest(args.data,args.out,args.archive,args.warmup,args.train_start,args.validation,args.test)
-        print(result.to_string(index=False)); print("selected production variant:",spec["selected_variant"])
-    elif args.command=="forecast":
+
+        result, spec = run_backtest(
+            args.data, args.out, args.archive, args.warmup, args.train_start, args.validation, args.test
+        )
+        print(result.to_string(index=False))
+        print("selected production variant:", spec["selected_variant"])
+    elif args.command == "forecast":
         from .forecast import forecast
-        result=forecast(args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.draws,args.market_provider)
-        print(result[["away_team","home_team","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
-    elif args.command=="forecast-advance":
+
+        result = forecast(
+            args.data,
+            args.model,
+            args.out,
+            args.as_of,
+            args.through,
+            args.season,
+            args.market,
+            args.draws,
+            args.market_provider,
+        )
+        print(
+            result[
+                [
+                    "away_team",
+                    "home_team",
+                    "expected_away_score",
+                    "expected_home_score",
+                    "home_win_probability",
+                    "projected_home_margin",
+                ]
+            ].to_string(index=False)
+        )
+    elif args.command == "forecast-advance":
         from .forecast import advance_forecast_snapshot
-        result=advance_forecast_snapshot(args.previous,args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.draws,args.market_provider)
-        print(result[["away_team","home_team","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
-    elif args.command=="market-import":
+
+        result = advance_forecast_snapshot(
+            args.previous,
+            args.data,
+            args.model,
+            args.out,
+            args.as_of,
+            args.through,
+            args.season,
+            args.market,
+            args.draws,
+            args.market_provider,
+        )
+        print(
+            result[
+                [
+                    "away_team",
+                    "home_team",
+                    "expected_away_score",
+                    "expected_home_score",
+                    "home_win_probability",
+                    "projected_home_margin",
+                ]
+            ].to_string(index=False)
+        )
+    elif args.command == "market-import":
         from .market import import_market_file
-        result=import_market_file(args.input,args.store,args.provider,args.source)
+
+        result = import_market_file(args.input, args.store, args.provider, args.source)
         print(f"market snapshots: {len(result)} -> {args.store}")
-    elif args.command=="market-init":
+    elif args.command == "market-init":
         from .market import empty_market_history
+
         print(empty_market_history(args.store))
-    elif args.command=="market-snapshot-sdv":
+    elif args.command == "market-snapshot-sdv":
         from .market import capture_sportsdataverse_snapshot
-        r=capture_sportsdataverse_snapshot(args.season,args.store,args.observed_at); print(f"market snapshots: {len(r)} -> {args.store}")
-    elif args.command=="market-backfill-sdv":
+
+        r = capture_sportsdataverse_snapshot(args.season, args.store, args.observed_at)
+        print(f"market snapshots: {len(r)} -> {args.store}")
+    elif args.command == "market-backfill-sdv":
         from .market import backfill_sportsdataverse_closing
-        r=backfill_sportsdataverse_closing(args.seasons,args.out); print(f"closing-market rows: {len(r)} -> {args.out}")
-    elif args.command=="distribution-backtest":
+
+        r = backfill_sportsdataverse_closing(args.seasons, args.out)
+        print(f"closing-market rows: {len(r)} -> {args.out}")
+    elif args.command == "distribution-backtest":
         import json
 
         from .distribution import validate_heldout_distribution
-        preds=pd.read_csv(args.predictions); models={}
-        for v in ["score","pbp"]:
-            models[v]=json.loads((Path(args.models)/v/"heldout"/"model.json").read_text())
-        r=validate_heldout_distribution(preds,models); Path(args.out).parent.mkdir(parents=True,exist_ok=True); r.to_csv(args.out,index=False); print(r.to_string(index=False))
-    elif args.command=="holdout-freeze":
+
+        preds = pd.read_csv(args.predictions)
+        models = {}
+        for v in ["score", "pbp"]:
+            models[v] = json.loads((Path(args.models) / v / "heldout" / "model.json").read_text())
+        r = validate_heldout_distribution(preds, models)
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        r.to_csv(args.out, index=False)
+        print(r.to_string(index=False))
+    elif args.command == "holdout-freeze":
         from .holdout import freeze_holdout
-        path,receipt=freeze_holdout(args.forecast,args.data,args.model,args.out,args.batch_id,args.freeze_at)
-        print(path); print(pd.Series(receipt).to_string())
-    elif args.command=="holdout-settle":
+
+        path, receipt = freeze_holdout(
+            args.forecast, args.data, args.model, args.out, args.batch_id, args.freeze_at
+        )
+        print(path)
+        print(pd.Series(receipt).to_string())
+    elif args.command == "holdout-settle":
         from .holdout import settle_holdout
-        _,summary=settle_holdout(args.holdout,args.data)
+
+        _, summary = settle_holdout(args.holdout, args.data)
         print(pd.Series(summary).to_string())
-    elif args.command=="holdout-verify":
+    elif args.command == "holdout-verify":
         from .holdout import verify_holdout
+
         print(pd.Series(verify_holdout(args.holdout)).to_string())
-    elif args.command=="chronology-update":
+    elif args.command == "chronology-update":
         from .chronology import run_chronological_update
-        ledger,added,receipt=run_chronological_update(args.data,args.model,args.ledger,args.season,args.now,args.lead_hours,args.market,args.draws,args.market_provider,args.primary_lateness_minutes)
+
+        ledger, added, receipt = run_chronological_update(
+            args.data,
+            args.model,
+            args.ledger,
+            args.season,
+            args.now,
+            args.lead_hours,
+            args.market,
+            args.draws,
+            args.market_provider,
+            args.primary_lateness_minutes,
+        )
         if len(added):
-            print(added[["away_team","home_team","kickoff","scheduled_cutoff","actual_forecast_at","actual_lead_hours","cutoff_delay_minutes","primary_cutoff_eligible","market_status"]].to_string(index=False))
+            print(
+                added[
+                    [
+                        "away_team",
+                        "home_team",
+                        "kickoff",
+                        "scheduled_cutoff",
+                        "actual_forecast_at",
+                        "actual_lead_hours",
+                        "cutoff_delay_minutes",
+                        "primary_cutoff_eligible",
+                        "market_status",
+                    ]
+                ].to_string(index=False)
+            )
         print(pd.Series(receipt).to_string())
-    elif args.command=="chronology-verify":
+    elif args.command == "chronology-verify":
         from .chronology import verify_chronological_ledger
+
         print(pd.Series(verify_chronological_ledger(args.ledger)).to_string())
-    elif args.command=="chronology-settle":
+    elif args.command == "chronology-settle":
         from .chronology import settle_chronological_ledger
-        _,summary=settle_chronological_ledger(args.ledger,args.data,args.settled_at)
+
+        _, summary = settle_chronological_ledger(args.ledger, args.data, args.settled_at)
         print(pd.Series(summary).to_string())
-    elif args.command=="chronology-bootstrap":
+    elif args.command == "chronology-bootstrap":
         from .chronology import bootstrap_from_frozen_batch
-        ledger,manifest=bootstrap_from_frozen_batch(args.frozen_batch,args.ledger,args.lead_hours,args.primary_lateness_minutes)
-        print(ledger[["away_team","home_team","kickoff","scheduled_cutoff","actual_forecast_at","actual_lead_hours","cutoff_delay_minutes","primary_cutoff_eligible","market_status"]].to_string(index=False))
+
+        ledger, manifest = bootstrap_from_frozen_batch(
+            args.frozen_batch, args.ledger, args.lead_hours, args.primary_lateness_minutes
+        )
+        print(
+            ledger[
+                [
+                    "away_team",
+                    "home_team",
+                    "kickoff",
+                    "scheduled_cutoff",
+                    "actual_forecast_at",
+                    "actual_lead_hours",
+                    "cutoff_delay_minutes",
+                    "primary_cutoff_eligible",
+                    "market_status",
+                ]
+            ].to_string(index=False)
+        )
         print(f"chronological games: {len(ledger)}")
-    elif args.command=="prospective-run":
+    elif args.command == "prospective-run":
         from .collector import run_prospective_collection
-        ledger,added,receipt=run_prospective_collection(args.data,args.model,args.ledger,args.season,args.now,args.lead_hours,args.market,args.market_provider,args.draws,args.primary_lateness_minutes,not args.skip_market_capture)
+
+        ledger, added, receipt = run_prospective_collection(
+            args.data,
+            args.model,
+            args.ledger,
+            args.season,
+            args.now,
+            args.lead_hours,
+            args.market,
+            args.market_provider,
+            args.draws,
+            args.primary_lateness_minutes,
+            not args.skip_market_capture,
+        )
         if len(added):
-            print(added[["away_team","home_team","kickoff","scheduled_cutoff","actual_forecast_at","actual_lead_hours","cutoff_delay_minutes","primary_cutoff_eligible","market_status"]].to_string(index=False))
+            print(
+                added[
+                    [
+                        "away_team",
+                        "home_team",
+                        "kickoff",
+                        "scheduled_cutoff",
+                        "actual_forecast_at",
+                        "actual_lead_hours",
+                        "cutoff_delay_minutes",
+                        "primary_cutoff_eligible",
+                        "market_status",
+                    ]
+                ].to_string(index=False)
+            )
         print(pd.Series(receipt).to_string())
-    elif args.command=="results-refresh":
+    elif args.command == "results-refresh":
         from .results import refresh_results
-        results,manifest=refresh_results(args.data,args.out,args.season,args.week,args.start,args.end)
+
+        results, manifest = refresh_results(args.data, args.out, args.season, args.week, args.start, args.end)
         print(pd.DataFrame([manifest]).to_string(index=False))
-        print(results[["game_id","status","is_final","away_team","away_points","home_team","home_points"]].tail(20).to_string(index=False))
-    elif args.command=="season-backtest":
+        print(
+            results[["game_id", "status", "is_final", "away_team", "away_points", "home_team", "home_points"]]
+            .tail(20)
+            .to_string(index=False)
+        )
+    elif args.command == "season-backtest":
         from .season_backtest import run_season_backtest
-        metrics,summary=run_season_backtest(args.data,args.model,args.out,args.season,args.draws,args.lead_hours)
+
+        metrics, summary = run_season_backtest(
+            args.data, args.model, args.out, args.season, args.draws, args.lead_hours
+        )
         print(pd.DataFrame([summary]).to_string(index=False))
         print(metrics.to_string(index=False))
-    elif args.command=="weekly-forecast":
+    elif args.command == "weekly-forecast":
         from .weekly import run_weekly_forecast
-        result,manifest=run_weekly_forecast(args.data,args.model,args.out,args.season,args.week,args.as_of,args.market,args.draws)
+
+        result, manifest = run_weekly_forecast(
+            args.data, args.model, args.out, args.season, args.week, args.as_of, args.market, args.draws
+        )
         print(pd.DataFrame([manifest]).to_string(index=False))
-        print(result[["away_team","home_team","kickoff","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
+        print(
+            result[
+                [
+                    "away_team",
+                    "home_team",
+                    "kickoff",
+                    "expected_away_score",
+                    "expected_home_score",
+                    "home_win_probability",
+                    "projected_home_margin",
+                ]
+            ].to_string(index=False)
+        )
     elif args.command == "capture-weather":
-        from .capture_log import CAPTURE_LOG_FILENAME, append_capture, read_capture_log, summarize_capture_log
+        from .capture_log import (
+            CAPTURE_LOG_FILENAME,
+            append_capture,
+            read_capture_log,
+            summarize_capture_log,
+        )
         from .venues import load_venues
         from .weather import enrich_forecasts_with_weather
 
@@ -263,9 +595,7 @@ def main():
         venues = load_venues(args.venues)
         out = Path(args.out)
         out.mkdir(parents=True, exist_ok=True)
-        enriched, captures = enrich_forecasts_with_weather(
-            forecasts, venues, timeout=args.timeout
-        )
+        enriched, captures = enrich_forecasts_with_weather(forecasts, venues, timeout=args.timeout)
         enriched.to_csv(out / "forecasts_with_weather.csv", index=False)
         log_path = out / CAPTURE_LOG_FILENAME
         for row in captures:
@@ -288,7 +618,12 @@ def main():
         print(pd.Series(summary["status_counts_by_source"].get("weather.open-meteo", {})).to_string())
         print(f"wrote {len(enriched)} rows to {out}/forecasts_with_weather.csv")
     elif args.command == "capture-injuries":
-        from .capture_log import CAPTURE_LOG_FILENAME, append_capture, read_capture_log, summarize_capture_log
+        from .capture_log import (
+            CAPTURE_LOG_FILENAME,
+            append_capture,
+            read_capture_log,
+            summarize_capture_log,
+        )
         from .injuries import fetch_injuries_for_games, summarize_reports
 
         out = Path(args.out)
@@ -328,9 +663,7 @@ def main():
                 extra={"team_id": capture.team_id, "player_count": capture.count},
             )
             frames.append(capture.to_frame())
-        pd.concat(frames, ignore_index=True).to_csv(
-            out / "rosters_current.csv", index=False
-        )
+        pd.concat(frames, ignore_index=True).to_csv(out / "rosters_current.csv", index=False)
         print(pd.Series(summarize_captures(captures)).to_string())
         print(f"wrote {out}/rosters_current.csv")
     elif args.command == "capture-historical-rosters":
@@ -358,9 +691,7 @@ def main():
                 extra={"season": season, "player_count": capture.count},
             )
             frames.append(capture.to_frame())
-        pd.concat(frames, ignore_index=True).to_csv(
-            out / "rosters_historical.csv", index=False
-        )
+        pd.concat(frames, ignore_index=True).to_csv(out / "rosters_historical.csv", index=False)
         print(pd.Series(summarize_captures(captures)).to_string())
         print(f"wrote {out}/rosters_historical.csv")
     elif args.command == "season-ppg":
@@ -418,9 +749,7 @@ def main():
             ]
         frames = [capture.to_frame() for capture in captures]
         combined = (
-            pd.concat(frames, ignore_index=True)
-            if any(not frame.empty for frame in frames)
-            else frames[0]
+            pd.concat(frames, ignore_index=True) if any(not frame.empty for frame in frames) else frames[0]
         )
         combined.to_csv(out / "news.csv", index=False)
         log_path = out / CAPTURE_LOG_FILENAME
@@ -458,9 +787,7 @@ def main():
         )
         frames = [capture.to_frame() for capture in captures]
         combined = (
-            pd.concat(frames, ignore_index=True)
-            if any(not frame.empty for frame in frames)
-            else frames[0]
+            pd.concat(frames, ignore_index=True) if any(not frame.empty for frame in frames) else frames[0]
         )
         combined.to_csv(out / "rosters_historical_span.csv", index=False)
         log_path = out / CAPTURE_LOG_FILENAME
@@ -535,3 +862,137 @@ def main():
         )
         pd.DataFrame(capture.to_rows()).to_csv(out / "nfl_scoreboard.csv", index=False)
         print(pd.Series(capture.to_record()).to_string())
+    elif args.command == "learning-freeze":
+        from .learning import freeze_upcoming
+
+        forecasts = pd.read_csv(args.forecasts)
+        if "kickoff" not in forecasts.columns and "start_date" in forecasts.columns:
+            forecasts = forecasts.rename(columns={"start_date": "kickoff"})
+
+        def _optional_capture(path):
+            return pd.read_csv(path) if path and Path(path).exists() else None
+
+        enriched = freeze_upcoming(
+            args.data,
+            forecasts,
+            as_of=args.as_of,
+            market_path=args.market,
+            weather=_optional_capture(args.weather),
+            injuries=_optional_capture(args.injuries),
+            player_ppg=_optional_capture(args.player_ppg),
+            ledger_dir=args.ledger,
+            heads_dir=args.heads,
+            decay=args.decay,
+        )
+        print(f"froze {len(enriched)} pre-kickoff prediction records into {args.ledger}")
+        expert_columns = [
+            f"expert_{name}_p"
+            for name in ("ridge", "logit", "gbm", "matchup", "market")
+            if f"expert_{name}_p" in enriched.columns
+        ]
+        print(enriched[["game_id", *expert_columns, "blend_p_home"]].to_string(index=False))
+    elif args.command == "learning-train":
+        from .learning import train_heads
+
+        def _capture(path):
+            return pd.read_csv(path) if path and Path(path).exists() else None
+
+        summary = train_heads(
+            args.data,
+            args.heads,
+            as_of=args.as_of,
+            venues=_capture(args.venues),
+            weather=_capture(args.weather),
+            injuries=_capture(args.injuries),
+            player_ppg=_capture(args.player_ppg),
+        )
+        print(json.dumps(summary, indent=2, default=float))
+    elif args.command == "learning-settle":
+        from .learning import settle_learning
+
+        summary = settle_learning(
+            args.data,
+            ledger_dir=args.ledger,
+            as_of=args.as_of,
+            decay=args.decay,
+        )
+        print(f"settled {summary['settled']} games; {summary['pending']} pending")
+        print("learned weights:", json.dumps(summary["weights"], indent=2))
+    elif args.command == "learning-weights":
+        from .adaptive import AdaptiveBlend
+        from .learning import BLEND_STATE_FILE
+
+        state_path = Path(args.ledger) / BLEND_STATE_FILE
+        blend = AdaptiveBlend.load(state_path) if state_path.exists() else AdaptiveBlend()
+        print(json.dumps({"weights": blend.weights(), "experts": blend.to_dict()}, indent=2))
+    elif args.command == "learning-audit":
+        from .learning import BLEND_STATE_FILE, learning_audit
+
+        report = learning_audit(
+            ledger_dir=args.ledger,
+            blend_path=Path(args.ledger) / BLEND_STATE_FILE,
+        )
+        text = json.dumps(report, indent=2, default=float)
+        if args.out:
+            out_path = Path(args.out)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(text + "\n")
+            print(f"audit written to {out_path} ({report['settled_games']} settled games)")
+        else:
+            print(text)
+    elif args.command == "clean-data":
+        from .clean import clean_all
+
+        result = clean_all(args.data, args.out)
+        print(json.dumps(result["report"], indent=2))
+    elif args.command == "daily-cycle":
+        from .daily import run_daily_cycle, run_loop
+
+        kwargs = {
+            "data_root": args.data,
+            "model_root": args.model,
+            "out_root": args.out,
+            "season": args.season,
+            "as_of": args.as_of,
+            "market_path": args.market,
+            "weather_path": args.weather,
+            "injuries_path": args.injuries,
+            "player_ppg_path": args.player_ppg,
+            "draws": args.draws,
+            "decay": args.decay,
+            "force": args.force,
+            "results_refresh": not args.no_results_refresh,
+        }
+        if args.loop:
+            run_loop(args.interval_minutes, **kwargs)
+        else:
+            report = run_daily_cycle(**kwargs)
+            print(json.dumps(report, indent=2, default=str))
+    elif args.command == "db-init":
+        from .db import connect, init_schema
+
+        with connect(args.dsn) as conn:
+            init_schema(conn)
+        print("schema applied (single canonical database, docs/GLOSSARY.md)")
+    elif args.command == "db-status":
+        from .db import connect
+
+        tables = [
+            "teams", "venues", "games", "team_games", "weather_observations",
+            "injury_reports", "player_ppg", "market_lines", "predictions",
+            "settled_truth", "prediction_outcomes", "blend_weights",
+            "craft_parameters", "cleaning_log", "cycle_runs",
+        ]
+        with connect(args.dsn) as conn:
+            for t in tables:
+                n = conn.execute(f"SELECT count(*) AS n FROM {t}").fetchone()["n"]  # noqa: S608
+                print(f"{t:24s} {n}")
+    elif args.command == "db-params":
+        from .db import connect, load_craft_parameters
+
+        with connect(args.dsn) as conn:
+            params = load_craft_parameters(conn)
+        if params is None:
+            print("no CRAFT fit recorded yet; paper-aligned defaults live in schema/schema.sql")
+        else:
+            print(json.dumps(params, indent=2, default=str))

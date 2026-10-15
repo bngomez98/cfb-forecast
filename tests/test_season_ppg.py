@@ -1,4 +1,5 @@
 """Tests for the season-to-date PPG module."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -81,9 +82,7 @@ def _fixture_schedule() -> pd.DataFrame:
 def test_compute_season_ppg_counts_only_games_before_cutoff():
     schedules = _fixture_schedule()
     # After week 1 only (game 1 and 2 are available ~kickoff+8h).
-    ppg = compute_season_ppg(
-        schedules, season=2026, as_of="2026-09-05T00:00:00Z"
-    )
+    ppg = compute_season_ppg(schedules, season=2026, as_of="2026-09-05T00:00:00Z")
     teams = {int(row.team_id): row for row in ppg.itertuples()}
     assert set(teams) == {100, 200, 300, 400}
     assert teams[100].games_played_to_date == 1
@@ -95,9 +94,7 @@ def test_compute_season_ppg_counts_only_games_before_cutoff():
 
 def test_compute_season_ppg_includes_week_two_once_available():
     schedules = _fixture_schedule()
-    ppg = compute_season_ppg(
-        schedules, season=2026, as_of="2026-09-08T12:00:00Z"
-    )
+    ppg = compute_season_ppg(schedules, season=2026, as_of="2026-09-08T12:00:00Z")
     teams = {int(row.team_id): row for row in ppg.itertuples()}
     # Team 100 played both games (35 scored, 14 allowed) and (28 scored, 24 allowed).
     row_100 = teams[100]
@@ -110,9 +107,7 @@ def test_compute_season_ppg_includes_week_two_once_available():
 
 def test_compute_season_ppg_excludes_fbs_vs_fcs_by_default():
     schedules = _fixture_schedule()
-    ppg = compute_season_ppg(
-        schedules, season=2026, as_of="2026-09-10T00:00:00Z"
-    )
+    ppg = compute_season_ppg(schedules, season=2026, as_of="2026-09-10T00:00:00Z")
     teams = {int(row.team_id): row for row in ppg.itertuples()}
     # Team 200's FCS game should not count: only their week 1 game contributes.
     assert teams[200].games_played_to_date == 1
@@ -135,18 +130,14 @@ def test_compute_season_ppg_includes_fcs_when_flag_disabled():
 
 def test_compute_season_ppg_empty_before_any_games():
     schedules = _fixture_schedule()
-    ppg = compute_season_ppg(
-        schedules, season=2026, as_of="2026-08-25T00:00:00Z"
-    )
+    ppg = compute_season_ppg(schedules, season=2026, as_of="2026-08-25T00:00:00Z")
     assert list(ppg.columns) == PPG_COLUMNS
     assert len(ppg) == 0
 
 
 def test_attach_ppg_to_forecasts_adds_both_sides_columns():
     schedules = _fixture_schedule()
-    ppg = compute_season_ppg(
-        schedules, season=2026, as_of="2026-09-10T00:00:00Z"
-    )
+    ppg = compute_season_ppg(schedules, season=2026, as_of="2026-09-10T00:00:00Z")
     forecasts = pd.DataFrame(
         [{"game_id": 99, "home_id": 100, "away_id": 300, "kickoff": "2026-09-13T19:00Z"}]
     )
@@ -160,9 +151,7 @@ def test_attach_ppg_to_forecasts_adds_both_sides_columns():
 
 
 def test_attach_ppg_to_forecasts_handles_empty_ppg_table():
-    forecasts = pd.DataFrame(
-        [{"game_id": 1, "home_id": 100, "away_id": 300, "kickoff": "2026-08-20T19:00Z"}]
-    )
+    forecasts = pd.DataFrame([{"game_id": 1, "home_id": 100, "away_id": 300, "kickoff": "2026-08-20T19:00Z"}])
     empty_ppg = pd.DataFrame(columns=PPG_COLUMNS)
     enriched = attach_ppg_to_forecasts(forecasts, empty_ppg)
     assert pd.isna(enriched.loc[0, "home_ppg_scored"])
@@ -171,12 +160,8 @@ def test_attach_ppg_to_forecasts_handles_empty_ppg_table():
 
 def test_attach_ppg_to_forecasts_leaves_unknown_teams_as_nan():
     schedules = _fixture_schedule()
-    ppg = compute_season_ppg(
-        schedules, season=2026, as_of="2026-09-05T00:00:00Z"
-    )
-    forecasts = pd.DataFrame(
-        [{"game_id": 1, "home_id": 100, "away_id": 999, "kickoff": "2026-09-13T19:00Z"}]
-    )
+    ppg = compute_season_ppg(schedules, season=2026, as_of="2026-09-05T00:00:00Z")
+    forecasts = pd.DataFrame([{"game_id": 1, "home_id": 100, "away_id": 999, "kickoff": "2026-09-13T19:00Z"}])
     enriched = attach_ppg_to_forecasts(forecasts, ppg)
     assert enriched.loc[0, "home_ppg_scored"] == 35.0
     assert pd.isna(enriched.loc[0, "away_ppg_scored"])

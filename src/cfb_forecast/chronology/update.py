@@ -1,4 +1,5 @@
 """Append all currently-due games to the chronological ledger."""
+
 from __future__ import annotations
 
 import json
@@ -167,14 +168,18 @@ def run_chronological_update(
     schedule_paths = sorted(Path(data_root).glob("schedule_*.csv"))
     if not schedule_paths:
         raise FileNotFoundError("No schedule_*.csv files found")
-    schedules = normalize_schedule(
-        pd.concat([pd.read_csv(p) for p in schedule_paths], ignore_index=True)
-    )
+    schedules = normalize_schedule(pd.concat([pd.read_csv(p) for p in schedule_paths], ignore_index=True))
     done = ledger.game_id.astype(int).tolist() if len(ledger) else []
     due = select_due_games(schedules, season, at, lead_hours, done)
-    log.info("chronology.update: season=%s now=%s due=%d already=%d", season, at.isoformat(), len(due), len(done))
+    log.info(
+        "chronology.update: season=%s now=%s due=%d already=%d", season, at.isoformat(), len(due), len(done)
+    )
     if due.empty:
-        return ledger.copy(), pd.DataFrame(), {"status": "no_due_games", "as_of": at.isoformat(), "games_added": 0}
+        return (
+            ledger.copy(),
+            pd.DataFrame(),
+            {"status": "no_due_games", "as_of": at.isoformat(), "games_added": 0},
+        )
 
     run_id = f"run_{at.strftime('%Y%m%dT%H%M%SZ')}"
     if any(r.get("run_id") == run_id for r in manifest.get("runs", [])):
@@ -227,11 +232,14 @@ def run_chronological_update(
     added = pd.DataFrame(rows, columns=LEDGER_COLUMNS)
     combined = pd.concat([ledger, added], ignore_index=True)
     combined["_order"] = pd.to_datetime(combined.actual_forecast_at, utc=True)
-    combined = combined.sort_values(["_order", "scheduled_cutoff", "kickoff", "game_id"]).drop(columns="_order")
+    combined = combined.sort_values(["_order", "scheduled_cutoff", "kickoff", "game_id"]).drop(
+        columns="_order"
+    )
     if combined.game_id.duplicated().any():
         raise ValueError("Chronological update attempted to duplicate a game forecast")
-    if (pd.to_datetime(combined.actual_forecast_at, utc=True)
-            >= pd.to_datetime(combined.kickoff, utc=True)).any():
+    if (
+        pd.to_datetime(combined.actual_forecast_at, utc=True) >= pd.to_datetime(combined.kickoff, utc=True)
+    ).any():
         raise ValueError("Chronological ledger contains a forecast at/after kickoff")
     prior_hash = ledger_hash(root / "ledger.csv")
     combined.to_csv(root / "ledger.csv", index=False)
