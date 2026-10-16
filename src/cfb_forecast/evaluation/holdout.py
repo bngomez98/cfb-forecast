@@ -52,13 +52,16 @@ def freeze_holdout(forecast_dir, data_root, model_root, holdout_root, batch_id=N
         market_copy=src/market_file
         if not market_copy.exists() or sha256(market_copy)!=market_hash:
             raise ValueError("Forecast market snapshot no longer matches manifest")
+    for name, expected in manifest.get("joint_artifact_hashes", {}).items():
+        if Path(name).name != name or not (src/name).exists() or sha256(src/name) != expected:
+            raise ValueError(f"Joint posterior artifact hash mismatch: {name}")
     batch_id=batch_id or f"prospective_{freeze_at.strftime('%Y%m%dT%H%M%SZ')}"
     dst=root/batch_id
     if dst.exists():
         raise FileExistsError(dst)
     dst.mkdir(parents=True)
     (dst/"forecast").mkdir(); (dst/"inputs"/"data").mkdir(parents=True); (dst/"inputs"/"model").mkdir(parents=True)
-    for name in ["forecasts.csv","forecasts.json","forecast_manifest.json","data_availability.json","state_snapshot.npz","score_distribution.parquet","margin_distribution.parquet","total_distribution.parquet","score_distribution.csv","margin_distribution.csv","total_distribution.csv"]:
+    for name in ["forecasts.csv","forecasts.json","forecast_manifest.json","data_availability.json","state_snapshot.npz","score_distribution.parquet","margin_distribution.parquet","total_distribution.parquet","score_distribution.csv","margin_distribution.csv","total_distribution.csv", "joint_player_model.json", "joint_player_precision.npz", "joint_player_inputs.json"]:
         p=src/name
         if p.exists(): shutil.copy2(p,dst/"forecast"/name)
     shutil.copy2(model/"model.json",dst/"inputs"/"model"/"model.json")

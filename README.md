@@ -8,6 +8,22 @@ The [design implementation status](docs/design/IMPLEMENTATION_STATUS.md) maps th
 
 The primary forecast now uses football inputs by default. Use `forecast --forecast-mode market_conditioned` for an explicitly separate calculation with market covariates. Both modes retain quotes for comparison and spread/total pricing. Published runs freeze full-precision predictions, numerical inputs, fitted parameters, state and source files; changing a saved run requires a new run ID. `evaluate-run` verifies those files and records later outcomes and errors separately. [Verification results](docs/verification/2026-10-15/README.md) describe this execution.
 
+## Current mathematical implementation
+
+The default forecast now fits **one conditional Gaussian hierarchical posterior**
+from team scores and individual player-game observations. Shared player ability,
+opponent role-defense and player–opponent matchup effects enter both player
+rates and team scoring. Their joint posterior covariance enters score, winner,
+spread and total uncertainty. Supplied availability probabilities are integrated
+as lineup scenarios with role-specific usage redistribution.
+
+See [the complete mathematics, database contract, assumptions and verification](docs/joint_player_model.md).
+The new family is not covered by the previous model's historical accuracy.
+`--legacy-score` explicitly reproduces the earlier team-only calculation.
+The following service/configuration sections retain operational reference;
+where they discuss the earlier ridge or context heads, those describe the
+legacy family rather than the new default posterior.
+
 ## Actual project configuration
 
 | Field | Value |
@@ -40,6 +56,17 @@ The editable install is the git checkout. On Linux that environment is `/home/br
 ## Architecture, pipelines, workflows, and sources
 
 The [attachment import record](docs/design/README.md) retains the supplied source design, archive comparison and uploaded change history. The [current implementation status](docs/design/IMPLEMENTATION_STATUS.md) records the executable changes in this update.
+
+The forecast reads game, team and player facts from the same database-backed
+history. Versioned player observations resolve game and opponent IDs; roster
+snapshots and known pregame context are selected before the information cutoff.
+The team/player hierarchy fits a common sparse posterior, then integrates
+player/opponent uncertainty and supplied availability scenarios into the game
+score distribution. Player-rate projections and game probabilities share those
+latent effects. Missing evidence remains explicitly unconfirmed. No separate
+ridge correction or independent context probability head is added to this
+family. Existing registered public sources retain capture receipts; their pages
+must be normalized and identified before they can become player observations.
 
 Forecasts come from one model, with an explicit football-only or market-conditioned input mode. A hierarchical team state sets the score location. Pregame team and player rates from the parquet seasons on disk (2000 through 2025, plus completed games after that) and known-future information (market line, total, rest, weather, and reported injuries) shift that location together. The same location is the Gaussian mean and the Poisson rate. The win probability is the Gaussian probability that the home score exceeds the away score. Spread and total probabilities are analytic Gaussian probabilities. A missing rate stays missing. Every recorded game in the previous season sets that season's mean; every completed game in the current season updates it. Those rates are stored in `team_game_facts` and `player_game_facts`, and the next weekly forecast reads them back into the same hierarchical state, Poisson rates, Gaussian scores, and Gaussian win probability. The prediction board shows kickoff, teams, expected score, winner, and confidence. Spreads and moneylines, team and player statistics, and method notes are separate pages. Weather comes from the ESPN game summary, and from Open-Meteo for the venue when that summary has none. CollegeFootballData lines enter the forecast from the key in `pyproject.toml`. Weather, team stats, and player stats are collected from the same API. FootballDB college offense, defense, scoring, and player pages are collected with the other sources. cfbtrack.com supplies current team and player season stats. A saved model keeps the warmup season it was fit with. Missing history is left missing; it is not replaced with a made-up season.
 
@@ -208,12 +235,12 @@ A failed run can be retried. Operating-system locking prevents concurrent writer
 10. Use the prices recorded when predictions were issued.
 11. Keep pending games pending.
 12. Build game features.
-13. Fit context candidates using earlier saved game inputs and later real results.
+13. Select timestamped context and identified player observations from the database.
 14. Reserve the latest prior week for model comparison before adoption.
-15. Replay eligible prior FBS results into opponent-adjusted team states.
+15. Fit team, player, role-defense, matchup and context effects in the common posterior.
 16. Calculate score expectations and winner, cover, and total probabilities directly from the fitted distribution.
 17. Do not generate simulated score samples in the live workflow.
-18. Apply the selected probability model and any validated context contribution.
+18. Integrate supplied availability scenarios without an independent probability overlay.
 19. Compare probabilities with the actual recorded prices.
 20. Enforce decision and exposure limits.
 21. Save the completed run.
@@ -282,6 +309,188 @@ https://www.footballdb.com
 The system does not treat the addresses as equivalent unless an actual redirect confirms the relationship.
 Every Sunday at 10:00 America/Chicago the service:
 
+A roster or active-player flag does not confirm a starting lineup.
+
+An empty injury response means that coverage is unavailable. It does not mean that every player is healthy.
+
+Context fields are collected first and retained as calculation inputs.
+
+Numeric weather, player statistics, team statistics, and reported injuries enter the context model only when:
+
+- Enough recorded pregame examples have actual outcomes.
+- The candidate improves validation log loss.
+- The candidate does not worsen Brier score.
+- The missingness indicators are retained.
+- The latest prior week remains reserved for comparison.
+
+Before that evidence exists, the base model remains active and the report explains why.
+
+The system does not invent:
+
+- Weather penalties.
+- Player replacement values.
+- Questionable-player probabilities.
+- Injury probabilities.
+- Starting-lineup assumptions.
+- Missing sportsbook prices.
+- Synthetic game results.
+
+## Models and measured development
+
+The engine fits dynamic Gaussian offense and defense states from prior FBS games.
+
+The score-only and PBP score heads use standardized regularized regression.
+
+The PBP head includes offense and defense interactions.
+
+A separate time-decayed ridge strength model implements opponent-adjusted margin ratings with:
+
+```text
+Half-life: 365 days
+Ridge penalty: 8 games
+Non-neutral venue adjustment: 3 points
+```
+
+Its logistic probability regularization is selected using the earlier validation season.
+
+Default historical training uses:
+
+```text
+Warmup season: 2021
+Initial fitting seasons: 2022–2023
+Settings and probability calibration: 2024
+Model comparison: 2025
+Prediction season: 2026
+```
+
+Models are subsequently refitted through 2025 for 2026 predictions.
+
+The Sunday initializer compares the strength model with the selected score head on 2025 data to choose the 2026 winner model.
+
+Because the 2025 comparison guides the deployment choice, 2025 is not an untouched evaluation of that final deployment choice.
+
+The current joint family derives score, winner, spread and total probabilities from one posterior predictive distribution. Its `probability_source` is `joint_player_posterior`.
+
+## Context learning
+
+Context learning uses saved pregame:
+
+- Weather.
+- Player statistics.
+- Team statistics.
+- Reported availability evidence.
+- Missingness indicators.
+
+The maximum logit adjustment is bounded.
+
+A context candidate requires at least:
+
+```text
+Three recorded weeks
+150 settled games
+```
+
+The latest prior week remains reserved for comparison.
+
+Outcome columns and betting prices cannot enter context features.
+
+## Probability audit
+
+Evaluate constrained probability fine-tuning and adversarial sensitivity using actual exported predictions:
+
+```bash
+python -m cfb_forecast probability-audit \
+  --input my_actual_predictions.csv \
+  --probability-column score_p \
+  --outcome-column home_win \
+  --max-change 0.05 \
+  --stress-radius 0.1 \
+  --out artifacts/probability-research
+```
+
+The CSV requires:
+
+```text
+game_id
+season
+The named probability column
+The named outcome column
+as_of and kickoff
+or forecast_cutoff and start_date
+```
+
+The required fields are:
+
+- `game_id` must be unique.
+- `season` must be an integer.
+- Probabilities must come from earlier-trained models.
+- Outcome values must be available for evaluation.
+- Time fields must identify the prediction information set.
+
+Each evaluation season receives calibration fitted only on prior seasons.
+
+**2. Expected points.** A regression turns the two teams' ratings into expected points for each side. The learning stage proposes refits with recent games counting more. It fits the candidate without the latest held-out games and checks its log loss on them: if the candidate is no worse than the current regression on those games, the status is `promoted` and the candidate takes over; otherwise the status is `retained` and the current regression stays in use. Forecasting uses whichever regression is selected; the Bayesian team ratings still update as results arrive.
+A single-season file produces a candidate for later use but cannot demonstrate later-season improvement.
+
+The constraint bounds changes on:
+
+- Clean fitting probabilities.
+- A dense probability grid.
+
+Stress testing maximizes loss within a coefficient-norm radius to measure local sensitivity.
+
+Stress testing does not:
+
+- Modify the deployed model.
+- Hide model activity.
+- Replace the production calibration.
+- Convert research output into a deployed model automatically.
+
+The uploaded adversarial document contains an MLP research outline, not an executable implementation.
+
+The production head is not an MLP. The experiment operates on actual probability-calibration coefficients.
+
+Published numbers from the uploaded methodology are not copied into application results.
+
+## Betting decisions
+
+Moneyline prices are converted to decimal odds.
+
+A two-sided no-vig probability is then computed.
+
+Edge and expected return are separate calculations.
+
+A separate team strength model (opponent-adjusted margins, with a 365-day half-life, an 8-game ridge penalty and a 3-point home edge) is fitted alongside and kept for comparison. Win chances always come from the forecasting model described above, read off the fitted logistic curve from the score margin; the strength model never sets a win chance.
+A hypothetical candidate requires:
+
+- At least two percentage points of edge.
+- Positive expected net return at the offered price.
+- Complete weather coverage.
+- Complete injury coverage.
+- Complete lineup coverage.
+- Complete player-input coverage.
+- Complete team-input coverage.
+
+Quarter-Kelly exposure is capped at:
+
+```text
+1% per game
+5% per slate
+```
+
+These are explicit operating settings. They are not evidence of profitability.
+
+Spread and total probabilities use the score distribution with continuity corrections for integer pushes.
+
+Validation uses the candidate and quote saved with the prediction.
+
+Missing odds produce no ROI claim.
+
+Reported unit returns are hypothetical. The application does not place bets.
+
+Sunday prices can change materially before kickoff.
+
+Unknown lineups or missing injury coverage suppress recommendations.
 1. Collects the latest schedules, results, weather, injuries, and market lines
 2. Validates previously saved predictions against final scores
 3. Produces forecasts for the coming Monday–Sunday slate

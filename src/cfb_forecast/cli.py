@@ -106,6 +106,11 @@ def main():
     pp=sub.add_parser("player-ppg",help="Player season-to-date points per game from a player-game stats file")
     pp.add_argument("--player-games",required=True); pp.add_argument("--as-of",required=True); pp.add_argument("--season",type=int,default=None)
     pp.add_argument("--out",required=True); pp.add_argument("--min-games",type=int,default=1)
+    for command_parser in (fc, fa, wf, sb):
+        command_parser.add_argument("--legacy-score", action="store_true", help="Explicitly reproduce the previous team-only score head")
+    pi = sub.add_parser("import-player-evidence", help="Import identified, timestamped player observations and lineups into the joint forecast database")
+    pi.add_argument("--input", required=True)
+    pi.add_argument("--database", default=None)
     ev=sub.add_parser("evaluate-run",help="Verify frozen forecast inputs and settle scores, winners and errors")
     ev.add_argument("--database",required=True); ev.add_argument("--run-id",required=True)
     ev.add_argument("--evidence-dir",default=None,help="Content-addressed input directory after moving a saved run")
@@ -116,6 +121,12 @@ def main():
         value = getattr(args, name, None)
         if value is not None:
             setattr(args, name, str(cli_path(value)))
+    if args.command == "import-player-evidence":
+        import json
+        from .ingest.player_matchups import import_player_evidence
+        from .paths import database_path
+        report = import_player_evidence(args.database or database_path(), json.loads(Path(args.input).read_text()))
+        print(json.dumps(report, indent=2))
     if args.command=="evaluate-run":
         import json
         from contextlib import closing
@@ -135,11 +146,12 @@ def main():
         print(result.to_string(index=False)); print("selected production variant:",spec["selected_variant"])
     elif args.command=="forecast":
         from .modeling.forecast import forecast
+        result=forecast(args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.draws,args.market_provider,legacy_score=args.legacy_score)
         result=forecast(args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.draws,args.market_provider,forecast_mode=args.forecast_mode)
         print(result[["away_team","home_team","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
     elif args.command=="forecast-advance":
         from .modeling.forecast import advance_forecast_snapshot
-        result=advance_forecast_snapshot(args.previous,args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.draws,args.market_provider)
+        result=advance_forecast_snapshot(args.previous,args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.draws,args.market_provider,legacy_score=args.legacy_score)
         print(result[["away_team","home_team","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
     elif args.command=="market-import":
         from .odds.market import import_market_file
@@ -203,7 +215,7 @@ def main():
         print(results[["game_id","status","is_final","away_team","away_points","home_team","home_points"]].tail(20).to_string(index=False))
     elif args.command=="season-backtest":
         from .evaluation.season_backtest import run_season_backtest
-        metrics,summary=run_season_backtest(args.data,args.model,args.out,args.season,args.draws,args.lead_hours)
+        metrics,summary=run_season_backtest(args.data,args.model,args.out,args.season,args.draws,args.lead_hours,legacy_score=args.legacy_score)
         print(pd.DataFrame([summary]).to_string(index=False))
         print(metrics.to_string(index=False))
     elif args.command=="preflight":
@@ -224,7 +236,7 @@ def main():
         print(pd.Series(report).to_string())
     elif args.command == "weekly-forecast":
         from .pipeline.weekly import run_weekly_forecast
-        result,manifest=run_weekly_forecast(args.data,args.model,args.out,args.season,args.week,args.as_of,args.market,args.draws)
+        result,manifest=run_weekly_forecast(args.data,args.model,args.out,args.season,args.week,args.as_of,args.market,args.draws,legacy_score=args.legacy_score)
         print(pd.DataFrame([manifest]).to_string(index=False))
         print(result[["away_team","home_team","kickoff","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
     elif args.command == "capture-news":

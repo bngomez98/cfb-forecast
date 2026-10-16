@@ -179,6 +179,7 @@ def forecast(
     analytic=True,
     known_future=None,
     closing_path=None,
+    legacy_score=False,
     forecast_mode="football",
 ):
     analytic = True
@@ -197,6 +198,10 @@ def forecast(
     if model["training_through_season"] >= season:
         raise ValueError("Model training must end before the forecast season")
     schedules, summaries, paths = load_data(data_root)
+    if not legacy_score:
+        from .player_forecast import forecast_players
+        return forecast_players(data_root, model_root, out_root, at, end, season,
+                                schedules, paths, market_path, market_provider, target_game_ids)
     population = (
         schedules[
             schedules.fbs_game
@@ -407,6 +412,7 @@ def advance_forecast_snapshot(
     save_distribution=True,
     target_game_ids=None,
     analytic=True,
+    legacy_score=False,
     forecast_mode=None,
 ):
     """Advance an exact saved forecast state when no new result became eligible.
@@ -449,6 +455,13 @@ def advance_forecast_snapshot(
                 f"Source hash mismatch for {name}; full replay is required"
             )
         source_paths.append(p)
+    if old_manifest.get("family") == "joint_player_gaussian":
+        # Refit from cutoff-filtered database evidence. New player reports can
+        # change even when no final result arrived; a team-state-only advance
+        # would discard those reports and the player posterior covariance.
+        return forecast(data_root, model_root, out_root, as_of, through, season,
+                        market_path=market_path, market_provider=market_provider,
+                        target_game_ids=target_game_ids)
     schedule_paths = sorted(data_root.glob("schedule_*.csv"))
     schedules = normalize_schedule(
         pd.concat([pd.read_csv(p) for p in schedule_paths], ignore_index=True)

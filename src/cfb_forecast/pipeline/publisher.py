@@ -6,6 +6,7 @@ rows the React app, the Streamlit desk, and the email all read.
 from __future__ import annotations
 
 import json
+import ast
 from contextlib import closing
 import logging
 import os
@@ -51,6 +52,16 @@ def _number(value):
     return number
 
 
+def _structured(value):
+    if isinstance(value, dict):
+        return value
+    try:
+        return json.loads(value)
+    except (ValueError, TypeError):
+        # pandas CSVs of nested existing records use Python literal syntax.
+        return ast.literal_eval(value)
+
+
 def board_row(record: dict) -> dict:
     probability = float(record["home_win_probability"])
     home = str(record["home_team"])
@@ -88,6 +99,8 @@ def board_row(record: dict) -> dict:
         "winner": winner,
         "confidence": round(max(probability, 1.0 - probability), 4),
         "home_win_probability": round(probability, 4),
+        **({"model_variant": record["model_variant"]} if record.get("model_variant") else {}),
+        **({"player_forecasts": _structured(record["player_forecasts"])} if isinstance(record.get("player_forecasts"), (dict, str)) else {}),
     }
 
 
