@@ -201,7 +201,7 @@ def _validate_published_rows(conn, run_id, rows):
             original = json.loads(old[0])
             comparable = {key: row.get(key) for key in original}
             if canonical_json(original) != canonical_json(comparable):
-                raise ValueError(f"Published forecast changed for {run_id}/{row['game_id']}; use a new run ID")
+                raise ValueError(f"Published forecast is immutable: {run_id}/{row['game_id']} changed; use a new run ID")
 
 
 def write_forecast_log(conn, run_id: str, rows: pd.DataFrame, logged_at: str) -> int:
@@ -221,7 +221,6 @@ def write_forecast_log(conn, run_id: str, rows: pd.DataFrame, logged_at: str) ->
                              (run_id, int(row["game_id"]))).fetchone()
         if prior is not None and any(row.get(key) != value for key, value in json.loads(prior[0]).items()):
             raise ValueError(f"Published forecast is immutable: {run_id}/{row['game_id']}")
-    for row in records:
     _validate_published_rows(conn, run_id, rows)
     for row in rows.to_dict("records"):
         conn.execute(

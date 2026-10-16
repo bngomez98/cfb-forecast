@@ -13,7 +13,7 @@ from ..ingest.data import load_data,audit,sha256,timestamp
 from ..ingest.features import observations,normalization
 from ..modeling.ratings import build_features
 from ..modeling.model import ScoreHead,residual_covariance,write_model
-from ..modeling.simulate import win_probability
+from ..modeling.analytic import win_probability
 from .evaluate import metrics,calibration,paired_bootstrap
 from ..modeling.baseline import evaluate_elo
 
