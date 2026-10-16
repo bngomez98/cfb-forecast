@@ -1,0 +1,12 @@
+{
+  "evaluation_type": "retrospective_reconstruction",
+  "source_vintage_limit": "Historical statistics were downloaded now; this is not a record of forecasts issued at the reconstructed cutoffs.",
+  "season": 2026,
+  "weeks": 7,
+  "games": 333,
+  "winner_accuracy": 0.7627627627627628,
+  "brier_score": 0.15921854366489724,
+  "score_mae": 9.026927250674984,
+  "margin_mae": 12.658286477818526,
+  "total_mae": 12.80753606761863
+}

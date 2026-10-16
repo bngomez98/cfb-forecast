@@ -81,6 +81,7 @@ def run_weekly_forecast(
     market_path=None,
     draws=50000,
     adjustment_config=None,
+    legacy_score=False,
 ):
     """Forecast the next upcoming week, or an explicitly selected week."""
     data_root = Path(data_root)
@@ -146,6 +147,7 @@ def run_weekly_forecast(
         known_future=context,
         adjustment_config=adjustment_config,
         database=Path(os.environ.get("CFB_DATABASE", out_root / "cfb_forecast.sqlite")),
+        legacy_score=legacy_score,
     )
     if live and timestamp(datetime.now(timezone.utc).isoformat()) >= first_kickoff:
         raise ValueError("A target game started during calculation")

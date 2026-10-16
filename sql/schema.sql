@@ -260,6 +260,7 @@ CREATE TABLE IF NOT EXISTS player_game_facts (
   game_id INTEGER NOT NULL,
   team_id INTEGER NOT NULL,
   player_name TEXT NOT NULL,
+  source_player_id TEXT,
   position_group TEXT NOT NULL,
   season INTEGER,
   plays INTEGER,
@@ -281,4 +282,52 @@ CREATE TABLE IF NOT EXISTS source_rows (
     row_index INTEGER NOT NULL,
     payload_json TEXT NOT NULL,
     UNIQUE(retrieval_id, row_index)
+-- Versioned player evidence. Source IDs require an explicit crosswalk; names
+-- alone never merge players across providers, teams, or seasons.
+CREATE TABLE IF NOT EXISTS player_identities (
+  player_id TEXT PRIMARY KEY,
+  display_name TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS player_source_ids (
+  provider TEXT NOT NULL,
+  source_player_id TEXT NOT NULL,
+  player_id TEXT NOT NULL REFERENCES player_identities(player_id),
+  PRIMARY KEY(provider, source_player_id)
+);
+CREATE TABLE IF NOT EXISTS player_observations (
+  game_id INTEGER NOT NULL,
+  team_id INTEGER NOT NULL,
+  opponent_id INTEGER NOT NULL,
+  player_id TEXT NOT NULL REFERENCES player_identities(player_id),
+  role TEXT NOT NULL,
+  opportunities REAL NOT NULL CHECK(opportunities > 0),
+  yards REAL,
+  epa REAL,
+  available_at TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  source_sha256 TEXT NOT NULL,
+  PRIMARY KEY(game_id, team_id, player_id, role, provider, available_at)
+);
+CREATE TABLE IF NOT EXISTS player_lineups (
+  game_id INTEGER NOT NULL,
+  team_id INTEGER NOT NULL,
+  observed_at TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  source_sha256 TEXT NOT NULL,
+  players_json TEXT NOT NULL,
+  PRIMARY KEY(game_id, team_id, observed_at, provider)
+);
+CREATE INDEX IF NOT EXISTS idx_player_observations_cutoff ON player_observations(available_at);
+CREATE INDEX IF NOT EXISTS idx_player_lineups_cutoff ON player_lineups(game_id, observed_at);
+
+CREATE TABLE IF NOT EXISTS game_context_snapshots (
+  game_id INTEGER NOT NULL,
+  observed_at TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  source_sha256 TEXT NOT NULL,
+  features_json TEXT NOT NULL,
+  PRIMARY KEY(game_id, observed_at, provider)
 );

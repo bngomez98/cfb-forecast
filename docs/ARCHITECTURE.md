@@ -1,13 +1,29 @@
 # Application architecture
 
-The `sunday` service coordinates source collection, feature preparation, validation, model selection, inference, and persistence. Its CLI and GitHub workflow call the same service. The dashboard reads completed runs and never performs inference or creates results.
+The `sunday` service is the central coordinator. It handles source collection, feature preparation, validation, model selection, inference, and persistence. Both the CLI and the GitHub Actions workflow invoke the same service. The dashboard only reads completed runs; it never performs inference or writes results.
 
-`data` handles schedules, per-game advanced observations, source manifests, and schema validation. `sources` handles public game context and preserves original responses with receipts. `sunday.sync_results` verifies game/team identity before updating authoritative outcomes; `capture_prices` uses actual displayed quotes with retrieval-time availability.
+## Module responsibilities
 
-`features`, `ratings`, and `model` implement opponent-adjusted dynamic states and fitted score heads. `strength` supplies the time-decayed strength probability candidate. `analytic` calculates distribution probabilities directly. `probability` supplies prior-season calibration and bounded research experiments. `context_model` learns bounded context effects from saved pregame features and later results, evaluating them on a later week before selection.
+| Area | Responsibility |
+| --- | --- |
+| `data` | Schedules, per-game advanced observations, source manifests, schema validation |
+| `sources` | Public game context; preserves original responses with retrieval receipts |
+| `sunday.sync_results` | Verifies game/team identity before updating authoritative outcomes |
+| `capture_prices` | Records actual displayed quotes with retrieval-time availability |
+| `features`, `ratings`, `model` | Opponent-adjusted dynamic states and fitted score heads |
+| `strength` | Time-decayed strength-probability candidate (comparison only) |
+| `analytic` | Direct calculation of distribution probabilities |
+| `probability` | Prior-season calibration and bounded research experiments |
+| `context_model` | Bounded context effects from saved pregame features; evaluated on a later week before selection |
+| `decision` | Price conversion, no-vig probabilities, expected returns, constrained exposure |
+| `validation` | Joins unchanged predictions to final outcomes; evaluates quality and recorded-price returns |
 
-`decision` converts prices, computes no-vig probabilities, expected returns and constrained hypothetical exposure. `validation` joins unchanged predictions to real final outcomes and evaluates forecast quality and recorded-price returns. Hash checks detect changed prediction files.
+Hash checks detect any alteration of prediction files after they were issued.
 
-Generated sources, reports, and fitted models belong to runtime storage, not source control. Missing external facts retain explicit coverage statuses. Empty reports are not health or lineup assertions. The first run cannot manufacture past Sunday predictions; validation begins with actual saved runs.
+## Runtime vs. source control
 
-Earlier library modules remain for compatibility and offline experimentation. The current CLI, scheduled workflow, README, and desk expose the Sunday application flow.
+Generated sources, reports, and fitted models belong in runtime storage, not source control. Missing external facts keep explicit coverage statuses. An empty report is never treated as an assertion that every player is healthy or that a full lineup is known.
+
+The first run cannot manufacture past Sunday predictions; validation begins only with actually saved runs.
+
+Earlier library modules remain available for compatibility and offline experimentation. The current CLI, scheduled workflow, README, and desk expose the Sunday application flow.

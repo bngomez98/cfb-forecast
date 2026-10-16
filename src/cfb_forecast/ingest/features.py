@@ -59,6 +59,7 @@ def _year_from_name(path):
 
 def _fingerprint(paths):
     digest = hashlib.sha256(b"history-facts-v2")
+    digest = hashlib.sha256(b"history-player-ids-v2")
     for path in paths:
         stat = path.stat()
         digest.update(f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}".encode())
@@ -141,6 +142,7 @@ def load_history_facts(data_root, database=None):
                 "game_id", "game_play_number", "pos_team_id", "season", "week", "statYardage",
                 "pass", "rush", "EPA", "EPA_success", "is_turnover", "scrimmage_play",
                 "passer_player_name", "rusher_player_name", "receiver_player_name",
+                "passer_player_id", "rusher_player_id", "receiver_player_id",
             ],
         )
         if "game_id" not in columns or "pos_team_id" not in columns or "statYardage" not in columns:
@@ -191,10 +193,10 @@ def load_history_facts(data_root, database=None):
         team = team.merge(season_week, on=["game_id", "pos_team_id"], how="left")
         team = team.rename(columns={"pos_team_id": "team_id"})
         team_frames.append(team)
-        for role, name_column, flag in (
-            ("passing", "passer_player_name", "pass"),
-            ("rushing", "rusher_player_name", "rush"),
-            ("receiving", "receiver_player_name", None),
+        for role, name_column, flag, id_column in (
+            ("passing", "passer_player_name", "pass", "passer_player_id"),
+            ("rushing", "rusher_player_name", "rush", "rusher_player_id"),
+            ("receiving", "receiver_player_name", None, "receiver_player_id"),
         ):
             if name_column not in frame:
                 continue
@@ -203,12 +205,17 @@ def load_history_facts(data_root, database=None):
                 role_rows = role_rows[role_rows[flag]]
             if role_rows.empty:
                 continue
-            player = role_rows.groupby(["game_id", "pos_team_id", name_column], as_index=False).agg(
+            identity_columns = ["game_id", "pos_team_id", name_column]
+            if id_column in role_rows:
+                identity_columns.append(id_column)
+            player = role_rows.groupby(identity_columns, as_index=False, dropna=False).agg(
                 plays=("statYardage", "size"),
                 yards=("statYardage", "sum"),
                 **({"epa": ("EPA", "mean")} if "EPA" in role_rows else {}),
             )
             player = player.rename(columns={"pos_team_id": "team_id", name_column: "player_name"})
+            if id_column in player:
+                player = player.rename(columns={id_column: "source_player_id"})
             player["position_group"] = role
             player["season"] = year
             player_frames.append(player)

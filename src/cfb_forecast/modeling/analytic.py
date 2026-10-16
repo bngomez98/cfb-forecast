@@ -25,6 +25,23 @@ def score_summary(means, covariance, **market):
         "margin_standard_deviation": margin_sd,
         "total_standard_deviation": total_sd,
     }
+    for side, index in (("home", 0), ("away", 1)):
+        sd = float(np.sqrt(cov[index, index]))
+        result[f"{side}_score_standard_deviation"] = sd
+        result[f"{side}_score_interval_80"] = [float(mu[index] - z * sd), float(mu[index] + z * sd)]
+        line = market.get(f"{side}_total_line")
+        if line is not None:
+            line = float(line)
+            if not np.isfinite(line) or line < 0:
+                raise ValueError("Team total lines must be finite and nonnegative")
+            lower, upper = (line - .5, line + .5) if line.is_integer() else (line, line)
+            over = float(norm.sf((upper - mu[index]) / sd))
+            under = float(norm.cdf((lower - mu[index]) / sd))
+            result.update({
+                f"{side}_total_over_probability": over,
+                f"{side}_total_under_probability": under,
+                f"{side}_total_push_probability": max(0., 1 - over - under),
+            })
     spread = market.get("home_spread")
     if spread is not None:
         threshold = -float(spread)

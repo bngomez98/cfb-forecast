@@ -6,6 +6,8 @@ rows the React app, the Streamlit desk, and the email all read.
 from __future__ import annotations
 
 import json
+import ast
+from contextlib import closing
 import logging
 import math
 import os
@@ -67,6 +69,16 @@ def _number(value):
     return number
 
 
+def _structured(value):
+    if isinstance(value, dict):
+        return value
+    try:
+        return json.loads(value)
+    except (ValueError, TypeError):
+        # pandas CSVs of nested existing records use Python literal syntax.
+        return ast.literal_eval(value)
+
+
 def board_row(record: dict) -> dict:
     probability = float(record["home_win_probability"])
     home = str(record["home_team"])
@@ -92,6 +104,8 @@ def board_row(record: dict) -> dict:
         return round(100 * (price - 1)) if price >= 2 else -round(100 / (price - 1))
     return {
         "game_id": int(record["game_id"]),
+        "as_of": record.get("as_of"),
+        "forecast_mode": record.get("forecast_mode", "legacy_unspecified"),
         "season": int(record["season"]),
         "kickoff": str(record["kickoff"]),
         "away_team": away,
@@ -116,6 +130,8 @@ def board_row(record: dict) -> dict:
         "winner": winner,
         "confidence": round(max(probability, 1.0 - probability), 4),
         "home_win_probability": round(probability, 4),
+        **({"model_variant": record["model_variant"]} if record.get("model_variant") else {}),
+        **({"player_forecasts": _structured(record["player_forecasts"])} if isinstance(record.get("player_forecasts"), (dict, str)) else {}),
     }
 
 
@@ -177,6 +193,17 @@ def register_sources(conn, season: int) -> int:
     return count
 
 
+def _validate_published_rows(conn, run_id, rows):
+    from ..storage.evidence import canonical_json
+    for row in rows.to_dict("records"):
+        old = conn.execute("SELECT payload_json FROM forecast_log WHERE run_id=? AND game_id=?", (run_id, int(row["game_id"]))).fetchone()
+        if old:
+            original = json.loads(old[0])
+            comparable = {key: row.get(key) for key in original}
+            if canonical_json(original) != canonical_json(comparable):
+                raise ValueError(f"Published forecast changed for {run_id}/{row['game_id']}; use a new run ID")
+
+
 def write_forecast_log(conn, run_id: str, rows: pd.DataFrame, logged_at: str) -> int:
     records = rows.to_dict("records")
     if not conn.in_transaction:
@@ -195,6 +222,8 @@ def write_forecast_log(conn, run_id: str, rows: pd.DataFrame, logged_at: str) ->
         if prior is not None and any(row.get(key) != value for key, value in json.loads(prior[0]).items()):
             raise ValueError(f"Published forecast is immutable: {run_id}/{row['game_id']}")
     for row in records:
+    _validate_published_rows(conn, run_id, rows)
+    for row in rows.to_dict("records"):
         conn.execute(
             """INSERT INTO forecast_log(
                  run_id, season, game_id, kickoff, home_team, away_team,
@@ -339,6 +368,11 @@ def publish_forecast_update(
         raise ValueError("Published forecast must contain exactly the requested season")
     from .integrity import verify_run_integrity
     verify_run_integrity(run_dir, manifest)
+    if not manifest_path.exists():
+        manifest_path = run_dir / "forecast_manifest.json"
+    if manifest_path.exists():
+        loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = loaded[0] if isinstance(loaded, list) and loaded else loaded
     model = None
     if "prediction_method" in frame.columns and frame.prediction_method.notna().any():
         model = str(frame.prediction_method.dropna().iloc[0])
@@ -366,6 +400,11 @@ def publish_forecast_update(
         "statistics": statistics,
         "forecasts": rows.to_dict("records"),
     }
+    # Validate and freeze before changing any public/latest surface.
+    from ..storage.evidence import freeze_forecast
+    with closing(connect(database)) as evidence_conn:
+        _validate_published_rows(evidence_conn, run_id, rows)
+        freeze_forecast(evidence_conn, run_id, frame, run_dir, artifacts / "evidence")
     log_dir = artifacts / "logs"
     _configure_log(log_dir)
     conn = connect(database)
