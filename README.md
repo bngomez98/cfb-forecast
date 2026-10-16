@@ -160,6 +160,27 @@ docker compose up -d scheduler cfb-api cfb-dashboard
 
 The production model lives in `artifacts/training/model` (`CFB_MODEL_DIR`). The first run on an empty volume trains it from the seasons on disk.
 
+## Local commands
+
+With the package installed (`make install`), everything runs through `cfb-forecast`; the Make targets wrap the same commands (`make help` lists them).
+
+| Task | Command | Make |
+|---|---|---|
+| Whole application (scheduler + dashboard) | `cfb-forecast app` | `make app` |
+| Scheduler only / status / force a job | `cfb-forecast scheduler`, `--status`, `--run forecast` | `make scheduler`, `make scheduler-status` |
+| Sunday service now | `cfb-forecast sunday-run --season 2026` | `make sunday` |
+| Daily pipeline now | `cfb-forecast pipeline forecast --season 2026 --refresh-data` | `make forecast` |
+| Final scores | `cfb-forecast pipeline results --season 2026` | `make results` |
+| Web sources | `cfb-forecast sources-collect --season 2026` | `make sources` |
+| Player aggregates | `cfb-forecast player-aggregates --seasons 2026 --refresh` | `make players` |
+| Database validation | `python -c "from cfb_forecast import dbflow, paths; dbflow.run(paths.database_path(), paths.data_root(), 2026)"` | `make database` |
+| Season backtest | `cfb-forecast pipeline backtest --season 2026` | `make backtest-season` |
+| Reproduce the 2025 held-out numbers | `cfb-forecast backtest --data data --out artifacts/reproduced` | `make reproduce` |
+| Dashboard / API | `streamlit run dashboard/app.py`, `python -m uvicorn cfb_forecast.api:app` | `make dashboard`, `make api` |
+| Lint and tests | `ruff check src tests dashboard`, `python -m pytest -q` | `make check` |
+
+Docker: `make up` starts the scheduler, API and dashboard; `make docker-forecast` and `make docker-sunday` run one job; `python -m scripts.cfb daily|sunday|results|sources|backtest` does the same from the host.
+
 ## Run with the established Linux environment
 
 From Ubuntu WSL:

@@ -1,4 +1,4 @@
-"""Human-friendly command-line entry points for the CFB forecast pipeline."""
+"""Run the containerized pipeline from the host: python -m scripts.cfb daily|sunday|results|sources|backtest."""
 from __future__ import annotations
 
 import argparse
@@ -31,65 +31,42 @@ def docker_run(image: str, command: list[str], writable_data: bool = False) -> N
     subprocess.run(args, cwd=ROOT, check=True)
 
 
-def ensure_data(image: str, season: int) -> None:
-    schedule = DATA / f"schedule_{season}.csv"
-    advanced = DATA / f"adv_team_{season}.parquet"
-    if not schedule.exists() or not advanced.exists():
-        print(f"Downloading missing {season} season data...", flush=True)
-        docker_run(image, ["fetch", "--data", "/app/data", "--seasons", str(season)], writable_data=True)
-
-
-def run_pipeline(args: argparse.Namespace) -> None:
+def pipeline(args: argparse.Namespace, action: str, *extra: str) -> None:
     DATA.mkdir(parents=True, exist_ok=True)
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
-    ensure_data(args.image, args.season)
-    docker_run(args.image, ["preflight", "--data", "/app/data", "--artifacts", "/app/artifacts", "--season", str(args.season)])
-    docker_run(args.image, ["results-refresh", "--data", "/app/data", "--out", "/app/artifacts/results", "--season", str(args.season)])
-    docker_run(args.image, ["weekly-forecast", "--data", "/app/data", "--model", "/app/artifacts/backtest/model", "--out", "/app/artifacts", "--season", str(args.season), "--draws", str(args.draws)], writable_data=True)
-    docker_run(args.image, ["season-backtest", "--data", "/app/data", "--model", "/app/artifacts/backtest/model", "--out", "/app/artifacts/backtest", "--season", str(args.season), "--draws", str(args.draws), "--lead-hours", str(args.lead_hours)])
-    print(f"Weekly pipeline finished for {args.season}.")
-    print(f"Dashboard: {args.dashboard_url}")
+    docker_run(args.image, ["pipeline", action, "--season", str(args.season), "--draws", str(args.draws),
+                            "--lead-hours", str(args.lead_hours), "--data", "/app/data", "--artifacts", "/app/artifacts", *extra], writable_data=True)
+    print(f"Pipeline {action} finished for {args.season}.")
 
 
-def refresh_results(args: argparse.Namespace) -> None:
+def sunday(args: argparse.Namespace) -> None:
     DATA.mkdir(parents=True, exist_ok=True)
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
-    ensure_data(args.image, args.season)
-    docker_run(args.image, ["results-refresh", "--data", "/app/data", "--out", "/app/artifacts/results", "--season", str(args.season), *(["--week", str(args.week)] if args.week else [])])
-    print(f"Results refreshed for {args.season}.")
-
-
-def backtest_season(args: argparse.Namespace) -> None:
-    DATA.mkdir(parents=True, exist_ok=True)
-    ARTIFACTS.mkdir(parents=True, exist_ok=True)
-    ensure_data(args.image, args.season)
-    docker_run(args.image, ["season-backtest", "--data", "/app/data", "--model", "/app/artifacts/backtest/model", "--out", "/app/artifacts/backtest", "--season", str(args.season), "--draws", str(args.draws), "--lead-hours", str(args.lead_hours)])
-    print(f"Season backtest finished for {args.season}.")
+    docker_run(args.image, ["sunday-run", "--data", "/app/data", "--artifacts", "/app/artifacts", "--season", str(args.season)], writable_data=True)
 
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="python -m scripts.cfb", description="Run CFB forecasts, live results, and backtests.")
     p.add_argument("--image", default=os.environ.get("CFB_IMAGE", "cfb-forecast:local"), help="Docker image to run")
     p.add_argument("--season", type=int, default=int(os.environ.get("CFB_FORECAST_SEASON", "2026")), help="College football season")
-    p.add_argument("--draws", type=int, default=int(os.environ.get("CFB_FORECAST_DRAWS", "50000")), help="Simulation draws")
+    p.add_argument("--draws", type=int, default=int(os.environ.get("CFB_FORECAST_DRAWS", "50000")), help="Draws for the optional sampled outputs")
     p.add_argument("--lead-hours", type=float, default=48, help="Forecast cutoff before kickoff")
     p.add_argument("--dashboard-url", default="http://localhost:8501", help="Dashboard URL")
     sub = p.add_subparsers(dest="action", required=True)
-    sub.add_parser("weekly", help="Refresh results, forecast the next week, and backtest the season")
-    refresh = sub.add_parser("results", help="Refresh live ESPN game results")
-    refresh.add_argument("--week", type=int, help="Only refresh one week")
-    sub.add_parser("backtest", help="Run the season backtest")
+    sub.add_parser("daily", help="Daily pipeline: refresh data, results and players, forecast every upcoming game")
+    sub.add_parser("sunday", help="Sunday service: sources, validation, learning, the weekend slate")
+    sub.add_parser("results", help="Refresh final scores from ESPN and result sites")
+    sub.add_parser("sources", help="Collect every external web source")
+    sub.add_parser("backtest", help="Point-in-time backtest of the season so far")
     return p
 
 
 def main() -> None:
     args = parser().parse_args()
-    if args.action == "weekly":
-        run_pipeline(args)
-    elif args.action == "results":
-        refresh_results(args)
-    elif args.action == "backtest":
-        backtest_season(args)
+    if args.action == "sunday":
+        sunday(args)
+    else:
+        pipeline(args, {"daily": "forecast"}.get(args.action, args.action))
 
 
 if __name__ == "__main__":
