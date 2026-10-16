@@ -42,10 +42,10 @@ def start_dashboard(data, artifacts, port, address="0.0.0.0"):
         log.warning("streamlit is not installed (pip install 'cfb-forecast[dashboard]'); running without the dashboard")
         return None
     env = {**os.environ, "CFB_DATA_DIR": str(Path(data).resolve()), "CFB_ARTIFACTS_DIR": str(Path(artifacts).resolve())}
-    command = [sys.executable, "-m", "streamlit", "run", str(script), f"--server.port={port}", f"--server.address={address}",
-               "--server.headless=true", "--server.fileWatcherType=none", "--browser.gatherUsageStats=false"]
+    # Server settings (headless, no file watcher, no telemetry) come from .streamlit/config.toml.
+    command = [sys.executable, "-m", "streamlit", "run", str(script), f"--server.port={port}", f"--server.address={address}"]
     log.info("dashboard starting on http://localhost:%s", port)
-    return subprocess.Popen(command, env=env)  # noqa: S603 - fixed argument list, no shell
+    return subprocess.Popen(command, env=env, cwd=script.parents[1])  # noqa: S603 - fixed argument list, no shell
 
 
 def stop(process, timeout=10):

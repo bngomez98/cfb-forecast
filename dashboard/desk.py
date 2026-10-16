@@ -17,6 +17,27 @@ def read_json(path, default=None):
         return default
 
 
+def latest_token(root):
+    """Changes whenever a new run is published (forecast board, run manifest or daily changes)."""
+    stamps = []
+    for name in ("run_manifest.json", "forecasts.csv", "changes.csv"):
+        try:
+            stamps.append((Path(root) / "latest" / name).stat().st_mtime_ns)
+        except OSError:
+            stamps.append(0)
+    return tuple(stamps)
+
+
+@st.fragment(run_every=60)
+def watch(root):
+    """Reload the whole page once a new run lands, so nobody has to press refresh."""
+    token = latest_token(root)
+    if st.session_state.setdefault("latest_token", token) != token:
+        st.session_state["latest_token"] = token
+        st.cache_data.clear()
+        st.rerun()
+
+
 def shell(root, manifest):
     st.set_page_config(page_title="FieldQuant | College Football Intelligence", layout="wide")
     st.html(Path(__file__).with_name("theme.css").read_text())
@@ -30,10 +51,8 @@ def shell(root, manifest):
         st.caption("Historical training and Sunday slate analysis. No simulated live score samples.")
         with st.expander("Runtime directories"):
             st.text(f"Data: {data_root()}\nArtifacts: {root}\nModel: {model_root()}")
-        if st.button("Refresh saved data", use_container_width=True):
-            st.cache_data.clear()
-            st.rerun()
-        st.caption("Refresh reads saved artifacts; it does not start a model run.")
+        watch(root)
+        st.caption("Reloads by itself when a new run is published; it never starts a model run.")
     season = manifest.get("season", "2026")
     status = str(manifest.get("status", "awaiting first run")).replace("_", " ")
     st.html(f'<div class="topline"><span>RESEARCH DESK <span class="slash">/</span> COLLEGE FOOTBALL</span><span class="status-pill">{escape(status.upper())}</span></div>')

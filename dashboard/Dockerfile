@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 
-# Streamlit dashboard. Reads forecasts from a mounted artifacts directory.
+# Streamlit dashboard. Reads forecasts from a mounted artifacts directory and picks up each new
+# published run by itself (server settings live in .streamlit/config.toml).
 #   docker build -f dashboard/Dockerfile -t cfb-forecast-dashboard:local .
 
 ARG PYTHON_VERSION=3.12
@@ -23,6 +24,7 @@ COPY dashboard/requirements.txt ./
 RUN --mount=type=cache,target=/root/.cache/pip python -m pip install -r requirements.txt
 COPY dashboard ./dashboard
 COPY src ./src
+COPY sql ./sql
 COPY .streamlit ./.streamlit
 ENV PYTHONPATH=/app/src
 
@@ -32,4 +34,4 @@ USER cfb
 EXPOSE 8501
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health')"
-CMD ["streamlit", "run", "dashboard/app.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.headless=true", "--server.fileWatcherType=none", "--browser.gatherUsageStats=false"]
+CMD ["streamlit", "run", "dashboard/app.py"]
