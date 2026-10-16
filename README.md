@@ -162,24 +162,23 @@ The production model lives in `artifacts/training/model` (`CFB_MODEL_DIR`). The 
 
 ## Local commands
 
-With the package installed (`make install`), everything runs through `cfb-forecast`; the Make targets wrap the same commands (`make help` lists them).
+After `make install`, `make help` lists everything. Each target wraps one `cfb-forecast` command.
 
-| Task | Command | Make |
-|---|---|---|
-| Whole application (scheduler + dashboard) | `cfb-forecast app` | `make app` |
-| Scheduler only / status / force a job | `cfb-forecast scheduler`, `--status`, `--run forecast` | `make scheduler`, `make scheduler-status` |
-| Sunday service now | `cfb-forecast sunday-run --season 2026` | `make sunday` |
-| Daily pipeline now | `cfb-forecast pipeline forecast --season 2026 --refresh-data` | `make forecast` |
-| Final scores | `cfb-forecast pipeline results --season 2026` | `make results` |
-| Web sources | `cfb-forecast sources-collect --season 2026` | `make sources` |
-| Player aggregates | `cfb-forecast player-aggregates --seasons 2026 --refresh` | `make players` |
-| Database validation | `python -c "from cfb_forecast import dbflow, paths; dbflow.run(paths.database_path(), paths.data_root(), 2026)"` | `make database` |
-| Season backtest | `cfb-forecast pipeline backtest --season 2026` | `make backtest-season` |
-| Reproduce the 2025 held-out numbers | `cfb-forecast backtest --data data --out artifacts/reproduced` | `make reproduce` |
-| Dashboard / API | `streamlit run dashboard/app.py`, `python -m uvicorn cfb_forecast.api:app` | `make dashboard`, `make api` |
-| Lint and tests | `ruff check src tests dashboard`, `python -m pytest -q` | `make check` |
+| Make | Runs |
+|---|---|
+| `make app` | scheduler and dashboard |
+| `make sunday` | `sunday-run` |
+| `make forecast` | `pipeline forecast` (daily) |
+| `make results` | `pipeline results` |
+| `make sources` | `sources-collect` |
+| `make players` | `player-aggregates` |
+| `make database` | outcomes and forecast validation in SQLite |
+| `make backtest-season` | `pipeline backtest` |
+| `make reproduce` | 2025 held-out evaluation |
+| `make check` | ruff and pytest |
+| `make up` / `down` / `logs` | Docker stack |
 
-Docker: `make up` starts the scheduler, API and dashboard; `make docker-forecast` and `make docker-sunday` run one job; `python -m scripts.cfb daily|sunday|results|sources|backtest` does the same from the host.
+`SEASON=2026` is the default; override with `make forecast SEASON=2027`. From the host without Python, `python -m scripts.cfb daily|sunday|results|sources|backtest` drives the container.
 
 ## Run with the established Linux environment
 
