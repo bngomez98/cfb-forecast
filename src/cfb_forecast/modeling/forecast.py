@@ -205,7 +205,8 @@ def forecast(
     if not legacy_score:
         from .player_forecast import forecast_players
         return forecast_players(data_root, model_root, out_root, at, end, season,
-                                schedules, paths, market_path, market_provider, target_game_ids)
+                                schedules, paths, market_path, market_provider, target_game_ids,
+                                database=database)
     population = (
         schedules[
             schedules.fbs_game

@@ -244,3 +244,49 @@ def test_installed_fallback_schema_matches_checkout_player_tables():
     for table in ('player_game_facts','player_observations','player_identities','player_source_ids','player_lineups','game_context_snapshots'):
         assert a.execute(f'PRAGMA table_info({table})').fetchall()==b.execute(f'PRAGMA table_info({table})').fetchall()
     a.close();b.close()
+
+
+def test_lineup_uses_latest_record_before_cutoff_regardless_of_row_order():
+    from cfb_forecast.modeling.player_forecast import _lineup
+    game = pd.DataFrame([dict(game_id=99, start_date=pd.Timestamp('2026-09-05T18:00Z'))]).iloc[0]
+    def entry(observed, player):
+        return dict(game_id=99, team_id=1, observed_at=observed,
+                    players_json=json.dumps([dict(player_id=player, role='passing', opportunity_share=1.)]))
+    # Rows deliberately out of time order; the last row is after the cutoff.
+    lineups = pd.DataFrame([entry('2026-09-04T12:00Z', 'newest'), entry('2026-09-02T12:00Z', 'oldest'),
+                            entry('2026-09-03T12:00Z', 'middle'), entry('2026-09-05T12:00Z', 'after_cutoff')])
+    lineup, status, observed = _lineup(pd.DataFrame(), lineups, game, 1, pd.Timestamp('2026-09-05T00:00Z'))
+    assert status == 'timestamped_lineup'
+    assert lineup[0]['player_id'] == 'newest'
+    assert pd.Timestamp(observed) == pd.Timestamp('2026-09-04T12:00Z')
+    lineup, status, _ = _lineup(pd.DataFrame(), lineups.iloc[[3]], game, 1, pd.Timestamp('2026-09-05T00:00Z'))
+    assert status == 'missing_player_history' and lineup == []
+
+
+def test_forecast_reads_the_database_it_is_given(tmp_path, monkeypatch):
+    from test_model_artifact_validation import model_value
+    from cfb_forecast.modeling.forecast import forecast
+    data, model, out = [tmp_path/name for name in ('data', 'model', 'out')]
+    for path in (data, model):
+        path.mkdir()
+    db = tmp_path/'chosen.sqlite'
+    # The default database stays empty; only the explicit argument has evidence.
+    monkeypatch.setenv('CFB_DATABASE', str(tmp_path/'default.sqlite'))
+    games, players = history()
+    games['home_team'] = 'Home'; games['away_team'] = 'Away'; games['completed'] = True; games['fbs_game'] = True
+    future = dict(game_id=99, season=2026, week=1, start_date=pd.Timestamp('2026-09-05T18:00Z'), completed=False,
+                  home_id=1, away_id=2, home_points=None, away_points=None, home_team='Home', away_team='Away',
+                  neutral_site=False, fbs_game=True)
+    for year, group in pd.concat([games, pd.DataFrame([future])], ignore_index=True).groupby('season'):
+        group.to_csv(data/f'schedule_{year}.csv', index=False)
+    (model/'model.json').write_text(json.dumps({**model_value(), 'training_through_season': 2025}))
+    observations = [{**row, 'available_at': row['available_at'].isoformat(), 'provider': 'fixture',
+                     'source_url': 'https://example.test/fixture', 'source_sha256': 'a'*64}
+                    for row in players.to_dict('records')]
+    import_player_evidence(db, {'players': [dict(player_id=x, display_name=x) for x in players.player_id.unique()],
+                                'observations': observations})
+    with pytest.raises(ValueError, match='requires player observations'):
+        forecast(data, model, out, '2026-09-01T00:00Z', '2026-09-06T00:00Z', 2026)
+    result = forecast(data, model, out, '2026-09-01T00:00Z', '2026-09-06T00:00Z', 2026, database=db)
+    assert result.model_variant.tolist() == ['joint_player']
+    assert result.training_player_observations.iloc[0] > 0

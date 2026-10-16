@@ -94,14 +94,20 @@ def _known_context(query, schedules, snapshots, at):
 
 
 def _lineup(players, lineups, game, team, at):
+    cutoff = min(timestamp(game.start_date), at)
     if len(lineups):
-        part = lineups.loc[(lineups.game_id == int(game.game_id)) & (lineups.team_id == int(team))]
+        part = lineups.loc[(lineups.game_id == int(game.game_id)) & (lineups.team_id == int(team))].copy()
         if len(part):
-            row = part.iloc[-1]
-            return json.loads(row.players_json), "timestamped_lineup", row.observed_at.isoformat()
+            # Only a lineup recorded before kickoff and the forecast cutoff may
+            # enter, and the latest such record wins regardless of row order.
+            part["observed_at"] = pd.to_datetime(part["observed_at"], utc=True)
+            part = part.loc[part["observed_at"] < cutoff].sort_values("observed_at", kind="stable")
+            if len(part):
+                row = part.iloc[-1]
+                return json.loads(row.players_json), "timestamped_lineup", row.observed_at.isoformat()
     if players.empty:
         return [], "missing_player_history", None
-    part = players.loc[(players.team_id == int(team)) & (players.start_date < min(timestamp(game.start_date), at))]
+    part = players.loc[(players.team_id == int(team)) & (players.start_date < cutoff)]
     if part.empty:
         return [], "missing_player_history", None
     # Latest observed participation is evidence of usage, not a confirmed future
@@ -112,7 +118,7 @@ def _lineup(players, lineups, game, team, at):
 
 
 def forecast_players(data_root, model_root, out_root, at, end, season, schedules, paths,
-                     market_path=None, market_provider=None, target_game_ids=None):
+                     market_path=None, market_provider=None, target_game_ids=None, database=None):
     population = schedules.loc[schedules.fbs_game & schedules.season.le(season)].copy()
     past = population.loc[population.result_usable & (population.result_available_at < at)].copy().reset_index(drop=True)
     targets = population.loc[(population.season == season) & (population.start_date > at) & (population.start_date <= end)].copy()
@@ -123,7 +129,7 @@ def forecast_players(data_root, model_root, out_root, at, end, season, schedules
             raise ValueError("Requested games are outside the eligible joint forecast window")
     if targets.empty:
         raise ValueError("No FBS-v-FBS games in the requested forecast window")
-    database = database_path()
+    database = database or database_path()
     paths = sorted(set(Path(p) for p in paths) | set(Path(data_root).glob("pbp_*.parquet")))
     players, lineups, evidence_hash = player_evidence(data_root, database, past, at)
     if players.empty:
