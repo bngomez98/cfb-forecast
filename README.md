@@ -2,35 +2,21 @@
 
 A real-data forecasting service for the 2026 FBS season. Each Sunday at 10 AM America/Chicago, it gathers game information, validates previously saved predictions, and calculates forecasts for the coming Monday–Sunday slate. Predictions, actual results, and hypothetical betting returns remain separate records.
 
-## Actual project configuration
+## Project
 
-| Field | Value |
+The repository is Python, databases and git.
+
+| Item | Value |
 |---|---|
-| Project root | `/mnt/c/Users/brian/cfb-forecast` |
-| Python virtual environment | `/home/brian/.venvs/cfb-forecast` |
-| Windows environment | `C:\Users\brian\miniforge3\envs\cfb-python` |
-| Python version | `3.12.3` |
-| pip version | `26.2.1` |
-| Package name | `cfb-forecast` |
-| Package version | `0.4.0` |
-| Python source | `/mnt/c/Users/brian/cfb-forecast/src/cfb_forecast` |
-| Runtime data directory | `/mnt/c/Users/brian/cfb-forecast/data` |
-| Runtime artifacts directory | `/mnt/c/Users/brian/cfb-forecast/artifacts` |
-| Docker application directory | `/app` |
-| Main Docker image | `cfb-forecast:local` |
-| Dashboard Docker image | `cfb-forecast-dashboard:local` |
-| Docker base image | `python:3.12-slim` |
-| Compose service | `cfb-forecast` |
-| Dashboard service | `cfb-dashboard` |
-| Dashboard port | `8501` |
-| Dashboard address | `http://localhost:8501` |
-| Compose network | `cfb-forecast_default` |
-| Forecast container UID | `10001` |
-| Forecast container GID | `10001` |
-| Dashboard container UID and GID | `10002` |
-| API service port | `8000` |
+| Package | `cfb-forecast` 0.4.0 (`src/cfb_forecast`) |
+| Python | 3.11 or newer |
+| Database | SQLite, `artifacts/cfb_forecast.sqlite` (schema in `sql/schema.sql`) |
+| Runtime data | `data/` (downloaded sources) |
+| Runtime artifacts | `artifacts/` (runs, models, logs, database) |
+| Dashboard | `dashboard/app.py` (Streamlit, optional) |
+| API | `src/cfb_forecast/api.py` (FastAPI, optional) |
 
-The editable install is the git checkout. On Linux that environment is `/home/brian/.venvs/cfb-forecast`. On Windows it is `C:\Users\brian\miniforge3\envs\cfb-python`.
+Install with `python -m pip install -r requirements-tested.txt` and `python -m pip install -e '.[test]'`.
 
 ## Architecture, pipelines, workflows, and sources
 
@@ -45,9 +31,7 @@ flowchart TD
   head --> board[Scores, winner, confidence]
   board --> log[forecast_log]
   log --> sqlite
-  log --> react[React board and Vercel]
   log --> streamlit[Streamlit forecast log]
-  log --> datadog[artifacts/logs/datadog.jsonl]
   log --> mail[Email to bngomez@ieee.org]
 ```
 
@@ -58,25 +42,23 @@ flowchart LR
   features --> scores[Expected scores and win probability]
   scores --> publish[publish_forecast_update]
   publish --> sqlite[(SQLite)]
-  publish --> apps[React, Streamlit, Datadog, email]
+  publish --> apps[Board files, Streamlit, email]
 ```
 
 | Workflow | What it runs |
 |---|---|
 | Sunday service | `python -m cfb_forecast sunday-run` at 10:00 America/Chicago. It validates the previous slate and writes the next one. |
 | Weekly forecast | `run_weekly_forecast` calculates one week and publishes that board. |
-| Publish update | `python -m cfb_forecast publish-update --run DIR --run-id ID` stores an existing calculation in SQLite, the apps, the Datadog log, and the email outbox. |
+| Publish update | `python -m cfb_forecast publish-update --run DIR --run-id ID` stores an existing calculation in SQLite, the board files, the update log, and the email outbox. |
 | Source collection | `ingest_catalog` fetches the catalog and keeps each response or failure receipt. |
 | Data watchdog | `cfb-data-watchdog` records file checksums in `data_files` and `watchdog_events`. |
-| Tests | `.github/workflows/tests.yml` installs the package and runs pytest on Python 3.11 and 3.12, checks `python -m cfb_forecast --help`, and builds the React board in `web/`. |
-| Docker images | `.github/workflows/docker.yml` builds the forecast and dashboard images, checks that each one starts its commands, and pushes both to `ghcr.io` on pushes to `main` and version tags. |
+| Tests | `python -m pytest -q` runs the suite. |
 | Probability audit | `python -m cfb_forecast probability-audit` checks calibration on exported predictions without touching the production model. |
-| External sources | `.github/workflows/external-sources.yml` collects the weekly public sources. |
-| Sunday automation | `.github/workflows/sunday.yml` restores the runtime and runs the Sunday service. |
+| External sources | `python -m cfb_forecast.external_cli` collects the weekly public sources. |
 
 The SQLite file is `artifacts/cfb_forecast.sqlite`. `sql/schema.sql` is the schema applied on connect. The published board is `forecast_log`. Learning rows are `learning_versions` and `training_examples`. Source provenance is `source_registry`, `source_retrievals`, and `source_files`.
 
-Datadog reads `artifacts/logs/datadog.jsonl` through `datadog/conf.yaml`. Intake runs only when `DD_API_KEY` is set. Email is sent only when `CFB_SMTP_HOST` and `CFB_SMTP_PASSWORD` are set.
+Email is sent only when `CFB_SMTP_HOST` and `CFB_SMTP_PASSWORD` are set; otherwise the message stays in `artifacts/logs/email_outbox/`.
 
 | Source | URL |
 |---|---|
@@ -102,57 +84,19 @@ Datadog reads `artifacts/logs/datadog.jsonl` through `datadog/conf.yaml`. Intake
 | Open-Meteo | `https://api.open-meteo.com/v1/forecast` |
 | ESPN scoreboard | `https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard` |
 
-## Run with the established Linux environment
-
-From Ubuntu WSL:
-
-```bash
-cd /mnt/c/Users/brian/cfb-forecast
-source /home/brian/.venvs/cfb-forecast/bin/activate
-```
-
-Verify the active interpreter:
-
-```bash
-command -v python
-python --version
-python -m pip --version
-```
-
-Expected values:
-
-```text
-/home/brian/.venvs/cfb-forecast/bin/python
-Python 3.12.3
-pip 26.2.1
-```
-
-Install the project into the established environment:
+## Run
 
 ```bash
 python -m pip install -r requirements-tested.txt
 python -m pip install -e '.[test]'
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -m cfb_forecast sunday-run --season 2026
 ```
 
-Run the forecasting service:
-
-```bash
-OPENBLAS_NUM_THREADS=1 \
-OMP_NUM_THREADS=1 \
-python -m cfb_forecast sunday-run --season 2026
-```
-
-Run the dashboard directly from Linux:
+The optional dashboard:
 
 ```bash
 python -m pip install -r dashboard/requirements.txt
 streamlit run dashboard/app.py
-```
-
-The dashboard is available at:
-
-```text
-http://localhost:8501
 ```
 
 ## Alternative runtime paths
@@ -457,59 +401,13 @@ Sunday prices can change materially before kickoff.
 
 Unknown lineups or missing injury coverage suppress recommendations.
 
-## Sunday automation
+## Sunday schedule
 
-The workflow file is:
-
-```text
-.github/workflows/sunday.yml
-```
-
-It runs at:
-
-```text
-15:00 UTC on Sundays
-16:00 UTC on Sundays
-```
-
-The application executes only during:
-
-```text
-10:00 AM America/Chicago
-```
-
-This handles daylight-saving changes and duplicate workflow runs.
-
-GitHub can delay scheduled jobs.
-
-The workflow saves:
-
-- Downloaded sources.
-- Trained models.
-- Prior predictions.
-- Validation reports.
-- Runtime artifacts.
-
-The next run restores the newest available artifact.
-
-Forecast and validation reports are downloadable separately.
-
-Runtime artifacts expire after:
-
-```text
-90 days
-```
-
-Export artifacts if the service is paused longer than 90 days.
-
-GitHub schedules become active when:
-
-- The workflow exists on the repository’s default branch.
-- GitHub Actions is enabled for the repository, and this workflow is enabled on the Actions tab. A workflow that was disabled there stays off until it is enabled again, even though its file is unchanged.
-- The workflow has valid permissions.
-- The repository is available to the runner.
-
-Manual dispatch runs immediately, including the initial setup run.
+`python -m cfb_forecast sunday-run --season 2026 --scheduled` runs the Sunday service. With `--scheduled` it
+executes only at 10:00 America/Chicago, so it can be started from any scheduler (cron, a task scheduler, or
+by hand) at both candidate UTC hours without running twice or being thrown off by daylight-saving changes.
+Downloaded sources, trained models, prior predictions, validation reports and the database all live under
+`data/` and `artifacts/`, which a scheduler must keep between runs.
 
 ## Outputs
 
@@ -522,10 +420,9 @@ Manual dispatch runs immediately, including the initial setup run.
 | `artifacts/runs/<season-date>/validation.json` | Probability, score, and saved-price betting metrics |
 | `artifacts/latest/` | Most recent completed run for the dashboard |
 | `artifacts/training/` | Recomputed historical comparisons and fitted model files |
-| `web/public/forecasts.json` | Board the React app and the Vercel build serve |
 | `artifacts/cfb_forecast.sqlite` | Source catalog and `forecast_log` rows |
 
-A completed Sunday or weekly run calls `publish_forecast_update`. The same board is written to SQLite, `artifacts/latest/forecast_board.json`, the React file, the Streamlit forecast log, `artifacts/logs/datadog.jsonl`, and an email to `bngomez@ieee.org`. Email is sent only when `CFB_SMTP_HOST` and `CFB_SMTP_PASSWORD` are set. Datadog intake is used only when `DD_API_KEY` is set. Otherwise both receipts stay on disk.
+A completed Sunday or weekly run calls `publish_forecast_update`. The same board is written to SQLite (`forecast_log`), `artifacts/latest/forecast_board.json`, the Streamlit forecast log (`artifacts/logs/forecast_updates.jsonl`), and an email to `bngomez@ieee.org`. Email is sent only when `CFB_SMTP_HOST` and `CFB_SMTP_PASSWORD` are set; otherwise the message stays on disk.
 
 Publish an existing calculation without retraining:
 
@@ -535,33 +432,12 @@ python -m cfb_forecast publish-update --run artifacts/weekly/2026-week-7 --run-i
 
 ## Verification
 
-Run the complete test suite:
-
 ```bash
-cd /mnt/c/Users/brian/cfb-forecast
-source /home/brian/.venvs/cfb-forecast/bin/activate
 python -m pytest -q
-```
-
-On 2026-10-15 the suite reported `80 passed, 1 skipped` in a clean checkout. GitHub Actions runs the same suite on every push and pull request once the workflow is enabled.
-
-Verify the command-line interface:
-
-```bash
 python -m cfb_forecast --help
 ```
 
-The installed console command is:
-
-```bash
-cfb-forecast
-```
-
-The project has been installed editable into:
-
-```text
-/home/brian/.venvs/cfb-forecast
-```
+The installed console command is `cfb-forecast`.
 
 Tests use small explicit fixtures to check:
 
@@ -576,153 +452,6 @@ Tests use small explicit fixtures to check:
 Fixtures are not imported by production.
 
 Source and network failures fail required ingestion or appear as unavailable optional context. They do not trigger sample-data generation.
-
-## Docker configuration
-
-The Docker images are:
-
-```text
-cfb-forecast:local
-cfb-forecast-dashboard:local
-```
-
-The Docker base image is:
-
-```text
-python:3.12-slim
-```
-
-The forecast container installs the package with its API extras into `/app` and also installs R (`r-base-core`) for the R validation step.
-
-The forecast container runs as:
-
-```text
-UID 10001
-GID 10001
-```
-
-The dashboard service runs as UID and GID 10002 under Compose.
-
-The dashboard exposes:
-
-```text
-8501
-```
-
-The dashboard URL is:
-
-```text
-http://localhost:8501
-```
-
-The Docker workflow builds both images on every pull request and push to `main`, then checks that:
-
-- The forecast image answers `cfb-forecast --help` and `cfb-data-watchdog --help`.
-- The forecast image can import the FastAPI service.
-- The dashboard image can import Streamlit and the dashboard modules.
-
-The dashboard image installs Streamlit from `dashboard/requirements.txt`, which allows any 1.x release from 1.40 on. A build on 2026-10-15 installed Streamlit 1.66.0.
-
-Docker Desktop is reachable from Ubuntu through:
-
-```text
-docker.exe
-```
-
-The standard Linux `docker` command is not currently available directly inside the Ubuntu WSL distribution.
-
-## Docker Compose
-
-The Compose services are:
-
-```text
-cfb-forecast        one-off forecast commands (sunday-run, publish-update, and the rest)
-cfb-api             FastAPI service on port 8000
-cfb-data-watchdog   records data file checksums in SQLite and keeps watching
-cfb-dashboard       Streamlit dashboard on port 8501
-```
-
-The Compose network is:
-
-```text
-cfb-forecast_default
-```
-
-The default bind mounts are:
-
-```text
-/mnt/c/Users/brian/cfb-forecast/data:/app/data
-/mnt/c/Users/brian/cfb-forecast/artifacts:/app/artifacts
-```
-
-The dashboard mounts those directories read-only.
-
-The forecast service mounts them read-write so it can produce runtime files.
-
-For Docker Desktop bind mounts, the project directory must be shared with Docker Desktop:
-
-```text
-C:\Users\brian\cfb-forecast
-```
-
-The Docker Desktop file-sharing setting must allow access to:
-
-```text
-C:\Users\brian\cfb-forecast\data
-C:\Users\brian\cfb-forecast\artifacts
-```
-
-`docker-compose.yml` is the source of truth for the services. These environment variables change its defaults without editing the file:
-
-| Variable | Default |
-|---|---|
-| `CFB_DATA_DIR` | `./data` |
-| `CFB_ARTIFACTS_DIR` | `./artifacts` |
-| `CFB_IMAGE` | `cfb-forecast:local` |
-| `CFB_DASHBOARD_IMAGE` | `cfb-forecast-dashboard:local` |
-| `CFB_UID` and `CFB_GID` | `10001` |
-| `CFB_DASHBOARD_UID` and `CFB_DASHBOARD_GID` | `10002` |
-| `CFB_DASHBOARD_PORT` | `8501` |
-| `CFB_API_PORT` | `8000` |
-| `DD_API_KEY` and `DD_SITE` | empty and `datadoghq.com` |
-
-The forecast and watchdog services run with the same `PYTHONDONTWRITEBYTECODE`, `PYTHONUNBUFFERED`, and single-thread BLAS settings as the image.
-
-Build the forecast and dashboard images:
-
-```bash
-docker compose build
-```
-
-When Docker Desktop is accessed from Ubuntu WSL through the available Windows-integrated CLI:
-
-```bash
-docker.exe compose build
-```
-
-Run the forecast job:
-
-```bash
-docker compose run --rm cfb-forecast sunday-run --season 2026
-```
-
-Run the dashboard:
-
-```bash
-docker compose up cfb-dashboard
-```
-
-For Compose startup with image refresh:
-
-```bash
-docker compose up --pull always
-```
-
-The dashboard should then be available at:
-
-```text
-http://localhost:8501
-```
 
 ## Weekly controls and backtesting contract
 
@@ -879,64 +608,3 @@ The forecasting, training, and validation code is the Python package in `src/cfb
 
 The dashboard is a Streamlit application using the generated runtime artifacts and data.
 
-The public board is a React and TypeScript app in `web/`, built with Vite. It reads `web/public/forecasts.json`, which `publish_forecast_update` writes, and `vercel.json` tells Vercel to build it from `web/` into `web/dist`.
-
-## Complete Docker workflow
-
-From the project root:
-
-```bash
-cd /mnt/c/Users/brian/cfb-forecast
-```
-
-Create runtime directories if they do not exist:
-
-```bash
-mkdir -p data artifacts
-```
-
-Build the images:
-
-```bash
-docker compose build
-```
-
-Run the forecast:
-
-```bash
-docker compose run --rm cfb-forecast sunday-run --season 2026
-```
-
-Start the dashboard:
-
-```bash
-docker compose up cfb-dashboard
-```
-
-With Docker Desktop accessed from Ubuntu through the integrated CLI:
-
-```bash
-docker.exe compose build
-docker.exe compose run --rm cfb-forecast sunday-run --season 2026
-docker.exe compose up cfb-dashboard
-```
-
-The dashboard will be available at:
-
-```text
-http://localhost:8501
-```
-
-Data and artifacts are excluded from the Docker build context and supplied through runtime mounts.
-
-The single source project root is:
-
-```text
-/mnt/c/Users/brian/cfb-forecast
-```
-
-The single CFB Python environment is:
-
-```text
-/home/brian/.venvs/cfb-forecast
-```

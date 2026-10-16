@@ -32,9 +32,8 @@ def test_source_catalog_includes_the_public_football_sites():
         assert catalog[name].startswith("https://")
 
 
-def test_publish_writes_sqlite_react_board_and_email(tmp_path: Path, monkeypatch):
+def test_publish_writes_sqlite_board_and_email(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("CFB_SMTP_HOST", raising=False)
-    monkeypatch.delenv("DD_API_KEY", raising=False)
     run = tmp_path / "2026-week-7"
     run.mkdir()
     pd.DataFrame([{
@@ -43,22 +42,19 @@ def test_publish_writes_sqlite_react_board_and_email(tmp_path: Path, monkeypatch
         "expected_away_score": 24.7, "projected_home_margin": 7.1,
         "home_win_probability": 0.64, "prediction_method": "score head",
     }]).to_csv(run / "forecasts.csv", index=False)
-    web = tmp_path / "web" / "forecasts.json"
     report = publish_forecast_update(
         run,
         artifacts=tmp_path / "artifacts",
         database=tmp_path / "cfb.sqlite",
-        web_json=web,
         run_id="2026-week-7",
     )
     assert report["status"] == "published"
     assert report["email"]["status"] == "saved"
     assert report["email"]["to"] == "bngomez@ieee.org"
-    assert report["datadog"]["status"] == "local_only"
-    board = json.loads(web.read_text())
+    board = json.loads((tmp_path / "artifacts" / "latest" / "forecast_board.json").read_text())
     assert board["forecasts"][0]["winner"] == "Texas"
     assert board["forecasts"][0]["confidence"] == 0.64
     assert any(source["name"] == "cfbresults" for source in board["sources"])
     assert (tmp_path / "artifacts" / "latest" / "forecasts.csv").exists()
-    assert (tmp_path / "artifacts" / "logs" / "datadog.jsonl").exists()
+    assert (tmp_path / "artifacts" / "logs" / "forecast_updates.jsonl").exists()
     assert list((tmp_path / "artifacts" / "logs" / "email_outbox").glob("*.txt"))

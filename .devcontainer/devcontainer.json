@@ -1,6 +1,0 @@
-{
-  "name": "CFB forecasting",
-  "image": "mcr.microsoft.com/devcontainers/python:3.12",
-  "postCreateCommand": "python -m pip install -e '.[test]'",
-  "remoteUser": "vscode"
-}

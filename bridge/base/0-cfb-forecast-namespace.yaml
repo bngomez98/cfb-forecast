@@ -1,8 +1,0 @@
-#! 0-cfb-forecast-namespace.yaml
-# Generated code, do not edit
-apiVersion: v1
-kind: Namespace
-metadata:
-    name: cfb-forecast
-    labels:
-        com.docker.compose.project: cfb_forecast

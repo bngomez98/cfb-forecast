@@ -1,7 +1,7 @@
-"""Publish one forecast run to SQLite, the apps, the log, Datadog, and email.
+"""Publish one forecast run to SQLite, the board files, the update log, and email.
 
 Every completed calculation uses this module. The board records are the same
-rows the React app, the Streamlit desk, and the email all read.
+rows the Streamlit desk and the email read.
 """
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ import json
 import logging
 import os
 import smtplib
-import urllib.request
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from pathlib import Path
@@ -17,7 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 from .database import connect
-from .paths import artifacts_root, database_path, project_root
+from .paths import artifacts_root, database_path
 from .sources import source_registry
 
 LOG = logging.getLogger("cfb_forecast.publisher")
@@ -163,36 +162,6 @@ def write_forecast_log(conn, run_id: str, rows: pd.DataFrame, logged_at: str) ->
     return len(rows)
 
 
-def ship_datadog(events: list[dict], log_dir: Path) -> dict:
-    """Keep a Datadog-shaped JSON log locally, and ship it when DD_API_KEY is set."""
-    log_dir.mkdir(parents=True, exist_ok=True)
-    path = log_dir / "datadog.jsonl"
-    with path.open("a", encoding="utf-8") as handle:
-        for event in events:
-            handle.write(json.dumps(event) + "\n")
-    key = os.environ.get("DD_API_KEY")
-    if not key:
-        return {"status": "local_only", "path": str(path), "events": len(events)}
-    site = os.environ.get("DD_SITE", "datadoghq.com")
-    body = json.dumps(events).encode()
-    request = urllib.request.Request(
-        f"https://http-intake.logs.{site}/api/v2/logs",
-        data=body,
-        headers={
-            "DD-API-KEY": key,
-            "Content-Type": "application/json",
-            "User-Agent": "cfb-forecast/0.4",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            return {"status": "shipped", "http_status": response.status, "events": len(events)}
-    except Exception as exc:
-        LOG.warning("Datadog intake failed: %s", exc)
-        return {"status": "failed", "error": type(exc).__name__, "path": str(path)}
-
-
 def _email_body(board: dict) -> str:
     lines = [
         f"CFB forecast update {board['run_id']}",
@@ -252,7 +221,6 @@ def publish_forecast_update(
     run_dir: str | Path,
     artifacts: str | Path | None = None,
     database: str | Path | None = None,
-    web_json: str | Path | None = None,
     run_id: str | None = None,
     season: int | None = None,
     fetch_sources: bool = False,
@@ -261,7 +229,6 @@ def publish_forecast_update(
     run_dir = Path(run_dir)
     artifacts = Path(artifacts) if artifacts is not None else artifacts_root()
     database = Path(database) if database is not None else database_path()
-    web_json = Path(web_json) if web_json is not None else project_root() / "web" / "public" / "forecasts.json"
     prediction_path = run_dir / "forecasts.csv"
     if not prediction_path.exists():
         return {"status": "skipped", "reason": "forecasts.csv missing"}
@@ -308,8 +275,6 @@ def publish_forecast_update(
         "as_of": board["as_of"],
         "completed_at": logged_at,
     }, indent=2), encoding="utf-8")
-    web_json.parent.mkdir(parents=True, exist_ok=True)
-    web_json.write_text(json.dumps(board, indent=2), encoding="utf-8")
     with (log_dir / "forecast_updates.jsonl").open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({
             "logged_at": logged_at,
@@ -328,16 +293,6 @@ def publish_forecast_update(
         from .sources import ingest_catalog
         source_ingest = ingest_catalog(season, artifacts / "source_ingest")
         (log_dir / "source_ingest.json").write_text(json.dumps(source_ingest, indent=2), encoding="utf-8")
-    datadog = ship_datadog([{
-        "ddsource": "cfb-forecast",
-        "service": "cfb-forecast",
-        "status": "info",
-        "message": f"Published {board['games']} forecasts for {run_id}",
-        "run_id": run_id,
-        "season": season,
-        "games": board["games"],
-        "logged_at": logged_at,
-    }], log_dir)
     email = send_forecast_email(board, log_dir / "email_outbox")
     LOG.info("Published %s games for %s", board["games"], run_id)
     return {
@@ -346,9 +301,7 @@ def publish_forecast_update(
         "games": board["games"],
         "sources": registered,
         "logged": stored,
-        "web": str(web_json),
         "database": str(database),
-        "datadog": datadog,
         "email": email,
         "source_ingest": source_ingest,
     }
@@ -356,14 +309,13 @@ def publish_forecast_update(
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
-    parser = argparse.ArgumentParser(description="Publish a completed forecast run to every surface")
+    parser = argparse.ArgumentParser(description="Publish a completed forecast run to the database, board files and email")
     parser.add_argument("--run", required=True, help="Directory containing forecasts.csv")
     parser.add_argument("--artifacts", default=None)
     parser.add_argument("--database", default=None)
-    parser.add_argument("--web", default=None)
     parser.add_argument("--run-id", default=None)
     args = parser.parse_args(argv)
-    report = publish_forecast_update(args.run, args.artifacts, args.database, args.web, args.run_id)
+    report = publish_forecast_update(args.run, args.artifacts, args.database, args.run_id)
     print(json.dumps(report, indent=2))
     return 0 if report["status"] in {"published", "skipped"} else 1
 

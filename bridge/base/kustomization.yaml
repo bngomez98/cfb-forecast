@@ -1,7 +1,0 @@
-#! kustomization.yaml
-# Generated code, do not edit
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-    - cfb-forecast.yaml
-    - default-network-policy.yaml

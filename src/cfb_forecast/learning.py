@@ -3,10 +3,7 @@ from contextlib import closing
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
-import os
 from pathlib import Path
-import shutil
-import subprocess
 
 import numpy as np
 import pandas as pd
@@ -37,20 +34,19 @@ CREATE INDEX IF NOT EXISTS training_examples_season ON training_examples(season)
 """
 
 
-def validate_in_r(frame, folder):
-    source = Path(__file__).with_name("validate_learning.R")
-    executable = shutil.which("Rscript")
+def verify_metrics(frame, folder):
+    """Recompute log loss and Brier score from the stored gate predictions with a second implementation."""
     frame.to_csv(folder / "gate_predictions.csv", index=False)
-    if not executable:
-        if os.environ.get("CFB_REQUIRE_R") == "1":
-            raise RuntimeError("Rscript is required for independent learning validation")
-        return {"status": "unavailable", "reason": "Rscript is not installed"}
-    subprocess.run([executable, str(source), str(folder / "gate_predictions.csv"), str(folder / "r_metrics.csv")], check=True, timeout=60, capture_output=True, text=True)
-    independent = pd.read_csv(folder / "r_metrics.csv").iloc[0].to_dict()
+    y = frame.home_win.to_numpy(float)
+    p = frame.candidate_p.to_numpy(float)
+    independent = {
+        "log_loss": float(-np.mean(y * np.log(p) + (1.0 - y) * np.log(1.0 - p))),
+        "brier": float(np.mean((p - y) ** 2)),
+    }
     expected = metrics(frame.home_win, frame.candidate_p)
     for name in ("log_loss", "brier"):
         if not np.isclose(independent[name], expected[name], atol=1e-9):
-            raise ValueError(f"R/Python validation mismatch: {name}")
+            raise ValueError(f"Independent metric mismatch: {name}")
     return {"status": "verified", **independent}
 
 
@@ -158,10 +154,10 @@ def learn(data_root, base_root, output_root, database, as_of):
         predictions["home_win"] = labels
         predictions["candidate_p"] = candidate_p
         predictions["incumbent_p"] = incumbent_p
-        r_validation = (
-            validate_in_r(predictions, folder)
+        metric_check = (
+            verify_metrics(predictions, folder)
             if len(predictions) >= 30 and predictions.home_win.nunique() == 2
-            else {"status": "not_applicable", "reason": "insufficient outcome variation for independent score calculation"}
+            else {"status": "not_applicable", "reason": "insufficient outcome variation for an independent score calculation"}
         )
         adopted = True
         # The deployed head is continuously reinforced from every result available
@@ -174,7 +170,7 @@ def learn(data_root, base_root, output_root, database, as_of):
         production["adaptive_latest_result"] = games.result_available_at.max().isoformat()
         production["learning_version"] = version
         write_model(folder / "model", production)
-        report = {"version": version, "base_model_sha256": original_hash, "status": "promoted", "as_of": at.isoformat(), "model_path": str(folder / "model"), "model_sha256": file_hash(folder / "model" / "model.json"), "training_games": int(train.sum()), "refit_games": int(eligible.sum()), "reinforcement_decay": decay, "reinforcement_mode": "exponentially_weighted_continual_refit", "gate_games": int(gate.sum()), "gate_start": timestamp(boundary).isoformat(), "latest_result": games.result_available_at.max().isoformat(), "incumbent": incumbent, "candidate": evaluated, "r_validation": r_validation, "watchdog": watchdog, "source_hashes": sources, "probability_layer": "existing_strength_model" if base.get("win_strength_model") else "adaptive_score_head", "limitations": ["Historical Parquet statistics may be retrospectively revised", "Continual reinforcement reflects information available at each cutoff", "Retraining updates the statistical estimate but cannot eliminate future uncertainty"]}
+        report = {"version": version, "base_model_sha256": original_hash, "status": "promoted", "as_of": at.isoformat(), "model_path": str(folder / "model"), "model_sha256": file_hash(folder / "model" / "model.json"), "training_games": int(train.sum()), "refit_games": int(eligible.sum()), "reinforcement_decay": decay, "reinforcement_mode": "exponentially_weighted_continual_refit", "gate_games": int(gate.sum()), "gate_start": timestamp(boundary).isoformat(), "latest_result": games.result_available_at.max().isoformat(), "incumbent": incumbent, "candidate": evaluated, "metric_check": metric_check, "watchdog": watchdog, "source_hashes": sources, "probability_layer": "existing_strength_model" if base.get("win_strength_model") else "adaptive_score_head", "limitations": ["Historical Parquet statistics may be retrospectively revised", "Continual reinforcement reflects information available at each cutoff", "Retraining updates the statistical estimate but cannot eliminate future uncertainty"]}
         conn.execute("UPDATE learning_versions SET status=?,report_json=? WHERE version=?", (report["status"], json.dumps(report), version))
         conn.commit()
     (folder / "learning_report.json").write_text(json.dumps(report, indent=2))

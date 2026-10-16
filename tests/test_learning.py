@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from cfb_forecast.config import StateConfig
 from cfb_forecast.database import connect
 from cfb_forecast.features import feature_columns
-from cfb_forecast.learning import learn, validate_in_r
+from cfb_forecast.learning import learn, verify_metrics
 from cfb_forecast.model import write_model
 
 
@@ -69,12 +69,11 @@ def test_future_outcomes_do_not_enter_sql(training_files):
     assert all(pd.Timestamp(row[0]) < pd.Timestamp("2023-10-01T00:00Z") for row in dates)
 
 
-def test_r_python_metrics_agree(tmp_path):
-    import shutil
-    if not shutil.which("Rscript"):
-        pytest.skip("R is installed in the production image and scheduled runner")
+def test_independent_metric_recomputation_agrees(tmp_path):
     frame = pd.DataFrame({"game_id": range(40), "home_win": [0, 1] * 20, "candidate_p": [.2, .7] * 20})
-    assert validate_in_r(frame, tmp_path)["status"] == "verified"
+    check = verify_metrics(frame, tmp_path)
+    assert check["status"] == "verified"
+    assert check["brier"] == pytest.approx(((0.2) ** 2 + (0.3) ** 2) / 2)
 
 
 def test_adaptive_model_cannot_predict_its_past(training_files, tmp_path):

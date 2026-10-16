@@ -89,7 +89,7 @@ def main():
     pa.add_argument("--min-games",type=int,default=100); pa.add_argument("--regularization",type=float,default=0.01)
     pa.add_argument("--max-change",type=float,default=None); pa.add_argument("--stress-radius",type=float,default=0.1)
     pa.add_argument("--model",default=None,help="Optionally write a separate candidate model next to the audit")
-    pu=sub.add_parser("publish-update",help="Publish a completed forecast directory to SQLite, React, Streamlit, logs, and email")
+    pu=sub.add_parser("publish-update",help="Publish a completed forecast directory to SQLite, the board files, logs, and email")
     pu.add_argument("--run",required=True); pu.add_argument("--artifacts",default="artifacts")
     pu.add_argument("--database",default=None); pu.add_argument("--web",default=None); pu.add_argument("--run-id",default=None)
     pu.add_argument("--fetch-sources",action="store_true")
