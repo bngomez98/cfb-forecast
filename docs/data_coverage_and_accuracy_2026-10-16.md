@@ -10,7 +10,7 @@ evidence tables existed. Opening it with `cfb_forecast.storage.database.connect`
 adds the missing tables without touching existing rows:
 `forecast_evaluations`, `forecast_evidence`, `forecast_inputs`,
 `game_context_snapshots`, `player_identities`, `player_lineups`,
-`player_observations`, `player_source_ids`. Integrity check: ok. All 21
+`player_observations`, `player_source_ids`. Integrity check: ok. All 23
 existing tables kept their row counts. The new player tables are empty, so the
 joint model reads player history from `player_game_facts`, as it did before.
 
