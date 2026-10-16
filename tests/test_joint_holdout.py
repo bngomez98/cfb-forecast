@@ -83,11 +83,14 @@ def test_slates_put_bowl_weeks_after_the_regular_season():
 def test_tuning_grid_moves_one_setting_at_a_time_and_includes_current():
     candidates = candidate_configs()
     assert candidates[0][0] == 'current' and candidates[0][1] == HierarchyConfig()
-    names = {name.split('=')[0] for name, _, _ in candidates[1:]}
-    assert set(TUNED_SETTINGS) | {'half_life_days'} == names
-    for name, config, _ in candidates[1:]:
+    single = [c for c in candidates[1:] if not c[0].startswith('all_variances')]
+    assert {name.split('=')[0] for name, _, _ in single} == set(TUNED_SETTINGS) | {'half_life_days'}
+    for name, config, _ in single:
         assert config == HierarchyConfig() or sum(
             getattr(config, s) != getattr(HierarchyConfig(), s) for s in TUNED_SETTINGS) == 1
+    joint = {name: config for name, config, _ in candidates if name.startswith('all_variances')}
+    assert joint['all_variances*0.5'].team_variance == pytest.approx(HierarchyConfig().team_variance / 2)
+    assert joint['all_variances*0.5'].offseason_carry == HierarchyConfig().offseason_carry
 
 
 def test_market_lines_flip_home_spread_into_home_margin(tmp_path):
@@ -97,3 +100,15 @@ def test_market_lines_flip_home_spread_into_home_margin(tmp_path):
     lines = market_lines([path])
     assert lines.game_id.tolist() == [1]
     assert lines.market_home_margin.iloc[0] == pytest.approx(7.5)
+
+
+def test_tuning_ranks_on_earlier_seasons_and_confirms_on_a_later_one():
+    from cfb_forecast.evaluation.joint_holdout import tune_settings
+    data = inputs(seasons=(2021, 2022, 2023, 2024), weeks=3)
+    result = tune_settings(data, tuning_seasons=(2022, 2023), confirm_season=2024, refit_every=3, min_noise_games=5)
+    assert {t['season'] for t in result['trials']} == {2022, 2023}
+    losses = [r['log_loss'] for r in result['ranking']]
+    assert losses == sorted(losses)
+    assert result['best_on_tuning_seasons'] == result['ranking'][0]['candidate']
+    assert result['adopted'] in ('current', result['best_on_tuning_seasons'])
+    assert 'current' in result['confirmation']

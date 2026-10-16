@@ -215,41 +215,57 @@ def candidate_configs(base=None, half_life_days=CONTEXT_HALF_LIFE_DAYS):
                 candidates.append((f"{name}={option:g}", replace(base, **{name: float(option)}), half_life_days))
     for option in (half_life_days / 2, half_life_days * 2):
         candidates.append((f"half_life_days={option:g}", base, option))
+    # All prior variances together, in case every one is too wide or narrow.
+    variances = [name for name in TUNED_SETTINGS if name != "offseason_carry"]
+    for factor in (0.25, 0.5, 2.):
+        candidates.append((f"all_variances*{factor:g}",
+                           replace(base, **{name: getattr(base, name) * factor for name in variances}), half_life_days))
     return candidates
 
 
-def tune_settings(inputs, tuning_seasons=(2022, 2023), confirm_season=2024, refit_every=4, workers=1):
+def tune_settings(inputs, tuning_seasons=(2022, 2023), confirm_season=2024, refit_every=4, workers=1,
+                  min_noise_games=100):
     """Choose prior settings on earlier seasons, then check them on a later one.
 
-    Candidates are ranked by mean squared score error pooled over the tuning
-    seasons. The best is kept only if it also beats the current settings on
-    the confirmation season; otherwise the current settings are retained.
-    The final holdout season is never used here.
+    Each candidate's score noise is measured on its own tuning-season
+    replays, as production does with earlier holdout seasons, and candidates
+    are ranked by win-probability log loss pooled over the tuning seasons
+    (this judges both the predicted scores and the stated uncertainty). The
+    confirmation season is graded with noise from the tuning seasons only.
+    The best is kept only if it also beats the current settings there;
+    otherwise the current settings are retained. The final holdout season is
+    never used here.
     """
     candidates = candidate_configs()
     jobs = [(season, {"config": config, "half_life_days": half_life, "refit_every": refit_every, "_name": name})
             for name, config, half_life in candidates for season in tuning_seasons]
     results = _run_jobs(inputs, [(s, {k: v for k, v in kw.items() if k != "_name"}) for s, kw in jobs], workers)
-    trials = []
+    frames = {}
     for (season, kwargs), (_, _, frame) in zip(jobs, results):
-        trials.append({"candidate": kwargs["_name"], "season": season, **grade(frame)})
+        frames.setdefault(kwargs["_name"], []).append(frame)
+    trials, ranking, noises = [], [], {}
+    for name, parts in frames.items():
+        pooled = pd.concat(parts)
+        noises[name], _ = holdout_noise_covariance(pooled.loc[~pooled.skipped], min_games=min_noise_games)
+        for frame in parts:
+            trials.append({"candidate": name, "season": int(frame.season.iloc[0]), **grade(frame, noises[name])})
+        ranking.append({"candidate": name, **grade(pooled, noises[name]), "noise_covariance": noises[name].tolist()})
     trials = pd.DataFrame(trials)
-    pooled = (trials.assign(weighted=trials.score_mse * trials.games).groupby("candidate")
-              .agg(games=("games", "sum"), weighted=("weighted", "sum")))
-    pooled["score_mse"] = pooled.weighted / pooled.games
-    ranking = pooled.sort_values("score_mse")
-    best = ranking.index[0]
+    ranking = pd.DataFrame(ranking).sort_values("log_loss").reset_index(drop=True)
+    best = ranking.candidate.iloc[0]
     chosen = {name: (config, half_life) for name, config, half_life in candidates}
+    compared = list(dict.fromkeys(["current", best]))
     confirm_jobs = [(confirm_season, {"config": chosen[name][0], "half_life_days": chosen[name][1],
-                                      "refit_every": refit_every}) for name in dict.fromkeys(["current", best])]
-    confirmed = {name: grade(frame) for name, (_, _, frame) in zip(dict.fromkeys(["current", best]),
-                                                                    _run_jobs(inputs, confirm_jobs, workers))}
-    adopted = best if best != "current" and confirmed[best]["score_mse"] < confirmed["current"]["score_mse"] else "current"
+                                      "refit_every": refit_every}) for name in compared]
+    confirmed = {name: grade(frame, noises[name])
+                 for name, (_, _, frame) in zip(compared, _run_jobs(inputs, confirm_jobs, workers))}
+    adopted = best if best != "current" and confirmed[best]["log_loss"] < confirmed["current"]["log_loss"] else "current"
     return {"tuning_seasons": list(tuning_seasons), "confirm_season": confirm_season, "refit_every_slates": refit_every,
-            "criterion": "mean squared score error, pooled over tuning seasons",
+            "criterion": "win-probability log loss pooled over tuning seasons, noise measured on those seasons",
             "best_on_tuning_seasons": best, "confirmation": confirmed, "adopted": adopted,
             "adopted_config": asdict(chosen[adopted][0]), "adopted_half_life_days": chosen[adopted][1],
-            "ranking": ranking[["games", "score_mse"]].reset_index().to_dict("records"),
+            "adopted_noise_covariance": noises[adopted].tolist(),
+            "ranking": ranking.to_dict("records"),
             "trials": trials.to_dict("records")}
 
 
@@ -333,7 +349,10 @@ def run_chronological_holdout(data_root, database, out_root, betting_paths=(), l
             frame.to_csv(out / f"joint_tuned_{final_season}.csv", index=False)
             earlier = pd.concat([replays[("opponent_adjusted", s)] for s in seasons if s < final_season])
             noise, _ = holdout_noise_covariance(earlier.loc[~earlier.skipped])
-            tuning["final_season"] = {"season": final_season, "tuned": grade(frame, noise),
+            # Each set of settings is graded with noise measured on its own
+            # earlier-season replays; neither sees the final season.
+            tuning["final_season"] = {"season": final_season,
+                                      "tuned": grade(frame, tuning["adopted_noise_covariance"]),
                                       "current": grade(replays[("opponent_adjusted", final_season)], noise)}
         report["tuning"] = tuning
     (out / "report.json").write_text(json.dumps(report, indent=2, default=str))
