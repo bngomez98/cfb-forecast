@@ -7,7 +7,7 @@ import streamlit as st
 from cfb_forecast.paths import data_root, model_root
 from cfb_forecast.pipeline_status import STAGES
 
-PAGES = ["Overview", "Forecast desk", "Lines", "Statistics", "Methodology", "Forecast log", "Calculation pipeline", "Historical training", "Weekly validation", "Game inputs", "Model research", "Sources"]
+PAGES = ["Start here", "Overview", "Forecast desk", "Lines", "Statistics", "Methodology", "Forecast log", "Calculation pipeline", "Historical training", "Weekly validation", "Game inputs", "Model research", "Sources"]
 
 
 def read_json(path, default=None):
@@ -41,6 +41,26 @@ def shell(root, manifest):
     title, subtitle = headings.get(page, (page, "Source-backed analysis. Predictions and actual outcomes always remain separate."))
     st.html(f'<div class="page-heading"><div class="eyebrow">FIELDQUANT / {escape(str(season))} SEASON</div><h1>{escape(title)}</h1><p class="subtitle">{escape(subtitle)}</p></div>')
     return page
+
+
+def start_here():
+    from cfb_forecast.status import collect_status
+    report = collect_status()
+    if report["ready"]:
+        st.success("Everything is in place. Use the sidebar to browse forecasts and evidence.")
+    else:
+        st.warning("Setup is not finished. Run the command below in a terminal, then press Refresh saved data.")
+    for check in report["checks"]:
+        st.markdown(f"{'OK' if check['ok'] else 'MISSING'} · **{check['name']}** — {check['detail']}")
+    st.subheader("Next step")
+    st.code(report["next_step"].split("   #")[0], language="bash")
+    st.subheader("Where to look")
+    st.markdown(
+        "- **Forecast desk**: this week's games, with a CSV download\n"
+        "- **Weekly validation**: how last week's forecasts did\n"
+        "- **Calculation pipeline**, **Historical training**, **Sources**: the evidence behind every number\n"
+        "- Terminal: `cfb-forecast status` shows this same checklist; `cfb-forecast --help` lists every command"
+    )
 
 
 def training_root():

@@ -12,7 +12,7 @@ Three installed entry points (after `pip install -e .`):
 
 | Command | Purpose |
 | --- | --- |
-| `cfb-forecast` | The application CLI (24 subcommands below). Same as `python -m cfb_forecast`. |
+| `cfb-forecast` | The application CLI (28 subcommands below). Same as `python -m cfb_forecast`. |
 | `cfb-pipeline` | Alias of `cfb-forecast` (identical subcommands). |
 | `cfb-data-watchdog` | Checks the data directory for missing or changed files. Options: `--data`, `--database`, `--watch`, `--interval` (seconds). Results are served at `GET /api/watchdog`. |
 
@@ -20,13 +20,19 @@ Every subcommand accepts `--help`. Relative `data/...` and `artifacts/...`
 option values resolve against `CFB_DATA_DIR` / `CFB_ARTIFACTS_DIR`. Options
 marked * are required. Exit status is non-zero on any failure.
 
-### 1.1 Everyday workflow
+### 1.1 Everyday workflow (three commands)
 
 ```bash
-cfb-forecast preflight --season 2026                 # check data/artifact paths
-cfb-forecast sunday-run --season 2026                # fetch, train if needed, forecast, validate, publish
-streamlit run dashboard/app.py                       # look at the result
+cfb-forecast status       # what exists, what is missing, the exact next command
+cfb-forecast update       # fetch, train if needed, forecast, validate, publish
+cfb-forecast dashboard    # open the web dashboard   (cfb-forecast serve starts the API)
 ```
+
+Running `cfb-forecast` with no command prints `status`. `--season` is optional
+everywhere and defaults to the current season (June onward = this year, earlier
+months = last year). `update` is `sunday-run` without the Sunday-window check;
+`--no-refresh` skips downloads. `cfb-forecast --help` groups every command by
+task (data, forecast, evaluate, markets, ledgers).
 
 `sunday-run` is the one command that does the whole weekly job. It is resumable
 (each stage is journaled), fetches seasons 2000..season-1 plus the forecast
@@ -108,9 +114,13 @@ cfb-data-watchdog --watch --interval 600
 
 ## 2. Streamlit dashboard
 
+Start with the **Start here** page: it shows the same checklist as
+`cfb-forecast status`, the one command to run next, and where to look. Empty
+pages repeat that command.
+
 ```bash
 pip install -r dashboard/requirements.txt     # streamlit, pandas, pyarrow
-streamlit run dashboard/app.py
+cfb-forecast dashboard                        # or: streamlit run dashboard/app.py
 ```
 
 Opens on http://localhost:8501. Configuration is in `.streamlit/config.toml`
@@ -127,6 +137,7 @@ the files; it does not start a model run. Point it elsewhere with
 
 | Page | What it shows | Reads |
 | --- | --- | --- |
+| Start here | Setup checklist and next command | `cfb_forecast.status` |
 | Overview | Run status, game count, as-of time, research-only notice | `latest/run_manifest.json`, `latest/forecast_board.json` |
 | Forecast desk | Upcoming games: expected scores, home win probability, winner, confidence; team multiselect; **Download predictions** (CSV) | `latest/forecasts.csv` |
 | Lines | Model numbers beside any imported market lines | `latest/forecasts.csv`, market file |
@@ -154,7 +165,7 @@ populates them; press **Refresh saved data**.
 
 ```bash
 pip install -e '.[api]'
-python -m cfb_forecast.api            # PORT env var, default 8000; CORS open
+cfb-forecast serve --port 8000        # or: python -m cfb_forecast.api (PORT env var); CORS open
 ```
 
 | Endpoint | Behaviour |

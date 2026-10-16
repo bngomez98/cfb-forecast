@@ -5,7 +5,7 @@ import json
 import pandas as pd
 import streamlit as st
 from cfb_forecast.paths import artifacts_root
-from desk import shell, overview, render_pipeline, historical, sources, training_root
+from desk import shell, start_here, overview, render_pipeline, historical, sources, training_root
 
 ROOT = artifacts_root()
 
@@ -31,6 +31,9 @@ def main():
     latest = ROOT / "latest"
     manifest = read_json(latest / "run_manifest.json", {})
     page = shell(ROOT, manifest)
+    if page == "Start here":
+        start_here()
+        return
     if page == "Overview":
         overview(ROOT, manifest)
         return
@@ -49,7 +52,7 @@ def main():
         rows = pd.DataFrame(board.get("forecasts", []))
         st.subheader("Published forecast log")
         if rows.empty:
-            st.info("No forecast log has been published yet.")
+            st.info("No forecast log has been published yet. Run `cfb-forecast update` in a terminal, then press Refresh saved data.")
             return
         st.caption(f"Run {board.get('run_id', 'unknown')} · {board.get('games', len(rows))} games · {board.get('as_of', '')}")
         st.dataframe(
@@ -60,7 +63,7 @@ def main():
         return
     forecasts = table(latest / "forecasts.csv") if (latest / "forecasts.csv").exists() else pd.DataFrame()
     if page in {"Forecast desk", "Game inputs"} and forecasts.empty:
-        st.info("No upcoming forecasts in the latest completed run. Historical training, source receipts and pipeline evidence remain available in the sidebar.")
+        st.info("No upcoming forecasts in the latest completed run. Run `cfb-forecast update` in a terminal, then press Refresh saved data. Historical training, source receipts and pipeline evidence remain available in the sidebar.")
         return
     if page == "Forecast desk":
         st.subheader("Upcoming FBS games")

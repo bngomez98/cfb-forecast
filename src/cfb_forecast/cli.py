@@ -2,11 +2,35 @@ import argparse
 from pathlib import Path
 import pandas as pd
 from .paths import model_root
+from .status import current_season
+
+EPILOG = """\
+common tasks:
+  status      what exists, what is missing, and the next command to run
+  update      one command to refresh everything for the current week
+  dashboard   open the web dashboard      serve   start the HTTP API
+
+groups:
+  data        fetch  results-refresh  preflight
+  forecast    weekly-forecast  forecast  forecast-advance  publish-update
+  evaluate    backtest  season-backtest  distribution-backtest  probability-audit
+  markets     market-init  market-import  market-snapshot-sdv  market-backfill-sdv
+  ledgers     holdout-freeze  holdout-settle  holdout-verify  chronology-update
+              chronology-verify  chronology-settle  chronology-bootstrap  prospective-run
+
+--season defaults to the current season. Run `cfb-forecast <command> --help` for options.
+"""
 
 
 def main():
-    parser=argparse.ArgumentParser(description="College football forecasting with reproducible cutoffs")
-    sub=parser.add_subparsers(dest="command",required=True)
+    parser=argparse.ArgumentParser(prog="cfb-forecast",description="College football forecasting with reproducible cutoffs",epilog=EPILOG,formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub=parser.add_subparsers(dest="command",metavar="command")
+    sub.add_parser("status",help="Show what exists, what is missing and the next command to run").add_argument("--season",type=int,default=current_season())
+    up=sub.add_parser("update",help="Refresh everything for the week: fetch, train if needed, forecast, validate, publish")
+    up.add_argument("--season",type=int,default=current_season()); up.add_argument("--no-refresh",action="store_true",help="skip downloads")
+    up.add_argument("--data",default="data"); up.add_argument("--artifacts",default="artifacts")
+    ds=sub.add_parser("dashboard",help="Open the Streamlit dashboard"); ds.add_argument("--port",type=int,default=8501)
+    sv=sub.add_parser("serve",help="Start the HTTP API"); sv.add_argument("--port",type=int,default=None)
     fetch=sub.add_parser("fetch",help="Download free schedules and PBP summaries")
     fetch.add_argument("--data",default="data"); fetch.add_argument("--seasons",nargs="+",type=int,required=True)
     fetch.add_argument("--refresh",action="store_true"); fetch.add_argument("--raw-pbp",action="store_true")
@@ -18,11 +42,11 @@ def main():
     fc=sub.add_parser("forecast",help="Produce forecasts from a saved production model")
     fc.add_argument("--data",default="data"); fc.add_argument("--model",default=str(model_root()))
     fc.add_argument("--out",default="artifacts/forecast"); fc.add_argument("--as-of",required=True)
-    fc.add_argument("--through",required=True); fc.add_argument("--season",type=int,required=True)
+    fc.add_argument("--through",required=True); fc.add_argument("--season",type=int,default=current_season())
     fc.add_argument("--market",default=None); fc.add_argument("--market-provider",default=None)
     fa=sub.add_parser("forecast-advance",help="Advance a saved exact forecast state when no new result became eligible")
     fa.add_argument("--previous",required=True); fa.add_argument("--data",default="data"); fa.add_argument("--model",default=str(model_root()))
-    fa.add_argument("--out",required=True); fa.add_argument("--as-of",required=True); fa.add_argument("--through",required=True); fa.add_argument("--season",type=int,required=True)
+    fa.add_argument("--out",required=True); fa.add_argument("--as-of",required=True); fa.add_argument("--through",required=True); fa.add_argument("--season",type=int,default=current_season())
     fa.add_argument("--market",default=None); fa.add_argument("--market-provider",default=None)
     mi=sub.add_parser("market-import",help="Append timestamped market snapshots to the canonical market-history store")
     mi.add_argument("--input",required=True); mi.add_argument("--store",default="data/market_history.csv")
@@ -30,7 +54,7 @@ def main():
     me=sub.add_parser("market-init",help="Create an empty canonical market-history store")
     me.add_argument("--store",default="data/market_history.csv")
     ms=sub.add_parser("market-snapshot-sdv",help="Capture the current free SportsDataverse ESPN spread/total into point-in-time history")
-    ms.add_argument("--season",type=int,required=True); ms.add_argument("--store",default="data/market_history.csv"); ms.add_argument("--observed-at",default=None)
+    ms.add_argument("--season",type=int,default=current_season()); ms.add_argument("--store",default="data/market_history.csv"); ms.add_argument("--observed-at",default=None)
     mb=sub.add_parser("market-backfill-sdv",help="Download benchmark-only historical resolved/closing SportsDataverse lines")
     mb.add_argument("--seasons",nargs="+",type=int,required=True); mb.add_argument("--out",default="data/market_closing_history.csv")
     dv=sub.add_parser("distribution-backtest",help="Evaluate Gaussian score distributions on frozen held-out predictions")
@@ -44,7 +68,7 @@ def main():
     hv.add_argument("--holdout",required=True)
     cu=sub.add_parser("chronology-update",help="Append only games whose fixed pregame forecast cutoff has arrived")
     cu.add_argument("--data",default="data"); cu.add_argument("--model",default=str(model_root()))
-    cu.add_argument("--ledger",default="artifacts/chronological_holdout"); cu.add_argument("--season",type=int,required=True)
+    cu.add_argument("--ledger",default="artifacts/chronological_holdout"); cu.add_argument("--season",type=int,default=current_season())
     cu.add_argument("--now",default=None); cu.add_argument("--lead-hours",type=float,default=24.0)
     cu.add_argument("--market",default=None); cu.add_argument("--market-provider",default=None)
     cu.add_argument("--primary-lateness-minutes",type=float,default=60.0)
@@ -57,29 +81,29 @@ def main():
     cb.add_argument("--lead-hours",type=float,default=24.0); cb.add_argument("--primary-lateness-minutes",type=float,default=60.0)
     pr=sub.add_parser("prospective-run",help="Capture market then append newly due games to the chronological prospective holdout")
     pr.add_argument("--data",default="data"); pr.add_argument("--model",default=str(model_root()))
-    pr.add_argument("--ledger",default="artifacts/chronological_holdout"); pr.add_argument("--season",type=int,required=True)
+    pr.add_argument("--ledger",default="artifacts/chronological_holdout"); pr.add_argument("--season",type=int,default=current_season())
     pr.add_argument("--now",default=None); pr.add_argument("--lead-hours",type=float,default=24.0)
     pr.add_argument("--market",default="data/market_history.csv"); pr.add_argument("--market-provider",default=None)
     pr.add_argument("--primary-lateness-minutes",type=float,default=60.0); pr.add_argument("--skip-market-capture",action="store_true")
     wf=sub.add_parser("weekly-forecast",help="Forecast the next upcoming FBS slate")
     wf.add_argument("--data",default="data"); wf.add_argument("--model",default=str(model_root()))
-    wf.add_argument("--out",default="artifacts"); wf.add_argument("--season",type=int,required=True)
+    wf.add_argument("--out",default="artifacts"); wf.add_argument("--season",type=int,default=current_season())
     wf.add_argument("--week",type=int,default=None); wf.add_argument("--as-of",default=None)
     wf.add_argument("--market",default=None)
     sr=sub.add_parser("sunday-run",help="Collect sources, train, validate and publish the Sunday slate")
     sr.add_argument("--data",default="data"); sr.add_argument("--model",default=None)
     sr.add_argument("--artifacts", "--out", dest="artifacts", default="artifacts")
-    sr.add_argument("--season",type=int,required=True)
+    sr.add_argument("--season",type=int,default=current_season())
     sr.add_argument("--scheduled",action="store_true")
     sr.add_argument("--no-refresh",action="store_true")
     sr.add_argument("--timezone",default="America/Chicago")
     rr=sub.add_parser("results-refresh",help="Retrieve live scores from ESPN's public scoreboard API")
     rr.add_argument("--data",default="data"); rr.add_argument("--out",default="artifacts/results")
-    rr.add_argument("--season",type=int,required=True); rr.add_argument("--week",type=int,default=None)
+    rr.add_argument("--season",type=int,default=current_season()); rr.add_argument("--week",type=int,default=None)
     rr.add_argument("--start",default=None); rr.add_argument("--end",default=None)
     sb=sub.add_parser("season-backtest",help="Reconstruct and grade weekly forecasts across a season")
     sb.add_argument("--data",default="data"); sb.add_argument("--model",default=str(model_root()))
-    sb.add_argument("--out",default="artifacts/backtest"); sb.add_argument("--season",type=int,required=True)
+    sb.add_argument("--out",default="artifacts/backtest"); sb.add_argument("--season",type=int,default=current_season())
     sb.add_argument("--lead-hours",type=float,default=48.0)
     pf=sub.add_parser("preflight",help="Validate mounted data and artifact paths")
     pf.add_argument("--data",default="data"); pf.add_argument("--artifacts",default="artifacts"); pf.add_argument("--season",type=int,default=None)
@@ -94,12 +118,31 @@ def main():
     pu.add_argument("--database",default=None); pu.add_argument("--run-id",default=None)
     pu.add_argument("--fetch-sources",action="store_true")
     args=parser.parse_args()
+    if args.command is None:
+        args=parser.parse_args(["status"])
     from .paths import cli_path
     for name in ("data", "artifacts", "model", "models", "out", "store", "ledger", "predictions", "archive", "market", "input", "previous", "forecast", "holdout", "frozen_batch", "run", "web", "database"):
         value = getattr(args, name, None)
         if value is not None:
             setattr(args, name, str(cli_path(value)))
-    if args.command=="fetch":
+    if args.command=="status":
+        from .status import collect_status, format_status
+        print(format_status(collect_status(args.season)))
+    elif args.command=="update":
+        from .sunday import sunday_run
+        print(pd.Series(sunday_run(args.data,args.artifacts,args.season,None,"America/Chicago",False,not args.no_refresh)).to_string())
+        from .status import collect_status, format_status
+        print(); print(format_status(collect_status(args.season)))
+    elif args.command=="dashboard":
+        import subprocess, sys
+        app=Path(__file__).resolve().parents[2]/"dashboard"/"app.py"
+        raise SystemExit(subprocess.call([sys.executable,"-m","streamlit","run",str(app),"--server.port",str(args.port)]))
+    elif args.command=="serve":
+        import os
+        if args.port: os.environ["PORT"]=str(args.port)
+        from .api import run as serve_api
+        serve_api()
+    elif args.command=="fetch":
         from .data import fetch as run
         run(args.data,args.seasons,args.refresh,args.raw_pbp)
     elif args.command=="backtest":
