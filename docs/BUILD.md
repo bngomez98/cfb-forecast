@@ -77,6 +77,7 @@ README.md             long-form specification and method
 ARCHITECTURE.md       design notes
 RESULTS.md            recorded results
 docs/BUILD.md         this document
+docs/CLI_AND_UI.md     CLI, dashboard and API guide
 data/                 runtime: downloaded sources (created on first run, not in git)
 artifacts/            runtime: runs, models, logs and the database (not in git)
 ```
