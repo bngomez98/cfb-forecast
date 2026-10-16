@@ -25,12 +25,16 @@ ASSUMED_NOISE = {"method": "assumed_score_scale",
 
 @dataclass(frozen=True)
 class HierarchyConfig:
-    team_variance: float = 0.5
-    player_variance: float = 0.5
-    defense_variance: float = 0.5
-    matchup_variance: float = 0.1
-    context_variance: float = 1.0
-    season_innovation_variance: float = 0.3
+    # Prior variances are a quarter of the original guesses (0.5, 0.5, 0.5,
+    # 0.1, 1.0, 0.3). Chosen by the joint-holdout tuner on 2022-2023 replays,
+    # confirmed on 2024 (log loss 0.565 vs 0.583) and checked once on the
+    # untouched 2025 season (0.542 vs 0.551). See docs/joint_holdout_results.md.
+    team_variance: float = 0.125
+    player_variance: float = 0.125
+    defense_variance: float = 0.125
+    matchup_variance: float = 0.025
+    context_variance: float = 0.25
+    season_innovation_variance: float = 0.075
     offseason_carry: float = 0.8
     max_uncertain_players: int = 10
 
