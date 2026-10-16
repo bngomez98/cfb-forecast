@@ -14,7 +14,7 @@ from ..ingest.player_matchups import player_evidence
 from ..odds.decision import moneyline_diagnostics
 from ..odds.market import read_market_history, market_at_cutoff
 from ..paths import database_path
-from .player_hierarchy import PlayerHierarchy, observed_lineup
+from .player_hierarchy import NOISE_CALIBRATION_FILE, PlayerHierarchy, observed_lineup
 from .forecast_model import KNOWN_COLUMNS, rest_days
 
 TEAM_METRICS = ("points_for", "points_against", "yards_per_play", "success_rate", "explosive_rate", "turnover_rate", "epa")
@@ -36,21 +36,134 @@ def _json_values(value):
     return value
 
 
-def _team_context(past, targets, facts, at):
-    """Historical rates gated by final availability, not kickoff/week order."""
+# Days for a game's weight in the team summary to halve. A game played a full
+# season earlier keeps roughly 3% of the weight of last week's game.
+CONTEXT_HALF_LIFE_DAYS = 70.
+# For each metric, the opponent quality it is measured against: offensive
+# rates are compared with what the opponent's defense allowed to everyone
+# else; points allowed are compared with the opponent's own scoring.
+_OPPONENT_REFERENCE = {"points_against": ("for", "points_for")}
+
+
+def _history_rows(past, facts):
     rows = []
     for game in past.itertuples(index=False):
-        for team, points, allowed in ((game.home_id, game.home_points, game.away_points),
-                                       (game.away_id, game.away_points, game.home_points)):
-            rows.append({"game_id": int(game.game_id), "team_id": int(team), "season": int(game.season),
-                         "available_at": game.result_available_at, "points_for": points, "points_against": allowed})
-    history = pd.DataFrame(rows)
+        for team, opponent, points, allowed in ((game.home_id, game.away_id, game.home_points, game.away_points),
+                                                (game.away_id, game.home_id, game.away_points, game.home_points)):
+            rows.append({"game_id": int(game.game_id), "team_id": int(team), "opponent_id": int(opponent),
+                         "season": int(game.season), "available_at": game.result_available_at,
+                         "points_for": points, "points_against": allowed})
+    history = pd.DataFrame(rows, columns=["game_id", "team_id", "opponent_id", "season", "available_at",
+                                          "points_for", "points_against"])
     if facts is not None and len(facts):
         columns = [c for c in TEAM_METRICS if c not in ("points_for", "points_against") and c in facts]
         history = history.merge(facts[["game_id", "team_id", *columns]], on=["game_id", "team_id"], how="left", validate="one_to_one")
     for column in TEAM_METRICS:
         if column not in history:
             history[column] = np.nan
+    return history
+
+
+def _team_context(past, targets, facts, at, mode="opponent_adjusted", half_life_days=CONTEXT_HALF_LIFE_DAYS):
+    """Pregame team summaries from results available before each cutoff.
+
+    ``opponent_adjusted`` (default) weights each earlier game by recency and
+    adjusts it for the opponent faced; ``season_mean`` is the previous plain
+    average of the current and previous seasons, kept for comparison. Both
+    gate rows by final-result availability, not kickoff/week order.
+    """
+    history = _history_rows(past, facts)
+    if mode == "season_mean":
+        return _team_context_mean(history, targets, at)
+    if mode != "opponent_adjusted":
+        raise ValueError(f"Unknown team context mode: {mode}")
+    if not np.isfinite(half_life_days) or half_life_days <= 0:
+        raise ValueError("half_life_days must be finite and positive")
+    history = history.assign(available_at=pd.to_datetime(history.available_at, utc=True)).sort_values("available_at", kind="stable")
+    metrics = list(TEAM_METRICS)
+    times = history.available_at.to_numpy("datetime64[ns]").astype("int64")
+    values = history[metrics].to_numpy(float)
+    seasons = history.season.to_numpy(int)
+    teams = history.team_id.to_numpy(int)
+    opponents = history.opponent_id.to_numpy(int)
+    games = history.game_id.to_numpy(int)
+    by_team = {int(k): np.flatnonzero(teams == k) for k in np.unique(teams)}
+    by_opponent = {int(k): np.flatnonzero(opponents == k) for k in np.unique(opponents)}
+    day = 86400e9
+
+    def weighted(rows, cutoff, season):
+        rows = rows[(times[rows] < cutoff) & (seasons[rows] >= season - 1) & (seasons[rows] <= season)]
+        if not len(rows):
+            return rows, None
+        weight = 0.5 ** ((cutoff - times[rows]) / day / half_life_days)
+        return rows, weight
+
+    def wmean(block, weight):
+        finite = np.isfinite(block)
+        total = (np.where(finite, weight[:, None], 0.)).sum(0)
+        return np.divide(np.where(finite, block * weight[:, None], 0.).sum(0), total,
+                         out=np.full(block.shape[1], np.nan), where=total > 0)
+
+    reference_cache = {}
+
+    def reference(opponent, cutoff, season, game):
+        """Recency-weighted level the opponent allowed (or scored) in its other games."""
+        key = (opponent, cutoff, season, game)
+        if key not in reference_cache:
+            allowed_rows = by_opponent.get(opponent, np.array([], int))
+            own_rows = by_team.get(opponent, np.array([], int))
+            # Leave the game being adjusted out of its own opponent reference.
+            allowed_rows, w_allowed = weighted(allowed_rows[games[allowed_rows] != game], cutoff, season)
+            own_rows, w_own = weighted(own_rows[games[own_rows] != game], cutoff, season)
+            level = np.full(len(metrics), np.nan)
+            if w_allowed is not None:
+                level = wmean(values[allowed_rows], w_allowed)
+            if w_own is not None:
+                own = wmean(values[own_rows], w_own)
+                for j, name in enumerate(metrics):
+                    if name in _OPPONENT_REFERENCE:
+                        level[j] = own[metrics.index(_OPPONENT_REFERENCE[name][1])]
+            reference_cache[key] = level
+        return reference_cache[key]
+
+    league_cache = {}
+
+    def league(cutoff, season):
+        key = (cutoff, season)
+        if key not in league_cache:
+            rows = np.flatnonzero((times < cutoff) & (seasons >= season - 1) & (seasons <= season))
+            level = np.full(len(metrics), np.nan)
+            if len(rows):
+                level = wmean(values[rows], np.ones(len(rows)))
+                for j, name in enumerate(metrics):
+                    if name in _OPPONENT_REFERENCE:
+                        level[j] = level[metrics.index(_OPPONENT_REFERENCE[name][1])]
+            league_cache[key] = level
+        return league_cache[key]
+
+    result = np.full((len(targets), 2, len(metrics) * 2), np.nan)
+    for slot, game in enumerate(targets.itertuples(index=False)):
+        cutoff = min(timestamp(game.start_date), at).value
+        season = int(game.season)
+        team_values = []
+        for team in (game.home_id, game.away_id):
+            rows, weight = weighted(by_team.get(int(team), np.array([], int)), cutoff, season)
+            if weight is None:
+                team_values.append(np.full(len(metrics), np.nan)); continue
+            base = league(cutoff, season)
+            adjusted = values[rows].copy()
+            for i, row in enumerate(rows):
+                # A strong showing against a weak defense counts for less; an
+                # opponent with no earlier evidence leaves the value unadjusted.
+                shift = reference(int(opponents[row]), cutoff, season, int(games[row])) - base
+                adjusted[i] -= np.where(np.isfinite(shift), shift, 0.)
+            team_values.append(wmean(adjusted, weight))
+        result[slot, 0] = np.r_[team_values[0], team_values[1]]
+        result[slot, 1] = np.r_[team_values[1], team_values[0]]
+    return result
+
+
+def _team_context_mean(history, targets, at):
     by_team = {int(team): frame for team, frame in history.groupby("team_id")}
     result = np.full((len(targets), 2, len(TEAM_METRICS) * 2), np.nan)
     for slot, game in enumerate(targets.itertuples(index=False)):
@@ -94,14 +207,20 @@ def _known_context(query, schedules, snapshots, at):
 
 
 def _lineup(players, lineups, game, team, at):
+    cutoff = min(timestamp(game.start_date), at)
     if len(lineups):
-        part = lineups.loc[(lineups.game_id == int(game.game_id)) & (lineups.team_id == int(team))]
+        part = lineups.loc[(lineups.game_id == int(game.game_id)) & (lineups.team_id == int(team))].copy()
         if len(part):
-            row = part.iloc[-1]
-            return json.loads(row.players_json), "timestamped_lineup", row.observed_at.isoformat()
+            # Only a lineup recorded before kickoff and the forecast cutoff may
+            # enter, and the latest such record wins regardless of row order.
+            part["observed_at"] = pd.to_datetime(part["observed_at"], utc=True)
+            part = part.loc[part["observed_at"] < cutoff].sort_values("observed_at", kind="stable")
+            if len(part):
+                row = part.iloc[-1]
+                return json.loads(row.players_json), "timestamped_lineup", row.observed_at.isoformat()
     if players.empty:
         return [], "missing_player_history", None
-    part = players.loc[(players.team_id == int(team)) & (players.start_date < min(timestamp(game.start_date), at))]
+    part = players.loc[(players.team_id == int(team)) & (players.start_date < cutoff)]
     if part.empty:
         return [], "missing_player_history", None
     # Latest observed participation is evidence of usage, not a confirmed future
@@ -111,8 +230,66 @@ def _lineup(players, lineups, game, team, at):
     return observed_lineup(latest_rows, int(team)), "last_observed_usage_unconfirmed", latest.isoformat()
 
 
+def apply_noise_calibration(model, model_root, at):
+    """Use holdout-measured score noise saved beside the model, if it predates the cutoff.
+
+    The file is written by the chronological holdout check. A calibration
+    that used results at or after the forecast cutoff is not applied, so a
+    replay of an earlier week never borrows later errors.
+    """
+    path = Path(model_root) / NOISE_CALIBRATION_FILE
+    if not path.exists():
+        return False
+    saved = json.loads(path.read_text())
+    through = saved.get("source", {}).get("calibrated_through")
+    if through is None or timestamp(through) >= at:
+        model.noise_covariance_source = {**model.noise_covariance_source,
+                                         "skipped_calibration": "calibration uses results at or after the cutoff"}
+        return False
+    noise = np.asarray(saved["noise_covariance"], float)
+    if noise.shape != (2, 2) or not np.isfinite(noise).all() or np.linalg.eigvalsh(noise).min() <= 0:
+        raise ValueError("Saved noise calibration is not a positive-definite 2x2 covariance")
+    model.noise_covariance = noise
+    model.noise_covariance_source = {**saved["source"], "file_sha256": sha256(path)}
+    return True
+
+
+def joint_designs(past, targets, schedules, players, lineups, facts, context_rows, at,
+                  context_mode="opponent_adjusted", half_life_days=CONTEXT_HALF_LIFE_DAYS, skip_missing=False):
+    """Training context and per-game query designs, all as known at ``at``.
+
+    Shared by the production forecast and the chronological holdout replay so
+    both evaluate the same calculation. Without ``skip_missing`` a team with
+    no lineup or player history is an error; with it, that game is returned
+    in ``skipped`` instead of becoming a team-only forecast.
+    """
+    def context(query):
+        return np.concatenate([_team_context(past, query, facts, at, context_mode, half_life_days),
+                               _known_context(query, schedules, context_rows, at)], axis=2)
+    train_context = context(past)
+    future_context = context(targets)
+    specs, skipped = [], []
+    for slot, game in enumerate(targets.itertuples(index=False)):
+        pair = []
+        for side, (team, opponent) in enumerate(((game.home_id, game.away_id), (game.away_id, game.home_id))):
+            lineup, status, observed = _lineup(players, lineups, game, team, at)
+            if not lineup:
+                if skip_missing:
+                    break
+                raise ValueError(f"No player lineup/history for team {team}; joint forecast cannot silently become team-only")
+            pair.append({"team": int(team), "opponent": int(opponent), "season": int(game.season),
+                         "venue": 0 if game.neutral_site else (1 if side == 0 else -1),
+                         "lineup": lineup, "context": future_context[slot, side],
+                         "lineup_status": status, "lineup_observed_at": observed})
+        if len(pair) == 2:
+            specs.append((int(game.game_id), pair))
+        else:
+            skipped.append(int(game.game_id))
+    return train_context, specs, skipped
+
+
 def forecast_players(data_root, model_root, out_root, at, end, season, schedules, paths,
-                     market_path=None, market_provider=None, target_game_ids=None):
+                     market_path=None, market_provider=None, target_game_ids=None, database=None):
     population = schedules.loc[schedules.fbs_game & schedules.season.le(season)].copy()
     past = population.loc[population.result_usable & (population.result_available_at < at)].copy().reset_index(drop=True)
     targets = population.loc[(population.season == season) & (population.start_date > at) & (population.start_date <= end)].copy()
@@ -123,7 +300,7 @@ def forecast_players(data_root, model_root, out_root, at, end, season, schedules
             raise ValueError("Requested games are outside the eligible joint forecast window")
     if targets.empty:
         raise ValueError("No FBS-v-FBS games in the requested forecast window")
-    database = database_path()
+    database = database or database_path()
     paths = sorted(set(Path(p) for p in paths) | set(Path(data_root).glob("pbp_*.parquet")))
     players, lineups, evidence_hash = player_evidence(data_root, database, past, at)
     if players.empty:
@@ -134,23 +311,10 @@ def forecast_players(data_root, model_root, out_root, at, end, season, schedules
         context_rows = pd.read_sql_query("SELECT * FROM game_context_snapshots", conn)
     if len(context_rows):
         context_rows = context_rows.loc[pd.to_datetime(context_rows.observed_at, utc=True) < at]
-    train_context = np.concatenate([_team_context(past, past, facts, at),
-                                    _known_context(past, schedules, context_rows, at)], axis=2)
-    future_context = np.concatenate([_team_context(past, targets, facts, at),
-                                     _known_context(targets, schedules, context_rows, at)], axis=2)
-    specs = []
-    for slot, game in enumerate(targets.itertuples(index=False)):
-        pair = []
-        for side, (team, opponent) in enumerate(((game.home_id, game.away_id), (game.away_id, game.home_id))):
-            lineup, status, observed = _lineup(players, lineups, game, team, at)
-            if not lineup:
-                raise ValueError(f"No player lineup/history for team {team}; joint forecast cannot silently become team-only")
-            pair.append({"team": int(team), "opponent": int(opponent), "season": int(game.season),
-                         "venue": 0 if game.neutral_site else (1 if side == 0 else -1),
-                         "lineup": lineup, "context": future_context[slot, side],
-                         "lineup_status": status, "lineup_observed_at": observed})
-        specs.append(pair)
+    train_context, specs, _ = joint_designs(past, targets, schedules, players, lineups, facts, context_rows, at)
+    specs = [pair for _, pair in specs]
     model = PlayerHierarchy.fit(past, players, train_context, [s for pair in specs for s in pair], at)
+    apply_noise_calibration(model, model_root, at)
     market = read_market_history(market_path) if market_path else None
     records = []
     for game, pair in zip(targets.itertuples(index=False), specs):
@@ -193,6 +357,8 @@ def forecast_players(data_root, model_root, out_root, at, end, season, schedules
                 "used_game_ids": past.game_id.astype(int).tolist(), "target_game_ids": targets.game_id.astype(int).tolist(),
                 "training_games": model.training_games, "training_player_observations": model.training_player_observations,
                 "probability_family": "availability_mixture_of_joint_gaussians", **market_archive,
+                "noise_covariance": model.noise_covariance.tolist(),
+                "noise_covariance_source": model.noise_covariance_source,
                 "data_availability_check": availability["prospective_current_season_source_check"],
                 "limitations": ["Gaussian working likelihood, conditional fixed prior variances and normalization",
                                 "Season-indexed ability evolution; within-season form enters pregame history covariates",

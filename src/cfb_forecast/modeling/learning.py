@@ -19,7 +19,7 @@ from ..evaluation.evaluate import metrics
 from ..ingest.features import observations
 from .model import ScoreHead, load_model, write_model
 from .ratings import build_features
-from .simulate import win_probability
+from .analytic import win_probability
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS learning_versions (

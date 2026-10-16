@@ -6,7 +6,7 @@ from cfb_forecast.ingest.data import normalize_schedule,timestamp
 from cfb_forecast.ingest.features import clean_plays
 from cfb_forecast.modeling.ratings import DynamicRatings,build_features
 from cfb_forecast.modeling.model import ScoreHead,residual_covariance
-from cfb_forecast.modeling.simulate import simulate_scores,win_probability
+from cfb_forecast.modeling.analytic import checked_covariance,win_probability
 from cfb_forecast.odds.market import market_at_cutoff
 from cfb_forecast.evaluation.evaluate import metrics
 
@@ -61,24 +61,13 @@ def test_head_json_roundtrip():
     h=ScoreHead().fit(F,Y,np.ones(100,dtype=bool))
     np.testing.assert_allclose(h.predict(F),ScoreHead.from_dict(h.to_dict()).predict(F))
 
-def test_simulation_is_deterministic_and_has_no_negative_or_tied_final_scores():
-    cov=np.array([[100,15],[15,100]])
-    a=simulate_scores([25,25],cov,42,draws=20000,home_spread=-3,total_line=50,home_decimal=1.91,away_decimal=1.91)
-    b=simulate_scores([25,25],cov,42,draws=20000,home_spread=-3,total_line=50,home_decimal=1.91,away_decimal=1.91)
-    assert a==b
-    assert .48<a["simulated_home_win_probability"]<.52
-    assert a["home_score_interval_80"][0]>=0
-    assert abs(a["home_cover_probability"]+a["away_cover_probability"]+a["spread_push_probability"]-1)<1e-10
-    assert abs(a["over_probability"]+a["under_probability"]+a["total_push_probability"]-1)<1e-10
-    assert a["home_spread_expected_net_per_unit"]==pytest.approx(a["home_cover_probability"]*.91-a["away_cover_probability"])
-
 def test_win_probabilities_respect_team_swap():
     cov=[[100,10],[10,90]]
     assert win_probability([30,20],cov)+win_probability([20,30],cov)==pytest.approx(1)
 
 @pytest.mark.parametrize("cov", [[[1,2],[2,1]],[[1,2],[0,1]],[[1,0],[0,0]]])
 def test_invalid_score_covariance_rejected(cov):
-    with pytest.raises(ValueError): simulate_scores([20,20],cov,1)
+    with pytest.raises(ValueError): checked_covariance(cov)
 
 def test_market_cannot_use_future_snapshot_and_home_spread_sign_is_preserved():
     f=pd.DataFrame({"game_id":[1,1],"observed_at":["2024-09-01T12:00Z","2024-09-01T14:00Z"],"home_spread":[-3,-7],"home_ml_decimal":[2.,1.5],"away_ml_decimal":[2.,2.5]})

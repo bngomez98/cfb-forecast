@@ -8,7 +8,7 @@ from scipy.stats import norm
 
 from ..evaluation.evaluate import metrics
 from .analytic import score_summary
-from .simulate import checked_covariance
+from .analytic import checked_covariance
 
 
 def feature_columns(frame):
