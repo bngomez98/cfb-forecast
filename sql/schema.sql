@@ -282,6 +282,8 @@ CREATE TABLE IF NOT EXISTS source_rows (
     row_index INTEGER NOT NULL,
     payload_json TEXT NOT NULL,
     UNIQUE(retrieval_id, row_index)
+);
+
 -- Versioned player evidence. Source IDs require an explicit crosswalk; names
 -- alone never merge players across providers, teams, or seasons.
 CREATE TABLE IF NOT EXISTS player_identities (

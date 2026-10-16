@@ -134,7 +134,7 @@ def test_production_forecast_fits_player_features_and_exports_their_score_effect
     write_model(base, model)
     output = tmp_path / 'forecast'
     result = forecast(data, base, output, '2024-08-25T15:00Z', '2024-09-02T00:00Z',
-                      2024, database=database, adjustment_config={'ridge': .5})
+                      2024, database=database, adjustment_config={'ridge': .5}, legacy_score=True)
     row = result.iloc[0]
     assert row.historical_player_feature_count == 6
     assert row.pregame_home_player_passing_yards_per_play > 0
@@ -204,7 +204,7 @@ def test_full_forecast_uses_player_history_and_persists_fitted_variables(tmp_pat
     record_history_facts(conn, pd.DataFrame(), pd.DataFrame(player_rows))
     conn.close()
     result = forecast(data, base, out, '2024-09-01T15:00Z', '2024-09-08T00:00Z', 2024,
-                      database=database, adjustment_config={'ridge': 2.})
+                      database=database, adjustment_config={'ridge': 2.}, legacy_score=True)
     row = result.iloc[0]
     assert row.historical_player_feature_count == 6
     assert np.isfinite(row.pregame_home_player_passing_yards_per_play)

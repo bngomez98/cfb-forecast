@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 
 from .analytic import score_summary
-from .simulate import checked_covariance
+from .analytic import checked_covariance
 
 METHOD = (
     "hierarchical state, historical team and player rates, regularized known-future score adjustment, "

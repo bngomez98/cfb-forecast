@@ -8,7 +8,7 @@ import pytest
 from cfb_forecast.ingest.data import normalize_schedule
 from cfb_forecast.ingest.player_matchups import import_player_evidence, player_evidence
 from cfb_forecast.modeling.player_hierarchy import PlayerHierarchy, availability_scenarios
-from cfb_forecast.modeling.player_forecast import _team_context, _known_context
+from cfb_forecast.modeling.player_forecast import TEAM_METRICS, _team_context, _known_context
 from cfb_forecast.storage.database import connect
 
 
@@ -244,3 +244,148 @@ def test_installed_fallback_schema_matches_checkout_player_tables():
     for table in ('player_game_facts','player_observations','player_identities','player_source_ids','player_lineups','game_context_snapshots'):
         assert a.execute(f'PRAGMA table_info({table})').fetchall()==b.execute(f'PRAGMA table_info({table})').fetchall()
     a.close();b.close()
+
+
+def test_lineup_uses_latest_record_before_cutoff_regardless_of_row_order():
+    from cfb_forecast.modeling.player_forecast import _lineup
+    game = pd.DataFrame([dict(game_id=99, start_date=pd.Timestamp('2026-09-05T18:00Z'))]).iloc[0]
+    def entry(observed, player):
+        return dict(game_id=99, team_id=1, observed_at=observed,
+                    players_json=json.dumps([dict(player_id=player, role='passing', opportunity_share=1.)]))
+    # Rows deliberately out of time order; the last row is after the cutoff.
+    lineups = pd.DataFrame([entry('2026-09-04T12:00Z', 'newest'), entry('2026-09-02T12:00Z', 'oldest'),
+                            entry('2026-09-03T12:00Z', 'middle'), entry('2026-09-05T12:00Z', 'after_cutoff')])
+    lineup, status, observed = _lineup(pd.DataFrame(), lineups, game, 1, pd.Timestamp('2026-09-05T00:00Z'))
+    assert status == 'timestamped_lineup'
+    assert lineup[0]['player_id'] == 'newest'
+    assert pd.Timestamp(observed) == pd.Timestamp('2026-09-04T12:00Z')
+    lineup, status, _ = _lineup(pd.DataFrame(), lineups.iloc[[3]], game, 1, pd.Timestamp('2026-09-05T00:00Z'))
+    assert status == 'missing_player_history' and lineup == []
+
+
+def test_forecast_reads_the_database_it_is_given(tmp_path, monkeypatch):
+    from test_model_artifact_validation import model_value
+    from cfb_forecast.modeling.forecast import forecast
+    data, model, out = [tmp_path/name for name in ('data', 'model', 'out')]
+    for path in (data, model):
+        path.mkdir()
+    db = tmp_path/'chosen.sqlite'
+    # The default database stays empty; only the explicit argument has evidence.
+    monkeypatch.setenv('CFB_DATABASE', str(tmp_path/'default.sqlite'))
+    games, players = history()
+    games['home_team'] = 'Home'; games['away_team'] = 'Away'; games['completed'] = True; games['fbs_game'] = True
+    future = dict(game_id=99, season=2026, week=1, start_date=pd.Timestamp('2026-09-05T18:00Z'), completed=False,
+                  home_id=1, away_id=2, home_points=None, away_points=None, home_team='Home', away_team='Away',
+                  neutral_site=False, fbs_game=True)
+    for year, group in pd.concat([games, pd.DataFrame([future])], ignore_index=True).groupby('season'):
+        group.to_csv(data/f'schedule_{year}.csv', index=False)
+    (model/'model.json').write_text(json.dumps({**model_value(), 'training_through_season': 2025}))
+    observations = [{**row, 'available_at': row['available_at'].isoformat(), 'provider': 'fixture',
+                     'source_url': 'https://example.test/fixture', 'source_sha256': 'a'*64}
+                    for row in players.to_dict('records')]
+    import_player_evidence(db, {'players': [dict(player_id=x, display_name=x) for x in players.player_id.unique()],
+                                'observations': observations})
+    with pytest.raises(ValueError, match='requires player observations'):
+        forecast(data, model, out, '2026-09-01T00:00Z', '2026-09-06T00:00Z', 2026)
+    result = forecast(data, model, out, '2026-09-01T00:00Z', '2026-09-06T00:00Z', 2026, database=db)
+    assert result.model_variant.tolist() == ['joint_player']
+    assert result.training_player_observations.iloc[0] > 0
+
+
+def _context_games(rows):
+    games = []
+    for i, (home, away, hp, ap, day) in enumerate(rows):
+        date = pd.Timestamp('2025-09-01T18:00Z') + pd.Timedelta(days=day)
+        games.append(dict(game_id=i + 1, season=2025, start_date=date, result_available_at=date + pd.Timedelta(hours=4),
+                          home_id=home, away_id=away, home_points=float(hp), away_points=float(ap)))
+    return pd.DataFrame(games)
+
+
+def test_team_context_weights_recent_games_more_than_old_ones():
+    # Team 1 scored 50 long ago and 10 last week, against opponents with no
+    # other games, so no opponent adjustment applies.
+    games = _context_games([(1, 2, 50, 20, 0), (1, 3, 10, 20, 140)])
+    target = _context_games([(1, 4, 0, 0, 150)])
+    at = pd.Timestamp('2026-09-01T00:00Z')
+    plain = _team_context(games, target, pd.DataFrame(), at, mode='season_mean')
+    weighted = _team_context(games, target, pd.DataFrame(), at)
+    assert plain[0, 0, 0] == pytest.approx(30.)
+    assert 10. < weighted[0, 0, 0] < 20.
+
+
+def test_team_context_credits_points_against_strong_defenses():
+    # Teams 1 and 3 both scored 30 once. Team 2's defense allowed 10 to its
+    # other opponent, team 4's allowed 50, and the league averages 30, so 30
+    # against team 2 is the stronger showing.
+    games = _context_games([(5, 2, 10, 30, 0), (6, 4, 50, 30, 0), (1, 2, 30, 30, 7), (3, 4, 30, 30, 7)])
+    target = _context_games([(1, 3, 0, 0, 14)])
+    context = _team_context(games, target, pd.DataFrame(), pd.Timestamp('2026-09-01T00:00Z'))
+    home_points_for, away_points_for = context[0, 0, 0], context[0, 0, len(TEAM_METRICS)]
+    assert home_points_for > 30. > away_points_for
+    plain = _team_context(games, target, pd.DataFrame(), pd.Timestamp('2026-09-01T00:00Z'), mode='season_mean')
+    assert plain[0, 0, 0] == pytest.approx(plain[0, 0, len(TEAM_METRICS)])
+
+
+def test_team_context_never_uses_results_after_the_cutoff_for_opponent_strength():
+    games = _context_games([(1, 2, 30, 20, 0), (5, 2, 70, 20, 20)])
+    target = _context_games([(1, 3, 0, 0, 10)])
+    before = _team_context(games.iloc[:1], target, pd.DataFrame(), pd.Timestamp('2026-09-01T00:00Z'))
+    after = _team_context(games, target, pd.DataFrame(), pd.Timestamp('2026-09-01T00:00Z'))
+    np.testing.assert_array_equal(np.isnan(before), np.isnan(after))
+    np.testing.assert_allclose(before[np.isfinite(before)], after[np.isfinite(after)])
+
+
+def _holdout_frame(n=4000, seed=3):
+    rng = np.random.default_rng(seed)
+    noise = np.array([[100., 30.], [30., 81.]])
+    parameter = np.array([[9., 2.], [2., 16.]])
+    errors = rng.multivariate_normal([0., 0.], noise + parameter, size=n)
+    expected = rng.uniform(14., 35., size=(n, 2))
+    dates = pd.Timestamp('2024-09-01T18:00Z') + pd.to_timedelta(np.arange(n) % 100, unit='D')
+    return pd.DataFrame(dict(home_points=expected[:, 0] + errors[:, 0], away_points=expected[:, 1] + errors[:, 1],
+                             expected_home_score=expected[:, 0], expected_away_score=expected[:, 1],
+                             parameter_cov_home=parameter[0, 0], parameter_cov_cross=parameter[0, 1],
+                             parameter_cov_away=parameter[1, 1], week=np.arange(n) % 14 + 1,
+                             result_available_at=dates)), noise
+
+
+def test_holdout_noise_removes_parameter_uncertainty_and_keeps_correlation():
+    from cfb_forecast.modeling.player_hierarchy import holdout_noise_covariance
+    frame, noise = _holdout_frame()
+    estimate, source = holdout_noise_covariance(frame)
+    np.testing.assert_allclose(estimate, noise, rtol=.08, atol=3.)
+    assert source['method'] == 'chronological_holdout_residuals' and source['games'] == len(frame)
+    assert source['weeks_1_4_games'] + source['weeks_5_plus_games'] == len(frame)
+    with pytest.raises(ValueError, match='at least'):
+        holdout_noise_covariance(frame.iloc[:20])
+
+
+def test_calibrated_noise_changes_probabilities_and_survives_roundtrip(tmp_path):
+    model = fit()
+    assumed = model.predict(spec(), spec(2, 1))
+    assert assumed['noise_covariance_method'] == 'assumed_score_scale'
+    frame, _ = _holdout_frame()
+    model.calibrate_noise_covariance(frame)
+    calibrated = model.predict(spec(), spec(2, 1))
+    assert calibrated['noise_covariance_method'] == 'chronological_holdout_residuals'
+    assert calibrated['score_covariance'][0][1] > assumed['score_covariance'][0][1]
+    assert calibrated['home_win_probability'] != pytest.approx(assumed['home_win_probability'])
+    model.save(tmp_path)
+    restored = PlayerHierarchy.load(tmp_path)
+    assert restored.noise_covariance_source['games'] == len(frame)
+    assert restored.predict(spec(), spec(2, 1)) == calibrated
+
+
+def test_saved_noise_calibration_is_not_used_by_an_earlier_forecast(tmp_path):
+    from cfb_forecast.modeling.player_forecast import apply_noise_calibration
+    from cfb_forecast.modeling.player_hierarchy import NOISE_CALIBRATION_FILE
+    frame, _ = _holdout_frame()
+    model = fit()
+    from cfb_forecast.modeling.player_hierarchy import holdout_noise_covariance
+    noise, source = holdout_noise_covariance(frame)
+    (tmp_path / NOISE_CALIBRATION_FILE).write_text(json.dumps({'noise_covariance': noise.tolist(), 'source': source}))
+    assumed = model.noise_covariance.copy()
+    assert not apply_noise_calibration(model, tmp_path, pd.Timestamp(source['calibrated_through']))
+    np.testing.assert_array_equal(model.noise_covariance, assumed)
+    assert apply_noise_calibration(model, tmp_path, pd.Timestamp('2026-09-01T00:00Z'))
+    np.testing.assert_allclose(model.noise_covariance, noise)
