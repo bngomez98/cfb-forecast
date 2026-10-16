@@ -83,6 +83,13 @@ def main():
     rr.add_argument("--data",default="data"); rr.add_argument("--out",default="artifacts/results")
     rr.add_argument("--season",type=int,required=True); rr.add_argument("--week",type=int,default=None)
     rr.add_argument("--start",default=None); rr.add_argument("--end",default=None)
+    jh=sub.add_parser("joint-holdout",help="Replay 2023-2025 week by week with the joint player model, calibrate score noise and tune prior settings on earlier seasons")
+    jh.add_argument("--data",default="data"); jh.add_argument("--database",default=None)
+    jh.add_argument("--out",default="artifacts/joint_holdout")
+    jh.add_argument("--betting",nargs="*",default=[],help="SportsDataverse betting_YYYY.csv files for the closing-spread comparison")
+    jh.add_argument("--legacy-data",default=None,help="Data folder with the season before the first fold's warmup, for the previous team-only model")
+    jh.add_argument("--workers",type=int,default=1); jh.add_argument("--lead-hours",type=float,default=48.)
+    jh.add_argument("--no-tune",action="store_true")
     sb=sub.add_parser("season-backtest",help="Reconstruct and grade weekly forecasts across a season")
     sb.add_argument("--data",default="data"); sb.add_argument("--model",default=str(model_root()))
     sb.add_argument("--out",default="artifacts/backtest"); sb.add_argument("--season",type=int,required=True)
@@ -237,6 +244,15 @@ def main():
         results,manifest=refresh_results(args.data,args.out,args.season,args.week,args.start,args.end)
         print(pd.DataFrame([manifest]).to_string(index=False))
         print(results[["game_id","status","is_final","away_team","away_points","home_team","home_points"]].tail(20).to_string(index=False))
+    elif args.command=="joint-holdout":
+        from .evaluation.joint_holdout import FOLDS, legacy_holdout_predictions, run_chronological_holdout
+        from .paths import database_path
+        legacy=None
+        if args.legacy_data:
+            legacy={test:legacy_holdout_predictions(args.legacy_data,args.out,test) for _,test in FOLDS}
+        summary,_=run_chronological_holdout(args.data,args.database or database_path(),args.out,args.betting,legacy,
+                                            workers=args.workers,lead_hours=args.lead_hours,tune=not args.no_tune)
+        print(summary.to_string(index=False))
     elif args.command=="season-backtest":
         from .evaluation.season_backtest import run_season_backtest
         metrics,summary=run_season_backtest(args.data,args.model,args.out,args.season,args.draws,args.lead_hours,legacy_score=args.legacy_score)

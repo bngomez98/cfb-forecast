@@ -14,7 +14,7 @@ from ..ingest.player_matchups import player_evidence
 from ..odds.decision import moneyline_diagnostics
 from ..odds.market import read_market_history, market_at_cutoff
 from ..paths import database_path
-from .player_hierarchy import PlayerHierarchy, observed_lineup
+from .player_hierarchy import NOISE_CALIBRATION_FILE, PlayerHierarchy, observed_lineup
 from .forecast_model import KNOWN_COLUMNS, rest_days
 
 TEAM_METRICS = ("points_for", "points_against", "yards_per_play", "success_rate", "explosive_rate", "turnover_rate", "epa")
@@ -230,6 +230,64 @@ def _lineup(players, lineups, game, team, at):
     return observed_lineup(latest_rows, int(team)), "last_observed_usage_unconfirmed", latest.isoformat()
 
 
+def apply_noise_calibration(model, model_root, at):
+    """Use holdout-measured score noise saved beside the model, if it predates the cutoff.
+
+    The file is written by the chronological holdout check. A calibration
+    that used results at or after the forecast cutoff is not applied, so a
+    replay of an earlier week never borrows later errors.
+    """
+    path = Path(model_root) / NOISE_CALIBRATION_FILE
+    if not path.exists():
+        return False
+    saved = json.loads(path.read_text())
+    through = saved.get("source", {}).get("calibrated_through")
+    if through is None or timestamp(through) >= at:
+        model.noise_covariance_source = {**model.noise_covariance_source,
+                                         "skipped_calibration": "calibration uses results at or after the cutoff"}
+        return False
+    noise = np.asarray(saved["noise_covariance"], float)
+    if noise.shape != (2, 2) or not np.isfinite(noise).all() or np.linalg.eigvalsh(noise).min() <= 0:
+        raise ValueError("Saved noise calibration is not a positive-definite 2x2 covariance")
+    model.noise_covariance = noise
+    model.noise_covariance_source = {**saved["source"], "file_sha256": sha256(path)}
+    return True
+
+
+def joint_designs(past, targets, schedules, players, lineups, facts, context_rows, at,
+                  context_mode="opponent_adjusted", half_life_days=CONTEXT_HALF_LIFE_DAYS, skip_missing=False):
+    """Training context and per-game query designs, all as known at ``at``.
+
+    Shared by the production forecast and the chronological holdout replay so
+    both evaluate the same calculation. Without ``skip_missing`` a team with
+    no lineup or player history is an error; with it, that game is returned
+    in ``skipped`` instead of becoming a team-only forecast.
+    """
+    def context(query):
+        return np.concatenate([_team_context(past, query, facts, at, context_mode, half_life_days),
+                               _known_context(query, schedules, context_rows, at)], axis=2)
+    train_context = context(past)
+    future_context = context(targets)
+    specs, skipped = [], []
+    for slot, game in enumerate(targets.itertuples(index=False)):
+        pair = []
+        for side, (team, opponent) in enumerate(((game.home_id, game.away_id), (game.away_id, game.home_id))):
+            lineup, status, observed = _lineup(players, lineups, game, team, at)
+            if not lineup:
+                if skip_missing:
+                    break
+                raise ValueError(f"No player lineup/history for team {team}; joint forecast cannot silently become team-only")
+            pair.append({"team": int(team), "opponent": int(opponent), "season": int(game.season),
+                         "venue": 0 if game.neutral_site else (1 if side == 0 else -1),
+                         "lineup": lineup, "context": future_context[slot, side],
+                         "lineup_status": status, "lineup_observed_at": observed})
+        if len(pair) == 2:
+            specs.append((int(game.game_id), pair))
+        else:
+            skipped.append(int(game.game_id))
+    return train_context, specs, skipped
+
+
 def forecast_players(data_root, model_root, out_root, at, end, season, schedules, paths,
                      market_path=None, market_provider=None, target_game_ids=None, database=None):
     population = schedules.loc[schedules.fbs_game & schedules.season.le(season)].copy()
@@ -253,23 +311,10 @@ def forecast_players(data_root, model_root, out_root, at, end, season, schedules
         context_rows = pd.read_sql_query("SELECT * FROM game_context_snapshots", conn)
     if len(context_rows):
         context_rows = context_rows.loc[pd.to_datetime(context_rows.observed_at, utc=True) < at]
-    train_context = np.concatenate([_team_context(past, past, facts, at),
-                                    _known_context(past, schedules, context_rows, at)], axis=2)
-    future_context = np.concatenate([_team_context(past, targets, facts, at),
-                                     _known_context(targets, schedules, context_rows, at)], axis=2)
-    specs = []
-    for slot, game in enumerate(targets.itertuples(index=False)):
-        pair = []
-        for side, (team, opponent) in enumerate(((game.home_id, game.away_id), (game.away_id, game.home_id))):
-            lineup, status, observed = _lineup(players, lineups, game, team, at)
-            if not lineup:
-                raise ValueError(f"No player lineup/history for team {team}; joint forecast cannot silently become team-only")
-            pair.append({"team": int(team), "opponent": int(opponent), "season": int(game.season),
-                         "venue": 0 if game.neutral_site else (1 if side == 0 else -1),
-                         "lineup": lineup, "context": future_context[slot, side],
-                         "lineup_status": status, "lineup_observed_at": observed})
-        specs.append(pair)
+    train_context, specs, _ = joint_designs(past, targets, schedules, players, lineups, facts, context_rows, at)
+    specs = [pair for _, pair in specs]
     model = PlayerHierarchy.fit(past, players, train_context, [s for pair in specs for s in pair], at)
+    apply_noise_calibration(model, model_root, at)
     market = read_market_history(market_path) if market_path else None
     records = []
     for game, pair in zip(targets.itertuples(index=False), specs):
@@ -312,6 +357,8 @@ def forecast_players(data_root, model_root, out_root, at, end, season, schedules
                 "used_game_ids": past.game_id.astype(int).tolist(), "target_game_ids": targets.game_id.astype(int).tolist(),
                 "training_games": model.training_games, "training_player_observations": model.training_player_observations,
                 "probability_family": "availability_mixture_of_joint_gaussians", **market_archive,
+                "noise_covariance": model.noise_covariance.tolist(),
+                "noise_covariance_source": model.noise_covariance_source,
                 "data_availability_check": availability["prospective_current_season_source_check"],
                 "limitations": ["Gaussian working likelihood, conditional fixed prior variances and normalization",
                                 "Season-indexed ability evolution; within-season form enters pregame history covariates",

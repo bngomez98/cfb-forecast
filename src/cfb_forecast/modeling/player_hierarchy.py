@@ -18,6 +18,9 @@ from scipy.sparse.linalg import splu
 from .analytic import score_summary
 
 ROLES = ("passing", "rushing", "receiving")
+NOISE_CALIBRATION_FILE = "joint_noise_calibration.json"
+ASSUMED_NOISE = {"method": "assumed_score_scale",
+                 "note": "Historical score SD squared with no home/away correlation; not measured on unseen games"}
 
 
 @dataclass(frozen=True)
@@ -56,6 +59,7 @@ class PlayerHierarchy:
         self.score_scale = 1.
         self.cutoff = None
         self.latest_result = None
+        self.noise_covariance_source = dict(ASSUMED_NOISE)
 
     def _key(self, *parts):
         key = json.dumps(parts, separators=(",", ":"))
@@ -204,14 +208,27 @@ class PlayerHierarchy:
         model.precision = precision.tocsc()
         model.factor = _factorize(model.precision)
         model.posterior_mean = model.factor.solve(np.asarray(X.T @ (w * np.asarray(model.targets))).ravel())
-        # The score working likelihood has unit standardized residual variance.
-        # This is separate from X C X', avoiding reuse of legacy residual
-        # covariance which already contained parameter error.
+        # Until calibrate_noise_covariance() is given chronological holdout
+        # errors, the leftover score noise is an explicit assumption: the
+        # historical score scale with independent home/away errors.
         model.noise_covariance = np.eye(2) * model.score_scale ** 2
+        model.noise_covariance_source = dict(ASSUMED_NOISE)
         model.training_through_season = int(games.season.max())
         model.training_games = len(games)
         model.training_player_observations = len(model.targets) - 2 * len(games)
         return model
+
+    def calibrate_noise_covariance(self, past_games, min_games=100):
+        """Set the leftover score noise from chronological holdout errors.
+
+        ``past_games`` holds one row per game forecast by a model fitted only
+        on results available before that game (see holdout_noise_covariance).
+        Errors from games used in the fit would understate the uncertainty.
+        """
+        noise, source = holdout_noise_covariance(past_games, min_games=min_games)
+        self.noise_covariance = noise
+        self.noise_covariance_source = source
+        return noise
 
     def _prior_variance(self, group):
         if group in ("score_intercept", "role_intercept"):
@@ -272,6 +289,7 @@ class PlayerHierarchy:
                       probability_source="joint_player_posterior", model_spread=float(-means[0] + means[1]),
                       score_covariance=covariance.tolist(), availability_components=len(components),
                       intervals_method="moment_matched_gaussian_80",
+                      noise_covariance_method=self.noise_covariance_source.get("method"),
                       player_forecasts=({"home": self.player_predictions(home), "away": self.player_predictions(away)}
                                         if players else None))
         return result
@@ -316,6 +334,7 @@ class PlayerHierarchy:
                     "context_scale": self.context_scale.tolist(), "context_active": self.context_active.tolist(),
                     "missing_active": self.missing_active.tolist(), "score_center": self.score_center,
                     "score_scale": self.score_scale, "noise_covariance": self.noise_covariance.tolist(),
+                    "noise_covariance_source": self.noise_covariance_source,
                     "cutoff": self.cutoff, "latest_result": self.latest_result, "training_games": self.training_games,
                     "training_player_observations": self.training_player_observations,
                     "training_through_season": self.training_through_season}
@@ -336,6 +355,53 @@ class PlayerHierarchy:
             raise ValueError("Invalid joint posterior dimensions or values")
         model.factor = _factorize(model.precision.tocsc())
         return model
+
+
+def holdout_noise_covariance(predictions, min_games=100, floor=1.):
+    """Leftover score noise measured on games the forecasting fit never saw.
+
+    Each row is one game with ``home_points``, ``away_points``,
+    ``expected_home_score``, ``expected_away_score`` and the posterior
+    parameter covariance of that forecast (``parameter_cov_home``,
+    ``parameter_cov_cross``, ``parameter_cov_away``). The predictive error
+    covariance is noise plus parameter uncertainty, so the noise is the
+    observed second moment of the errors (bias included, so a biased mean
+    widens rather than hides the uncertainty) minus the average parameter
+    covariance. Eigenvalues are floored at ``floor`` points squared.
+    """
+    required = ["home_points", "away_points", "expected_home_score", "expected_away_score",
+                "parameter_cov_home", "parameter_cov_cross", "parameter_cov_away"]
+    missing = [c for c in required if c not in predictions]
+    if missing:
+        raise ValueError(f"Holdout predictions lack columns: {missing}")
+    frame = predictions[required + [c for c in ("start_date", "week", "result_available_at") if c in predictions]]
+    frame = frame.loc[np.isfinite(frame[required].to_numpy(float)).all(1)]
+    if len(frame) < min_games:
+        raise ValueError(f"Noise calibration needs at least {min_games} holdout games, got {len(frame)}")
+    errors = (frame[["home_points", "away_points"]].to_numpy(float)
+              - frame[["expected_home_score", "expected_away_score"]].to_numpy(float))
+    observed = errors.T @ errors / len(errors)
+    parameter = np.array([[frame.parameter_cov_home.mean(), frame.parameter_cov_cross.mean()],
+                          [frame.parameter_cov_cross.mean(), frame.parameter_cov_away.mean()]])
+    values, vectors = np.linalg.eigh((observed - parameter + (observed - parameter).T) / 2)
+    noise = vectors @ np.diag(np.maximum(values, floor)) @ vectors.T
+    source = {"method": "chronological_holdout_residuals", "games": int(len(frame)),
+              "observed_error_second_moment": observed.tolist(),
+              "mean_parameter_covariance": parameter.tolist(),
+              "mean_error": errors.mean(0).tolist(),
+              "error_correlation": float(np.corrcoef(errors.T)[0, 1]),
+              "eigenvalue_floor": float(floor), "floored": bool((values < floor).any())}
+    if "week" in frame:
+        # Reported so a real early/late-season difference can be seen; one
+        # pooled covariance is used unless the evidence calls for a split.
+        for phase, mask in (("weeks_1_4", frame.week.to_numpy(float) <= 4), ("weeks_5_plus", frame.week.to_numpy(float) > 4)):
+            if mask.sum():
+                part = errors[mask]
+                source[f"{phase}_games"] = int(mask.sum())
+                source[f"{phase}_error_second_moment"] = (part.T @ part / len(part)).tolist()
+    if "result_available_at" in frame:
+        source["calibrated_through"] = pd.to_datetime(frame.result_available_at, utc=True).max().isoformat()
+    return noise, source
 
 
 def _factorize(precision):

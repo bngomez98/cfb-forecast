@@ -333,3 +333,59 @@ def test_team_context_never_uses_results_after_the_cutoff_for_opponent_strength(
     after = _team_context(games, target, pd.DataFrame(), pd.Timestamp('2026-09-01T00:00Z'))
     np.testing.assert_array_equal(np.isnan(before), np.isnan(after))
     np.testing.assert_allclose(before[np.isfinite(before)], after[np.isfinite(after)])
+
+
+def _holdout_frame(n=4000, seed=3):
+    rng = np.random.default_rng(seed)
+    noise = np.array([[100., 30.], [30., 81.]])
+    parameter = np.array([[9., 2.], [2., 16.]])
+    errors = rng.multivariate_normal([0., 0.], noise + parameter, size=n)
+    expected = rng.uniform(14., 35., size=(n, 2))
+    dates = pd.Timestamp('2024-09-01T18:00Z') + pd.to_timedelta(np.arange(n) % 100, unit='D')
+    return pd.DataFrame(dict(home_points=expected[:, 0] + errors[:, 0], away_points=expected[:, 1] + errors[:, 1],
+                             expected_home_score=expected[:, 0], expected_away_score=expected[:, 1],
+                             parameter_cov_home=parameter[0, 0], parameter_cov_cross=parameter[0, 1],
+                             parameter_cov_away=parameter[1, 1], week=np.arange(n) % 14 + 1,
+                             result_available_at=dates)), noise
+
+
+def test_holdout_noise_removes_parameter_uncertainty_and_keeps_correlation():
+    from cfb_forecast.modeling.player_hierarchy import holdout_noise_covariance
+    frame, noise = _holdout_frame()
+    estimate, source = holdout_noise_covariance(frame)
+    np.testing.assert_allclose(estimate, noise, rtol=.08, atol=3.)
+    assert source['method'] == 'chronological_holdout_residuals' and source['games'] == len(frame)
+    assert source['weeks_1_4_games'] + source['weeks_5_plus_games'] == len(frame)
+    with pytest.raises(ValueError, match='at least'):
+        holdout_noise_covariance(frame.iloc[:20])
+
+
+def test_calibrated_noise_changes_probabilities_and_survives_roundtrip(tmp_path):
+    model = fit()
+    assumed = model.predict(spec(), spec(2, 1))
+    assert assumed['noise_covariance_method'] == 'assumed_score_scale'
+    frame, _ = _holdout_frame()
+    model.calibrate_noise_covariance(frame)
+    calibrated = model.predict(spec(), spec(2, 1))
+    assert calibrated['noise_covariance_method'] == 'chronological_holdout_residuals'
+    assert calibrated['score_covariance'][0][1] > assumed['score_covariance'][0][1]
+    assert calibrated['home_win_probability'] != pytest.approx(assumed['home_win_probability'])
+    model.save(tmp_path)
+    restored = PlayerHierarchy.load(tmp_path)
+    assert restored.noise_covariance_source['games'] == len(frame)
+    assert restored.predict(spec(), spec(2, 1)) == calibrated
+
+
+def test_saved_noise_calibration_is_not_used_by_an_earlier_forecast(tmp_path):
+    from cfb_forecast.modeling.player_forecast import apply_noise_calibration
+    from cfb_forecast.modeling.player_hierarchy import NOISE_CALIBRATION_FILE
+    frame, _ = _holdout_frame()
+    model = fit()
+    from cfb_forecast.modeling.player_hierarchy import holdout_noise_covariance
+    noise, source = holdout_noise_covariance(frame)
+    (tmp_path / NOISE_CALIBRATION_FILE).write_text(json.dumps({'noise_covariance': noise.tolist(), 'source': source}))
+    assumed = model.noise_covariance.copy()
+    assert not apply_noise_calibration(model, tmp_path, pd.Timestamp(source['calibrated_through']))
+    np.testing.assert_array_equal(model.noise_covariance, assumed)
+    assert apply_noise_calibration(model, tmp_path, pd.Timestamp('2026-09-01T00:00Z'))
+    np.testing.assert_allclose(model.noise_covariance, noise)
