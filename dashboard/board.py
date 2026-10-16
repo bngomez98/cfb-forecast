@@ -8,9 +8,9 @@ import pandas as pd
 import streamlit as st
 from cfb_forecast.paths import artifacts_root, project_root
 
-# College football schedules are read in Eastern time.
-ZONE = "America/New_York"
-ZONE_LABEL = "ET"
+# Use the same timezone as the weekly Sunday service.
+ZONE = "America/Chicago"
+ZONE_LABEL = "CT"
 
 
 def _read_json(path):
@@ -30,7 +30,7 @@ def _load(paths, modified):
             rows = pd.read_csv(path)
             return {"forecasts": rows.to_dict("records"), "source": str(path)}
         board = _read_json(path)
-        if board and board.get("forecasts"):
+        if board is not None and isinstance(board.get("forecasts"), list):
             return {**board, "source": str(path)}
     return {"forecasts": []}
 

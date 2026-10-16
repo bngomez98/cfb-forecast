@@ -600,4 +600,164 @@ GitHub Actions workflows cover tests, Docker image builds, external-source colle
 
 ## License & contact
 
+```text
+/home/brian/.venvs/cfb-forecast
+```
+
+## Reproduce a source snapshot
+
+The source manifest supplied with the project update is preserved in
+`docs/source-manifest.reference.json`. It records the supplied 2021–2026 URLs,
+checksums, byte counts and provenance. These are reference claims; the source
+files themselves are not bundled or represented as verified downloads.
+
+To fetch that exact snapshot:
+
+```bash
+cfb-forecast fetch --data data --seasons 2021 2022 2023 2024 2025 2026 \
+  --manifest docs/source-manifest.reference.json
+```
+
+Pinned downloads use the manifest URLs, including historical uncompressed CSV
+URLs. CSV checksums apply to the stored, decompressed CSV bytes, as in the supplied
+manifest. A changed or unavailable remote snapshot fails explicitly; it is not
+silently replaced with newer data. Failed downloads preserve the previous file
+and its receipt. A historical `downloaded_at: null` stays unknown in the
+`snapshot_downloaded_at` field; the new retrieval receives its own timestamp.
+
+Normal `fetch` without `--manifest` continues to use the current SportsDataverse
+release URLs. Cached files are checked against recorded sizes and checksums,
+and `load_data` verifies available receipts before reading model inputs. To
+intentionally replace a stale or damaged cache with current data, use `--refresh`
+without a pinned manifest. Files without receipts remain readable for existing
+local workflows; absence of a receipt is not proof of integrity.
+
+## Application integration and deployment
+
+The Python service, Streamlit desk and React site use the published
+`artifacts/latest/forecast_board.json` snapshot. The Python API serves it at
+`GET /api/season?season=2026`; the Vercel function reads the matching
+`web/public/forecasts.json`. Live scores are a separate `/api/live-results` feed
+and do not replace saved projected scores or determine published accuracy.
+Track-record metrics come from settled prediction ledgers, not training metrics.
+
+The predictions page contains scores, picks and confidence. The odds page keeps
+model fair moneylines separate from captured book prices and spreads. The
+statistics page shows recorded team statistics and player leaders, with explicit
+unavailable states. Times on the forecast boards use America/Chicago.
+
+The default SQLite path is `artifacts/cfb_forecast.sqlite`. `CFB_DATABASE` can
+explicitly select another database. If an older installation uses
+`data/cfb_forecast.sqlite`, set that variable to preserve access to its existing
+records; databases are not moved or merged automatically.
+
+Validate and ingest local schedules, historical facts and the source catalog:
+
+```bash
+cfb-forecast update-database --season 2026
+```
+
+Add `--fetch-sources` to retrieve every registered catalog source. Source bodies
+and failure receipts are archived; successful response rows are stored in
+`source_rows` with their retrieval IDs. Generic HTML and JSON source bodies are
+provenance, not automatically eligible numeric model features. Sunday refreshes
+perform this catalog ingestion before the forecast cutoff.
+
+Live weekly forecasts also collect pregame inputs and current quotes before
+freezing their cutoff. An explicit historical `--as-of` does not fetch current
+context and relabel it as historical evidence. Both paths apply the same missing
+coverage rules and hypothetical exposure caps. Weekly runs are staged under
+`artifacts/work`, then saved once under `artifacts/weekly`. A saved week cannot be
+recalculated in place; use `publish-update` to retry distribution. Publication
+rejects changed prediction hashes and changed previously published scores or
+probabilities. Detailed run metadata remains available after publication.
+
+Optional CFBD quotes use `CFBD_API_KEY` from the runtime environment. Do not put
+keys in `pyproject.toml`. A quote is eligible only when both team names and kickoff
+match a scheduled game and retrieval precedes kickoff. Unmatched quotes remain
+unused. The existing extended-source collector separately supports CFBD weather,
+team and player cross-checks.
+
+Run Streamlit locally:
+
+```bash
+streamlit run dashboard/app.py
+```
+
+Build and check the public site:
+
+```bash
+cd web
+npm ci
+node --test api/season.test.mjs
+npm run build
+```
+
+The root `vercel.json` builds the React Scripts project into `web/build` and
+exposes the functions under root `api/`. Configure the Vercel project root as
+this repository root. A new forecast must be included in a new Vercel deployment
+to update its static copy; writing a local JSON file does not update an existing
+deployment. GitHub Actions retains the generated board with the runtime artifacts.
+Deployment, SMTP delivery and Datadog intake still require their respective
+runtime configuration. A static-only server can show the saved board but cannot
+provide the live-score function.
+
+## Production model feature implementation
+
+The production residual model now has 38 historical input fields: 20 team fields
+and 18 player-role fields. For each home and away team, the player fields contain
+passing, rushing and receiving yards per recorded opportunity, opportunity-weighted
+EPA, and usage concentration (sum of squared player opportunity shares). These
+are calculated from `player_game_facts`; they do not assume starters, transfers,
+replacement values or healthy-player probabilities.
+
+Historical features replay results in availability order. Each query sees only
+results strictly before its own cutoff, using the immediately preceding season
+and eligible games from its current season. No older season replaces a missing
+prior season. Verified games against non-FBS opponents contribute to recorded
+team rates. Missing statistics remain missing. Current on-disk facts take
+precedence over SQLite copies; stored facts fill absent fields.
+
+Team rates, player rates and known-future variables enter the same standardized
+ridge score-residual fit. The saved artifact identifies the selected fields,
+normalization, missingness coefficients and score coefficients. Forecast rows
+export `pregame_*` values, observed feature counts, the base expected score, and
+separate team, player, market, rest, weather, availability and score-bound point
+contributions. The published pick details expose those contributions. The final
+expected score remains the Poisson rate and Gaussian mean, and all win, spread
+and total probabilities come from that same Gaussian distribution.
+
+Control adjustment fitting in `forecast`, `weekly-forecast` or `sunday-run`:
+
+```bash
+cfb-forecast weekly-forecast --season 2026 \
+  --adjustment-ridge 0.1 \
+  --adjustment-min-games 30 \
+  --adjustment-min-coverage 0.2
+```
+
+These are operating settings, not claims of measured optimality. They can also be
+stored as `adjustment_config` in the selected model JSON (`ridge`, `min_games`,
+`min_feature_coverage`); explicit CLI values take precedence. Ridge must be
+positive, the minimum sample must be at least 30, and feature coverage must be in
+(0, 1]. Legacy team-only 20-column arrays and saved adjustment artifacts remain
+readable. Weather and injury effects still require the existing saved-context
+validation gate; missing history does not create an untrained adjustment.
+
+## Lag and window model development
+
+Production now fits lag-1/lag-2, 3-game and 5-game rolling means and standard
+deviations, and expanding means for each historical team/player metric. These
+266 temporal variables supplement the 38 season-rate variables. All are computed
+per team from results available strictly before the forecast cutoff, preserving
+missing games and excluding seasons older than the immediately previous season.
+See [the model contract](docs/MODEL_CONTRACT.md#causal-lag-and-window-features).
+
+Use `--no-temporal-features` on `forecast`, `weekly-forecast` or `sunday-run` for a
+season-rate-only ablation. `--temporal-features` enables them explicitly. Coverage
+requirements and the ridge penalty still control the fitted score adjustment.
+Forecast files and pick explanations also expose separate football-only and
+market-conditioned probabilities and scores. Validation compares those series
+on common settled games. No later quote or external provider projection fills a
+missing input.
 See repository license. Questions: bngomez@ieee.org

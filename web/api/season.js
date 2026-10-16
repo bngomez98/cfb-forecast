@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 function isValidForecast(game) {
-  return game && Number.isFinite(Number(game.game_id)) && game.away_team && game.home_team && game.kickoff && Number.isFinite(Number(game.home_win_probability))
+  return game && Number.isInteger(game.game_id) && game.away_team && game.home_team && game.kickoff && Number.isFinite(game.home_win_probability) && game.home_win_probability >= 0 && game.home_win_probability <= 1 && Number.isFinite(game.expected_home_score) && Number.isFinite(game.expected_away_score) && Number.isFinite(Date.parse(game.kickoff))
 }
 
 export default async function handler(request, response) {
@@ -31,6 +31,10 @@ export default async function handler(request, response) {
       games: forecasts.length,
       first_kickoff: kickoffTimes.length ? new Date(Math.min(...kickoffTimes)).toISOString() : null,
       last_kickoff: kickoffTimes.length ? new Date(Math.max(...kickoffTimes)).toISOString() : null,
+      slate_start: board.slate_start ?? null,
+      slate_end: board.slate_end ?? null,
+      validation: board.validation ?? {},
+      statistics: Array.isArray(board.statistics) ? board.statistics : [],
       sources: Array.isArray(board.sources) ? board.sources : [],
       forecasts,
     })

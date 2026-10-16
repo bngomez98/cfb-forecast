@@ -97,8 +97,7 @@ def create_forecasts(request: ForecastRequest):
             raise ValueError("Forecast window must be positive and no longer than 14 days")
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail="Invalid forecast time window") from exc
-    # Forecasts are fitted live from historical observations on every request.
-    # The configured model path supplies priors and state hyperparameters only.
+    # Use the selected saved score head; replay only eligible historical results.
     model_path = MODEL_ROOT
     model = _model_manifest(model_path)
     if model.get("training_through_season", request.season) >= request.season:
@@ -114,6 +113,7 @@ def create_forecasts(request: ForecastRequest):
             request.season,
             request.market_path,
             request.draws,
+            database=DATABASE_PATH,
         )
     except (FileNotFoundError, ValueError, KeyError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -131,6 +131,45 @@ def get_forecasts(season: int | None = Query(default=None)):
     from contextlib import closing
     with closing(connect(DATABASE_PATH)) as conn:
         return {"forecasts": [dict(row) for row in list_published_board(conn, season)]}
+
+
+@app.get("/api/season")
+def season_board(season: int = Query(default=2026, ge=2000, le=2100)):
+    """Return the same published snapshot the static website and desk read."""
+    path = ARTIFACT_ROOT / "latest" / "forecast_board.json"
+    if not path.exists():
+        raise HTTPException(status_code=503, detail="No published forecast board")
+    board = json.loads(path.read_text())
+    if board.get("season") != season:
+        raise HTTPException(status_code=404, detail="No published forecast for this season")
+    return board
+
+
+@app.get("/api/live-results")
+def live_results(start: str | None = None, end: str | None = None,
+                 season: int = Query(default=2026, ge=2000, le=2100)):
+    from datetime import datetime, timezone
+    from .ingest.data import timestamp
+    from .ingest.results import fetch_scoreboard
+    now = pd.Timestamp.now(tz="UTC")
+    try:
+        first = timestamp(start) if start else now - pd.Timedelta(days=1)
+        last = timestamp(end) if end else now + pd.Timedelta(days=7)
+        if last < first or last - first > pd.Timedelta(days=9):
+            raise ValueError("Date window must be between zero and nine days")
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        frame = fetch_scoreboard(season, pd.date_range(first.normalize(), last.normalize(), freq="D"))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Live score source unavailable") from exc
+    if len(frame):
+        frame = frame.drop_duplicates("game_id", keep="last")
+        frame["status"] = ["final" if row.is_final else "live" if row.status in
+                           ("STATUS_IN_PROGRESS", "STATUS_HALFTIME", "in") else "scheduled"
+                           for row in frame.itertuples()]
+    return {"season": season, "updated_at": datetime.now(timezone.utc).isoformat(),
+            "provider": "ESPN public scoreboard", "results": _records(frame)}
 
 
 @app.get("/api/learning")

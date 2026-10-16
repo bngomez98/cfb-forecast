@@ -1,7 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "create-react-app",
-  "installCommand": "npm --prefix web install",
-  "buildCommand": "npm --prefix web run build",
-  "outputDirectory": "web/build"
+  "installCommand": "cd web && npm ci",
+  "buildCommand": "cd web && npm run build",
+  "outputDirectory": "web/build",
+  "functions": {
+    "api/season.js": {
+      "includeFiles": "web/public/forecasts.json"
+    }
+  }
 }

@@ -89,10 +89,15 @@ def test_week_selection_excludes_other_weeks(monkeypatch, tmp_path):
 
     def calculate(**kw):
         assert kw["target_game_ids"] == [1]
-        Path(kw["out_root"]).mkdir(parents=True)
-        return pd.DataFrame({"game_id": [1]})
+        Path(kw["out_root"]).mkdir(parents=True, exist_ok=True)
+        return pd.DataFrame({"game_id": [1], "season": [2026], "home_team": ["A"], "away_team": ["B"],
+                             "kickoff": ["2026-10-17T16:00Z"], "as_of": [kw["as_of"]],
+                             "home_win_probability": [0.6], "expected_home_score": [28.0],
+                             "expected_away_score": [24.0], "projected_home_margin": [4.0],
+                             "projected_total": [52.0]})
 
     monkeypatch.setattr(weekly, "forecast", calculate)
+    monkeypatch.setattr("cfb_forecast.pipeline.publisher.publish_forecast_update", lambda *a, **kw: {"status": "skipped"})
     _, report = weekly.run_weekly_forecast(
         tmp_path, tmp_path, tmp_path, 2026, as_of="2026-10-12T12:00Z"
     )
@@ -385,6 +390,8 @@ def test_sunday_collects_inputs_before_validation_and_inference_and_preserves_ru
 
     monkeypatch.setattr(service, "collect_game_inputs", collect)
     monkeypatch.setattr(service, "capture_prices", prices)
+    monkeypatch.setattr("cfb_forecast.pipeline.database_update.update_database", lambda *a, **kw: {"status": "updated"})
+    monkeypatch.setattr("cfb_forecast.ingest.cfbd_market.capture_cfbd_prices", lambda *a, **kw: 0)
     monkeypatch.setattr(service, "validate_runs", validate)
     monkeypatch.setattr(service, "forecast", infer)
     import cfb_forecast.modeling.learning as learning

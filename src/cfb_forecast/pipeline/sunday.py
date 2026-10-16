@@ -208,6 +208,7 @@ def sunday_run(
     timezone_name="America/Chicago",
     scheduled=False,
     refresh=True,
+    adjustment_config=None,
 ):
     """Execute one real run; persist reports and preserve previous predictions."""
     started = timestamp(utc_now())
@@ -274,8 +275,14 @@ def sunday_run(
             if len(games)
             else (pd.DataFrame(), [])
         )
+        from .database_update import update_database
+        catalog_database = resolve_path(os.environ.get("CFB_DATABASE", root / "cfb_forecast.sqlite"))
+        catalog = update_database(data, catalog_database, season, work / "inputs", fetch_sources=refresh)
+        (work / "inputs" / "database_update.json").write_text(json.dumps(catalog, indent=2))
         store = data / "market_history.csv"
         prices = capture_prices(games, work / "inputs", store) if len(games) else 0
+        from ..ingest.cfbd_market import capture_cfbd_prices
+        prices += capture_cfbd_prices(games, season, work / "inputs" / "raw", store)
         at = timestamp(utc_now())
         if len(context_features):
             from ..ingest.player_matchups import import_player_evidence
@@ -395,10 +402,16 @@ def sunday_run(
         if games.empty:
             receipt = {"status": "no_upcoming_fbs_games", "run_id": run_id, "season": season, "as_of": at.isoformat(), "games": 0, "validation": validation_summary, "model_sha256": sha256(model_path / "model.json"), "source_hashes": {p.name: sha256(p) for p in paths}}
             (work / "run_manifest.json").write_text(json.dumps(receipt, indent=2))
+            from .publisher import REQUIRED
+            pd.DataFrame(columns=REQUIRED).to_csv(work / "forecasts.csv", index=False)
             journal.stage("publication")
             journal.finish(no_games=True)
             shutil.move(str(work), final)
             publish_latest(root, final)
+            from .publisher import publish_forecast_update
+            receipt["distribution"] = publish_forecast_update(final, root, run_id=run_id, season=season)
+            (final / "run_manifest.json").write_text(json.dumps(receipt, indent=2))
+            (root / "latest" / "run_manifest.json").write_text(json.dumps(receipt, indent=2))
             return receipt
         at = timestamp(utc_now())
         journal.stage("probability")
@@ -413,6 +426,8 @@ def sunday_run(
             target_game_ids=games.game_id.astype(int).tolist(),
             analytic=True,
             known_future=context_features,
+            adjustment_config=adjustment_config,
+            database=database,
         )
         ordered = (
             context_features.set_index("game_id")
@@ -431,29 +446,9 @@ def sunday_run(
             )
             (work / "context_model.json").write_text(json.dumps(context_spec, indent=2))
         # Incomplete lineup/injury information affects eligibility, not an invented probability adjustment.
-        predictions["inputs_complete"] = ordered.inputs_complete.to_numpy()
         journal.stage("decisions")
-        decisions = []
-        for row in predictions.to_dict("records"):
-            h, a = row.get("home_ml_decimal"), row.get("away_ml_decimal")
-            h = None if h is None or pd.isna(h) else h
-            a = None if a is None or pd.isna(a) else a
-            d = moneyline_diagnostics(row["home_win_probability"], h, a)
-            if not row["inputs_complete"]:
-                d.update(
-                    moneyline_candidate="none",
-                    hypothetical_bankroll_fraction=0.0,
-                    decision_reason="incomplete_weather_injury_lineup_or_stats_inputs",
-                )
-            else:
-                d["decision_reason"] = "price_and_probability_thresholds"
-            decisions.append(d)
-        for col in pd.DataFrame(decisions):
-            predictions[col] = pd.DataFrame(decisions)[col].to_numpy()
-        exposure = float(predictions.hypothetical_bankroll_fraction.sum())
-        if exposure > 0.05:
-            predictions.hypothetical_bankroll_fraction *= 0.05 / exposure
-        predictions["slate_exposure_cap"] = 0.05
+        from .decisions import apply_decisions
+        predictions = apply_decisions(predictions, ordered.inputs_complete.to_numpy())
         journal.stage("publication")
         predictions.to_csv(work / "forecasts.csv", index=False)
         records = (
