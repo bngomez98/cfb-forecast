@@ -91,7 +91,7 @@ def main():
     pa.add_argument("--model",default=None,help="Optionally write a separate candidate model next to the audit")
     pu=sub.add_parser("publish-update",help="Publish a completed forecast directory to SQLite, the board files, logs, and email")
     pu.add_argument("--run",required=True); pu.add_argument("--artifacts",default="artifacts")
-    pu.add_argument("--database",default=None); pu.add_argument("--web",default=None); pu.add_argument("--run-id",default=None)
+    pu.add_argument("--database",default=None); pu.add_argument("--run-id",default=None)
     pu.add_argument("--fetch-sources",action="store_true")
     args=parser.parse_args()
     from .paths import cli_path
@@ -189,7 +189,7 @@ def main():
         print(json.dumps(summary,indent=2,default=str))
     elif args.command=="publish-update":
         from .publisher import publish_forecast_update
-        report = publish_forecast_update(args.run, args.artifacts, args.database, args.web, args.run_id, fetch_sources=args.fetch_sources)
+        report = publish_forecast_update(args.run, args.artifacts, args.database, run_id=args.run_id, fetch_sources=args.fetch_sources)
         print(pd.Series(report).to_string())
     elif args.command == "sunday-run":
         from .sunday import sunday_run

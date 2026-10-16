@@ -4,6 +4,8 @@ A real-data forecasting service for the 2026 FBS season. Each Sunday at 10 AM Am
 
 ## Project
 
+Build, configuration, command and operations documentation: [docs/BUILD.md](docs/BUILD.md).
+
 The repository is Python, databases and git.
 
 | Item | Value |

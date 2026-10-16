@@ -58,3 +58,20 @@ def test_publish_writes_sqlite_board_and_email(tmp_path: Path, monkeypatch):
     assert (tmp_path / "artifacts" / "latest" / "forecasts.csv").exists()
     assert (tmp_path / "artifacts" / "logs" / "forecast_updates.jsonl").exists()
     assert list((tmp_path / "artifacts" / "logs" / "email_outbox").glob("*.txt"))
+
+
+def test_publish_update_command_passes_run_id_not_a_stale_option(tmp_path: Path, monkeypatch, capsys):
+    from cfb_forecast.cli import main
+    monkeypatch.delenv("CFB_SMTP_HOST", raising=False)
+    run = tmp_path / "run"
+    run.mkdir()
+    pd.DataFrame([{
+        "game_id": 7, "season": 2026, "home_team": "Texas", "away_team": "Oklahoma",
+        "kickoff": "2026-10-17T19:00:00Z", "expected_home_score": 31.8,
+        "expected_away_score": 24.7, "projected_home_margin": 7.1, "home_win_probability": 0.64,
+    }]).to_csv(run / "forecasts.csv", index=False)
+    monkeypatch.setattr("sys.argv", ["cfb-forecast", "publish-update", "--run", str(run), "--artifacts", str(tmp_path / "a"),
+                                     "--database", str(tmp_path / "d.sqlite"), "--run-id", "2026-week-7"])
+    assert main() in (0, None)
+    out = capsys.readouterr().out
+    assert "published" in out and "2026-week-7" in out
