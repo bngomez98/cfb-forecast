@@ -36,21 +36,134 @@ def _json_values(value):
     return value
 
 
-def _team_context(past, targets, facts, at):
-    """Historical rates gated by final availability, not kickoff/week order."""
+# Days for a game's weight in the team summary to halve. A game played a full
+# season earlier keeps roughly 3% of the weight of last week's game.
+CONTEXT_HALF_LIFE_DAYS = 70.
+# For each metric, the opponent quality it is measured against: offensive
+# rates are compared with what the opponent's defense allowed to everyone
+# else; points allowed are compared with the opponent's own scoring.
+_OPPONENT_REFERENCE = {"points_against": ("for", "points_for")}
+
+
+def _history_rows(past, facts):
     rows = []
     for game in past.itertuples(index=False):
-        for team, points, allowed in ((game.home_id, game.home_points, game.away_points),
-                                       (game.away_id, game.away_points, game.home_points)):
-            rows.append({"game_id": int(game.game_id), "team_id": int(team), "season": int(game.season),
-                         "available_at": game.result_available_at, "points_for": points, "points_against": allowed})
-    history = pd.DataFrame(rows)
+        for team, opponent, points, allowed in ((game.home_id, game.away_id, game.home_points, game.away_points),
+                                                (game.away_id, game.home_id, game.away_points, game.home_points)):
+            rows.append({"game_id": int(game.game_id), "team_id": int(team), "opponent_id": int(opponent),
+                         "season": int(game.season), "available_at": game.result_available_at,
+                         "points_for": points, "points_against": allowed})
+    history = pd.DataFrame(rows, columns=["game_id", "team_id", "opponent_id", "season", "available_at",
+                                          "points_for", "points_against"])
     if facts is not None and len(facts):
         columns = [c for c in TEAM_METRICS if c not in ("points_for", "points_against") and c in facts]
         history = history.merge(facts[["game_id", "team_id", *columns]], on=["game_id", "team_id"], how="left", validate="one_to_one")
     for column in TEAM_METRICS:
         if column not in history:
             history[column] = np.nan
+    return history
+
+
+def _team_context(past, targets, facts, at, mode="opponent_adjusted", half_life_days=CONTEXT_HALF_LIFE_DAYS):
+    """Pregame team summaries from results available before each cutoff.
+
+    ``opponent_adjusted`` (default) weights each earlier game by recency and
+    adjusts it for the opponent faced; ``season_mean`` is the previous plain
+    average of the current and previous seasons, kept for comparison. Both
+    gate rows by final-result availability, not kickoff/week order.
+    """
+    history = _history_rows(past, facts)
+    if mode == "season_mean":
+        return _team_context_mean(history, targets, at)
+    if mode != "opponent_adjusted":
+        raise ValueError(f"Unknown team context mode: {mode}")
+    if not np.isfinite(half_life_days) or half_life_days <= 0:
+        raise ValueError("half_life_days must be finite and positive")
+    history = history.assign(available_at=pd.to_datetime(history.available_at, utc=True)).sort_values("available_at", kind="stable")
+    metrics = list(TEAM_METRICS)
+    times = history.available_at.to_numpy("datetime64[ns]").astype("int64")
+    values = history[metrics].to_numpy(float)
+    seasons = history.season.to_numpy(int)
+    teams = history.team_id.to_numpy(int)
+    opponents = history.opponent_id.to_numpy(int)
+    games = history.game_id.to_numpy(int)
+    by_team = {int(k): np.flatnonzero(teams == k) for k in np.unique(teams)}
+    by_opponent = {int(k): np.flatnonzero(opponents == k) for k in np.unique(opponents)}
+    day = 86400e9
+
+    def weighted(rows, cutoff, season):
+        rows = rows[(times[rows] < cutoff) & (seasons[rows] >= season - 1) & (seasons[rows] <= season)]
+        if not len(rows):
+            return rows, None
+        weight = 0.5 ** ((cutoff - times[rows]) / day / half_life_days)
+        return rows, weight
+
+    def wmean(block, weight):
+        finite = np.isfinite(block)
+        total = (np.where(finite, weight[:, None], 0.)).sum(0)
+        return np.divide(np.where(finite, block * weight[:, None], 0.).sum(0), total,
+                         out=np.full(block.shape[1], np.nan), where=total > 0)
+
+    reference_cache = {}
+
+    def reference(opponent, cutoff, season, game):
+        """Recency-weighted level the opponent allowed (or scored) in its other games."""
+        key = (opponent, cutoff, season, game)
+        if key not in reference_cache:
+            allowed_rows = by_opponent.get(opponent, np.array([], int))
+            own_rows = by_team.get(opponent, np.array([], int))
+            # Leave the game being adjusted out of its own opponent reference.
+            allowed_rows, w_allowed = weighted(allowed_rows[games[allowed_rows] != game], cutoff, season)
+            own_rows, w_own = weighted(own_rows[games[own_rows] != game], cutoff, season)
+            level = np.full(len(metrics), np.nan)
+            if w_allowed is not None:
+                level = wmean(values[allowed_rows], w_allowed)
+            if w_own is not None:
+                own = wmean(values[own_rows], w_own)
+                for j, name in enumerate(metrics):
+                    if name in _OPPONENT_REFERENCE:
+                        level[j] = own[metrics.index(_OPPONENT_REFERENCE[name][1])]
+            reference_cache[key] = level
+        return reference_cache[key]
+
+    league_cache = {}
+
+    def league(cutoff, season):
+        key = (cutoff, season)
+        if key not in league_cache:
+            rows = np.flatnonzero((times < cutoff) & (seasons >= season - 1) & (seasons <= season))
+            level = np.full(len(metrics), np.nan)
+            if len(rows):
+                level = wmean(values[rows], np.ones(len(rows)))
+                for j, name in enumerate(metrics):
+                    if name in _OPPONENT_REFERENCE:
+                        level[j] = level[metrics.index(_OPPONENT_REFERENCE[name][1])]
+            league_cache[key] = level
+        return league_cache[key]
+
+    result = np.full((len(targets), 2, len(metrics) * 2), np.nan)
+    for slot, game in enumerate(targets.itertuples(index=False)):
+        cutoff = min(timestamp(game.start_date), at).value
+        season = int(game.season)
+        team_values = []
+        for team in (game.home_id, game.away_id):
+            rows, weight = weighted(by_team.get(int(team), np.array([], int)), cutoff, season)
+            if weight is None:
+                team_values.append(np.full(len(metrics), np.nan)); continue
+            base = league(cutoff, season)
+            adjusted = values[rows].copy()
+            for i, row in enumerate(rows):
+                # A strong showing against a weak defense counts for less; an
+                # opponent with no earlier evidence leaves the value unadjusted.
+                shift = reference(int(opponents[row]), cutoff, season, int(games[row])) - base
+                adjusted[i] -= np.where(np.isfinite(shift), shift, 0.)
+            team_values.append(wmean(adjusted, weight))
+        result[slot, 0] = np.r_[team_values[0], team_values[1]]
+        result[slot, 1] = np.r_[team_values[1], team_values[0]]
+    return result
+
+
+def _team_context_mean(history, targets, at):
     by_team = {int(team): frame for team, frame in history.groupby("team_id")}
     result = np.full((len(targets), 2, len(TEAM_METRICS) * 2), np.nan)
     for slot, game in enumerate(targets.itertuples(index=False)):

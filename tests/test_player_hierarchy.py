@@ -8,7 +8,7 @@ import pytest
 from cfb_forecast.ingest.data import normalize_schedule
 from cfb_forecast.ingest.player_matchups import import_player_evidence, player_evidence
 from cfb_forecast.modeling.player_hierarchy import PlayerHierarchy, availability_scenarios
-from cfb_forecast.modeling.player_forecast import _team_context, _known_context
+from cfb_forecast.modeling.player_forecast import TEAM_METRICS, _team_context, _known_context
 from cfb_forecast.storage.database import connect
 
 
@@ -290,3 +290,46 @@ def test_forecast_reads_the_database_it_is_given(tmp_path, monkeypatch):
     result = forecast(data, model, out, '2026-09-01T00:00Z', '2026-09-06T00:00Z', 2026, database=db)
     assert result.model_variant.tolist() == ['joint_player']
     assert result.training_player_observations.iloc[0] > 0
+
+
+def _context_games(rows):
+    games = []
+    for i, (home, away, hp, ap, day) in enumerate(rows):
+        date = pd.Timestamp('2025-09-01T18:00Z') + pd.Timedelta(days=day)
+        games.append(dict(game_id=i + 1, season=2025, start_date=date, result_available_at=date + pd.Timedelta(hours=4),
+                          home_id=home, away_id=away, home_points=float(hp), away_points=float(ap)))
+    return pd.DataFrame(games)
+
+
+def test_team_context_weights_recent_games_more_than_old_ones():
+    # Team 1 scored 50 long ago and 10 last week, against opponents with no
+    # other games, so no opponent adjustment applies.
+    games = _context_games([(1, 2, 50, 20, 0), (1, 3, 10, 20, 140)])
+    target = _context_games([(1, 4, 0, 0, 150)])
+    at = pd.Timestamp('2026-09-01T00:00Z')
+    plain = _team_context(games, target, pd.DataFrame(), at, mode='season_mean')
+    weighted = _team_context(games, target, pd.DataFrame(), at)
+    assert plain[0, 0, 0] == pytest.approx(30.)
+    assert 10. < weighted[0, 0, 0] < 20.
+
+
+def test_team_context_credits_points_against_strong_defenses():
+    # Teams 1 and 3 both scored 30 once. Team 2's defense allowed 10 to its
+    # other opponent, team 4's allowed 50, and the league averages 30, so 30
+    # against team 2 is the stronger showing.
+    games = _context_games([(5, 2, 10, 30, 0), (6, 4, 50, 30, 0), (1, 2, 30, 30, 7), (3, 4, 30, 30, 7)])
+    target = _context_games([(1, 3, 0, 0, 14)])
+    context = _team_context(games, target, pd.DataFrame(), pd.Timestamp('2026-09-01T00:00Z'))
+    home_points_for, away_points_for = context[0, 0, 0], context[0, 0, len(TEAM_METRICS)]
+    assert home_points_for > 30. > away_points_for
+    plain = _team_context(games, target, pd.DataFrame(), pd.Timestamp('2026-09-01T00:00Z'), mode='season_mean')
+    assert plain[0, 0, 0] == pytest.approx(plain[0, 0, len(TEAM_METRICS)])
+
+
+def test_team_context_never_uses_results_after_the_cutoff_for_opponent_strength():
+    games = _context_games([(1, 2, 30, 20, 0), (5, 2, 70, 20, 20)])
+    target = _context_games([(1, 3, 0, 0, 10)])
+    before = _team_context(games.iloc[:1], target, pd.DataFrame(), pd.Timestamp('2026-09-01T00:00Z'))
+    after = _team_context(games, target, pd.DataFrame(), pd.Timestamp('2026-09-01T00:00Z'))
+    np.testing.assert_array_equal(np.isnan(before), np.isnan(after))
+    np.testing.assert_allclose(before[np.isfinite(before)], after[np.isfinite(after)])
