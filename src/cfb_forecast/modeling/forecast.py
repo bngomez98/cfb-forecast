@@ -14,7 +14,7 @@ from .model import load_model, ScoreHead
 from ..odds.market import closing_lines, market_at_cutoff, market_history_summary, read_market_history
 from ..ingest.availability import availability_snapshot
 from ..odds.decision import moneyline_diagnostics
-from .forecast_model import METHOD, ForecastModel, known_future_matrix, rest_days
+from .forecast_model import METHOD, ForecastModel, MARKET_COLUMNS, known_future_matrix, rest_days
 from ..paths import database_path
 
 
@@ -39,8 +39,19 @@ def _known_frame(games, schedules, market_rows, extra):
     return frame
 
 
-def _project_rows(targets, means, fitted, covariance, schedules, market_rows, history_rows, extra, metadata, history=None):
-    known = known_future_matrix(_known_frame(targets, schedules, market_rows, extra))
+def _forecast_known(frame, forecast_mode):
+    """Keep market quotes for comparison while controlling estimator inputs."""
+    if forecast_mode not in {"football", "market_conditioned"}:
+        raise ValueError("forecast_mode must be football or market_conditioned")
+    values = known_future_matrix(frame)
+    if forecast_mode == "football":
+        from .forecast_model import KNOWN_COLUMNS
+        values[:, [KNOWN_COLUMNS.index(name) for name in MARKET_COLUMNS]] = np.nan
+    return values
+
+
+def _project_rows(targets, means, fitted, covariance, schedules, market_rows, history_rows, extra, metadata, history=None, forecast_mode="football"):
+    known = _forecast_known(_known_frame(targets, schedules, market_rows, extra), forecast_mode)
     projected = fitted.apply(
         means,
         known,
@@ -70,6 +81,7 @@ def _project_rows(targets, means, fitted, covariance, schedules, market_rows, hi
                 "away_team": game.away_team,
                 "kickoff": game.start_date.isoformat(),
                 "prediction_method": METHOD,
+                "forecast_mode": forecast_mode,
                 **metadata,
                 **sim,
                 **market,
@@ -114,6 +126,33 @@ def _store_history_facts(data_root, out):
         (Path(out) / "history_database_error.txt").write_text(str(exc))
 
 
+def _save_calculation_inputs(out, model_root, source_paths, targets, schedules, market_rows, extra, history, means, covariance, forecast_mode):
+    """Retain estimator inputs, fitted base model, and exact source versions."""
+    from ..storage.evidence import canonical_json
+    from .forecast_model import KNOWN_COLUMNS, HISTORY_COLUMNS
+    known = _forecast_known(_known_frame(targets, schedules, market_rows, extra), forecast_mode)
+    payload = {
+        "schema_version": 1,
+        "forecast_mode": forecast_mode,
+        "game_ids": targets.game_id.astype(int).tolist(),
+        "known_columns": list(KNOWN_COLUMNS),
+        "known_values": known.tolist(),
+        "history_columns": list(HISTORY_COLUMNS),
+        "history_values": None if history is None else history.tolist(),
+        "prior_score_locations": np.asarray(means).tolist(),
+        "score_covariance": np.asarray(covariance).tolist(),
+        "market_quotes_for_comparison": market_rows,
+    }
+    (out / "forecast_inputs.json").write_text(canonical_json(payload))
+    retained = out / "inputs"
+    retained.mkdir(exist_ok=True)
+    shutil.copy2(Path(model_root) / "model.json", retained / "production_model.json")
+    sources = retained / "sources"
+    sources.mkdir(exist_ok=True)
+    for path in source_paths:
+        shutil.copy2(path, sources / path.name)
+
+
 def archive_market(path, out):
     if not path or not Path(path).exists():
         return {"market_file": None, "market_sha256": None}
@@ -141,9 +180,11 @@ def forecast(
     known_future=None,
     closing_path=None,
     legacy_score=False,
+    forecast_mode="football",
 ):
     analytic = True
     save_distribution = False
+    _forecast_known(pd.DataFrame(), forecast_mode)
     at = timestamp(as_of)
     end = timestamp(through)
     if end <= at:
@@ -255,7 +296,7 @@ def forecast(
         past_location[adjustment_mask],
         Y[fit_mask][adjustment_mask][:, :, 0],
         # Rest days count every earlier kickoff, including games against non-FBS teams.
-        known_future_matrix(_known_frame(past_games, schedules, past_market, None))[adjustment_mask],
+        _forecast_known(_known_frame(past_games, schedules, past_market, None), forecast_mode)[adjustment_mask],
         (past_games.home_points.to_numpy() > past_games.away_points.to_numpy()).astype(int)[adjustment_mask],
         history=None if history_past is None else history_past[adjustment_mask],
     ) if int(adjustment_mask.sum()) >= 30 else ForecastModel.identity()
@@ -295,12 +336,14 @@ def forecast(
             "score_probability_family": "joint_gaussian",
         },
         history=history_future,
+        forecast_mode=forecast_mode,
     )
     joint = []
     margins = []
     totals = []
     out = Path(out_root)
     out.mkdir(parents=True, exist_ok=True)
+    _save_calculation_inputs(out, model_root, paths, targets, schedules, market_rows, known_future, history_future, mu, model["score_covariance"], forecast_mode)
     _store_history_facts(data_root, out)
     market_archive = archive_market(market_path, out)
     market_file = market_archive["market_file"]
@@ -345,6 +388,7 @@ def forecast(
         "distribution_files": distribution_files,
         "score_probability_family": "joint_gaussian",
         "forecast_model_schema": 3,
+        "forecast_mode": forecast_mode,
         "adjustment_training_games": int(adjustment_mask.sum()),
         "target_game_ids": targets.game_id.astype(int).tolist(),
         "data_availability_check": avail["prospective_current_season_source_check"],
@@ -369,6 +413,7 @@ def advance_forecast_snapshot(
     target_game_ids=None,
     analytic=True,
     legacy_score=False,
+    forecast_mode=None,
 ):
     """Advance an exact saved forecast state when no new result became eligible.
 
@@ -384,6 +429,10 @@ def advance_forecast_snapshot(
     data_root = Path(data_root)
     out = Path(out_root)
     old_manifest = json.loads((prev / "forecast_manifest.json").read_text())
+    saved_mode = old_manifest.get("forecast_mode", "market_conditioned")
+    if forecast_mode is not None and forecast_mode != saved_mode:
+        raise SnapshotReplayRequired("Forecast mode changed; full replay is required")
+    forecast_mode = saved_mode
     old_at = timestamp(old_manifest["as_of"])
     at = timestamp(as_of)
     end = timestamp(through)
@@ -501,11 +550,13 @@ def advance_forecast_snapshot(
             "head_training_through_season": model["training_through_season"],
         },
         history=history_future,
+        forecast_mode=forecast_mode,
     )
     joint = []
     margins = []
     totals = []
     out.mkdir(parents=True, exist_ok=True)
+    _save_calculation_inputs(out, model_root, source_paths, targets, schedules, market_rows, None, history_future, mu, model["score_covariance"], forecast_mode)
     market_archive = archive_market(market_path, out)
     (out / "forecasts.json").write_text(json.dumps(rows, indent=2))
     (out / "forecast_model.json").write_text(json.dumps(fitted.to_dict(), indent=2))
@@ -554,6 +605,7 @@ def advance_forecast_snapshot(
         "distribution_files": distribution_files,
         "target_game_ids": targets.game_id.astype(int).tolist(),
         "data_availability_check": avail["prospective_current_season_source_check"],
+        "forecast_mode": forecast_mode,
         "state_transition": {
             "from_as_of": old_at.isoformat(),
             "to_as_of": at.isoformat(),

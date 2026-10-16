@@ -54,3 +54,6 @@ web/node_modules/
 web/dist/
 web/tsconfig.tsbuildinfo
 
+
+# Reproducible cloud execution outputs
+runtime/

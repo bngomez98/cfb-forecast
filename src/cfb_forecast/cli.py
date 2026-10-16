@@ -20,6 +20,7 @@ def main():
     fc.add_argument("--out",default="artifacts/forecast"); fc.add_argument("--as-of",required=True)
     fc.add_argument("--through",required=True); fc.add_argument("--season",type=int,required=True)
     fc.add_argument("--market",default=None); fc.add_argument("--market-provider",default=None); fc.add_argument("--draws",type=int,default=50000)
+    fc.add_argument("--forecast-mode", choices=["football", "market_conditioned"], default="football", help="Football-only estimator inputs by default; quotes remain available for comparison")
     fa=sub.add_parser("forecast-advance",help="Advance a saved exact forecast state when no new result became eligible")
     fa.add_argument("--previous",required=True); fa.add_argument("--data",default="data"); fa.add_argument("--model",default=str(model_root()))
     fa.add_argument("--out",required=True); fa.add_argument("--as-of",required=True); fa.add_argument("--through",required=True); fa.add_argument("--season",type=int,required=True)
@@ -110,6 +111,10 @@ def main():
     pi = sub.add_parser("import-player-evidence", help="Import identified, timestamped player observations and lineups into the joint forecast database")
     pi.add_argument("--input", required=True)
     pi.add_argument("--database", default=None)
+    ev=sub.add_parser("evaluate-run",help="Verify frozen forecast inputs and settle scores, winners and errors")
+    ev.add_argument("--database",required=True); ev.add_argument("--run-id",required=True)
+    ev.add_argument("--evidence-dir",default=None,help="Content-addressed input directory after moving a saved run")
+    ev.add_argument("--data",default="data"); ev.add_argument("--as-of",required=True); ev.add_argument("--out",required=True)
     args=parser.parse_args()
     from .paths import cli_path
     for name in ("data", "artifacts", "model", "models", "out", "store", "ledger", "predictions", "archive", "market", "input", "previous", "forecast", "holdout", "frozen_batch", "run", "web", "database"):
@@ -122,6 +127,16 @@ def main():
         from .paths import database_path
         report = import_player_evidence(args.database or database_path(), json.loads(Path(args.input).read_text()))
         print(json.dumps(report, indent=2))
+    if args.command=="evaluate-run":
+        import json
+        from contextlib import closing
+        from .ingest.data import load_data
+        from .storage.database import connect
+        from .evaluation.evidence import settle_evidence
+        schedules, _, _ = load_data(args.data)
+        with closing(connect(args.database)) as conn:
+            _, report = settle_evidence(conn,args.run_id,schedules,args.as_of,args.out,args.evidence_dir)
+        print(json.dumps(report,indent=2))
     elif args.command=="fetch":
         from .ingest.data import fetch as run
         run(args.data,args.seasons,args.refresh,args.raw_pbp)
@@ -132,6 +147,7 @@ def main():
     elif args.command=="forecast":
         from .modeling.forecast import forecast
         result=forecast(args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.draws,args.market_provider,legacy_score=args.legacy_score)
+        result=forecast(args.data,args.model,args.out,args.as_of,args.through,args.season,args.market,args.draws,args.market_provider,forecast_mode=args.forecast_mode)
         print(result[["away_team","home_team","expected_away_score","expected_home_score","home_win_probability","projected_home_margin"]].to_string(index=False))
     elif args.command=="forecast-advance":
         from .modeling.forecast import advance_forecast_snapshot

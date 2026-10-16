@@ -347,6 +347,8 @@ def connect(path: str | Path) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     schema_path = Path(__file__).resolve().parents[3] / "sql" / "schema.sql"
     conn.executescript(schema_path.read_text() if schema_path.exists() else SCHEMA)
+    from .evidence import SCHEMA as EVIDENCE_SCHEMA
+    conn.executescript(EVIDENCE_SCHEMA)
     _ensure_forecast_columns(conn)
     if "source_player_id" not in {row[1] for row in conn.execute("PRAGMA table_info(player_game_facts)")}:
         conn.execute("ALTER TABLE player_game_facts ADD COLUMN source_player_id TEXT")
