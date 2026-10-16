@@ -162,23 +162,18 @@ The production model lives in `artifacts/training/model` (`CFB_MODEL_DIR`). The 
 
 ## Local commands
 
-After `make install`, `make help` lists everything. Each target wraps one `cfb-forecast` command.
+One nested command, `cfb <group> [action]` (`python -m cfb_forecast.commands` works without installing the script). `--season` goes before the group.
 
-| Make | Runs |
+| Command | Does |
 |---|---|
-| `make app` | scheduler and dashboard |
-| `make sunday` | `sunday-run` |
-| `make forecast` | `pipeline forecast` (daily) |
-| `make results` | `pipeline results` |
-| `make sources` | `sources-collect` |
-| `make players` | `player-aggregates` |
-| `make database` | outcomes and forecast validation in SQLite |
-| `make backtest-season` | `pipeline backtest` |
-| `make reproduce` | 2025 held-out evaluation |
-| `make check` | ruff and pytest |
-| `make up` / `down` / `logs` | Docker stack |
+| `cfb start` | scheduler and dashboard (`cfb start scheduler` for the scheduler alone) |
+| `cfb build` | train the model if missing (`build players` rebuilds player aggregates, `build data` downloads the season) |
+| `cfb dashboard` | Streamlit dashboard (`dashboard api` for the JSON API) |
+| `cfb update` | daily forecast of every upcoming game (`update sunday`, `update results`, `update sources`) |
+| `cfb historical` | point-in-time backtest of this season (`historical reproduce` for the 2025 held-out evaluation) |
+| `cfb validation` | validate logged forecasts against stored results (`validation status` for scheduler jobs) |
 
-`SEASON=2026` is the default; override with `make forecast SEASON=2027`. From the host without Python, `python -m scripts.cfb daily|sunday|results|sources|backtest` drives the container.
+The long form (`cfb-forecast pipeline forecast`, `sunday-run`, `sources-collect` and the rest) is unchanged, and `make help` lists the Make shortcuts. Docker: `make up`, `make docker-forecast`; from the host `python -m scripts.cfb daily|sunday|results|sources|backtest`.
 
 ## Run with the established Linux environment
 
