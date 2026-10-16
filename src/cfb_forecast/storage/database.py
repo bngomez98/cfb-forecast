@@ -294,6 +294,8 @@ def connect(path: str | Path) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     schema_path = Path(__file__).resolve().parents[3] / "sql" / "schema.sql"
     conn.executescript(schema_path.read_text() if schema_path.exists() else SCHEMA)
+    from .evidence import SCHEMA as EVIDENCE_SCHEMA
+    conn.executescript(EVIDENCE_SCHEMA)
     _ensure_forecast_columns(conn)
     return conn
 

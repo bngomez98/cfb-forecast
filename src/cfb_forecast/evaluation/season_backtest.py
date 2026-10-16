@@ -15,6 +15,13 @@ def run_season_backtest(data_root, model_root, out_root, season, draws=50000, le
     if "season_type" not in season_games:
         season_games["season_type"] = "regular"
     season_games["season_type"] = season_games.season_type.fillna("regular").astype(str)
+    # Reconstruct only completed outcomes. Future slates cannot contribute
+    # validation evidence and do not need repeated historical replay.
+    usable = (season_games.completed & season_games.home_points.notna()
+              & season_games.away_points.notna() & season_games.home_points.ge(0)
+              & season_games.away_points.ge(0)
+              & season_games.home_points.ne(season_games.away_points))
+    season_games = season_games[usable].copy()
     reports = []
     all_games = []
     for (_, week), games in sorted(
@@ -59,7 +66,7 @@ def run_season_backtest(data_root, model_root, out_root, season, draws=50000, le
     if not all_games:
         raise ValueError(f"No completed games were available to grade for season {season}")
     combined = pd.concat(all_games, ignore_index=True)
-    summary = {"season": int(season), "weeks": len(reports), "games": int(len(combined)), "winner_accuracy": float(combined.correct.mean()), "brier_score": float(combined.brier.mean()), "score_mae": float(combined.score_mae.mean()), "margin_mae": float(combined.margin_mae.mean()), "total_mae": float(combined.total_mae.mean())}
+    summary = {"evaluation_type": "retrospective_reconstruction", "source_vintage_limit": "Historical statistics were downloaded now; this is not a record of forecasts issued at the reconstructed cutoffs.", "season": int(season), "weeks": len(reports), "games": int(len(combined)), "winner_accuracy": float(combined.correct.mean()), "brier_score": float(combined.brier.mean()), "score_mae": float(combined.score_mae.mean()), "margin_mae": float(combined.margin_mae.mean()), "total_mae": float(combined.total_mae.mean())}
     out_root.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(reports).to_csv(out_root / "weekly_metrics.csv", index=False)
     combined.to_csv(out_root / "graded_games.csv", index=False)
